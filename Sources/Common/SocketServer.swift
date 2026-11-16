@@ -55,8 +55,8 @@ public final class SocketServer: @unchecked Sendable {
     }
 }
 
-public func sendRequest(_ request: ClientRequest, socketPath: String = defaultSocketPath()) throws -> ServerAnswer {
-    let connection = try connectToServer(path: socketPath)
+public func sendRequest(_ request: ClientRequest, socketPath: String = defaultSocketPath(), timeoutSeconds: Int = 5) throws -> ServerAnswer {
+    let connection = try connectToServer(path: socketPath, timeoutSeconds: timeoutSeconds)
     defer { close(connection) }
     try writeFrame(connection, JSONEncoder().encode(request))
     return try JSONDecoder().decode(ServerAnswer.self, from: readFrame(connection))

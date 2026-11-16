@@ -168,7 +168,6 @@ struct PrefixConfigTests {
         """))
         let prefix = config.settings.prefix
 
-        #expect(prefix.timeout == 2.5)
         #expect(prefix.menuBar == false)
         #expect(prefix.label.enabled == false)
         #expect(prefix.label.position == .topRight)
@@ -185,7 +184,6 @@ struct PrefixConfigTests {
         """))
         let prefix = config.settings.prefix
 
-        #expect(prefix.timeout == 1.5)
         #expect(prefix.label.position == .center)
         #expect(prefix.label.offsetX == 4)
         #expect(prefix.label.offsetY == 0)

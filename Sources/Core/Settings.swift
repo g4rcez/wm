@@ -159,8 +159,6 @@ public struct PrefixLabelSettings: Sendable, Equatable {
 
 /// Key sequences such as `ctrl-p>h` (press the prefix, then the next key), like a tmux or Rex prefix.
 public struct PrefixSettings: Sendable, Equatable {
-    /// Seconds to wait for the next key before the sequence is cancelled.
-    public var timeout: Double = 1.5
     /// Show a "..." state in the menu bar icon while waiting.
     public var menuBar = true
     public var label = PrefixLabelSettings()

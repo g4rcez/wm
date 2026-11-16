@@ -229,7 +229,8 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
     }
 
     if let prefix = try top.table("prefix", allowed: ["timeout", "menubar", "label"]) {
-        if let timeout = try prefix.number("timeout", min: 0.1) { settings.prefix.timeout = timeout }
+        // `timeout` is accepted and ignored so that old configs still load: a sequence waits until a key or Escape.
+        _ = try prefix.number("timeout", min: 0.1)
         if let flag = try prefix.bool("menubar") { settings.prefix.menuBar = flag }
         if let label = try prefix.table("label", allowed: ["enabled", "position", "offset", "font_size", "background", "foreground", "show_keys", "accent", "font"]) {
             if let flag = try label.bool("enabled") { settings.prefix.label.enabled = flag }

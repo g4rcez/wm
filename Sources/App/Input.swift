@@ -25,7 +25,6 @@ final class InputRouter {
     /// The steps pressed so far of a sequence that is waiting for its next key.
     private var pending: [Chord] = []
     private var pendingMode = "main"
-    private var pendingTimer: Timer?
     /// Set by the app: the switcher takes over the keys while it is open.
     var switcher: SwitcherController?
     /// Set by the app: the template picker takes over the keys while it is open.
@@ -143,7 +142,7 @@ final class InputRouter {
         updatePending()
     }
 
-    /// The next key of a sequence. A key that continues no sequence ends it and is eaten, as in tmux; Escape cancels.
+    /// The next key of a sequence. A key that continues no sequence ends it and is eaten, as in tmux; Escape cancels. A sequence waits without a timeout.
     private func continueSequence(with chord: Chord, flags: CGEventFlags) -> Bool {
         if chord.key == "esc", chord.modifiers.isEmpty {
             cancelSequence()
@@ -163,18 +162,12 @@ final class InputRouter {
     }
 
     func cancelSequence() {
-        pendingTimer?.invalidate()
-        pendingTimer = nil
         guard !pending.isEmpty else { return }
         pending = []
         onPending?(nil)
     }
 
     private func updatePending() {
-        pendingTimer?.invalidate()
-        pendingTimer = Timer.scheduledTimer(withTimeInterval: manager.settings.prefix.timeout, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated { self?.cancelSequence() }
-        }
         onPending?(pending)
     }
 
