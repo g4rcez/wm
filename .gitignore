@@ -1,0 +1,23 @@
+# SwiftPM and Xcode
+.build/
+.swiftpm/
+*.xcodeproj
+xcuserdata/
+DerivedData/
+
+# Built app bundles and debug symbols (the signature of a bundle built here names your certificate)
+*.app
+*.dSYM/
+
+# macOS
+.DS_Store
+
+# Local secrets and environment
+.env
+.env.*
+
+# Editors and local tool folders
+.idea/
+.vscode/
+*.swp
+.claude/
