@@ -77,6 +77,18 @@ ln -s "$PWD/.build/wm.app/Contents/MacOS/wm" ~/.local/bin/wm
 
 Run `wm lsp --write` once to get completion for `init.lua` in your editor. See [Editor support](#editor-support).
 
+### Shell completion
+
+`wm completion zsh` and `wm completion bash` print a small script that asks `wm` for the candidates each time you press
+Tab, so it never goes out of date. It completes the commands, their arguments and their options. While the daemon runs
+it also completes window ids (with the app and title), `--window` selectors (`app:<name>`), workspace names, special
+workspaces and modes. Without the daemon the fixed words still complete. Load it when the shell starts:
+
+```sh
+eval "$(wm completion zsh)"   # in ~/.zshrc, after compinit
+eval "$(wm completion bash)"  # in ~/.bashrc
+```
+
 ### Start at login
 
 Copy `wm.app` to `/Applications` and set `start_at_login = true` in the config. The app has to stay in a fixed place for
@@ -258,7 +270,7 @@ wm.config {
   tab_indicator = { enabled = true, position = "left", size = 6, spacing = 3, radius = 3,
                     active = "#89b4fa", inactive = "#9999a599" },   -- the tabs of a tabbed column (left | right | top | bottom)
   switcher  = { thumbnails = true, delay = 0.12, background = "#0000008c", selected = "#89b4fa", max_scale = 0.85 },
-  prefix    = { timeout = 1.5, menubar = true,   -- key sequences: seconds to wait; show "..." in the menu bar icon
+  prefix    = { menubar = true,   -- key sequences: show "..." in the menu bar icon
                 label = { enabled = true, show_keys = true,
                           position = "bottom-center",   -- top-left | top-center | top-right | center | bottom-left | bottom-center | bottom-right
                           offset = { x = 0, y = 0 }, font_size = 11,
@@ -277,7 +289,8 @@ A chord is modifiers and a key joined by `-` or `+`: `alt-h`, `cmd+ctrl-2`. The 
 
 A bind can also be a sequence of chords separated by `>`: `"ctrl-p>h"`, `"alt-space > t > n"`. wm takes the first chord of
 a sequence from every app, so choose one your apps do not need. A key that continues no sequence cancels it and is
-swallowed, as in tmux, so a typo never reaches the app you are typing in. Escape and the timeout cancel too.
+swallowed, as in tmux, so a typo never reaches the app you are typing in. A sequence waits until the next key or Escape:
+it has no timeout. (`prefix.timeout` of old configs is still accepted and ignored.)
 
 In one mode, a chord cannot be a bind by itself and also the start of a sequence, and a sequence cannot be the start of a
 longer one (`a>b` and `a>b>c`). Both are config errors. `wm.bind("cmd-h", "")` with an empty string swallows a key.
@@ -436,10 +449,11 @@ Hold Alt and press Tab to open a miniature of the focused workspace with a pictu
 the selection, the arrow keys move it across the miniature, and letting go of Alt focuses the window. Return focuses
 too, and Escape cancels. `switcher = { thumbnails = false }` turns the pictures off.
 
-`overview` shows every workspace that holds windows, one row each. `h` `j` `k` `l` or the arrow keys move the selection, and
-Return or a click focuses the window. You can **drag a window onto another row to move it there**. The last row, an empty
-screen named `+ new workspace N`, creates a workspace from the first unused number. The focus and the shown workspace
-stay as they are.
+`overview` shows every workspace that holds windows, one row each. Every window has a key label in its corner: type it to
+focus that window (with more than 22 windows the labels have two letters). `h` `j` `k` `l` or the arrow keys move the
+selection instead, and Return or a click focuses the window. You can **drag a window onto another row to move it there**.
+The last row, an empty screen named `+ new workspace N`, creates a workspace from the first unused number. The focus and
+the shown workspace stay as they are.
 
 ## Mouse
 
@@ -467,6 +481,7 @@ INTERFACE        switcher | overview | mode <name> | pointer <window|monitor>
 INSPECT          list [windows|workspaces|monitors|binds] | subscribe
 DAEMON           daemon start | stop | status | reload | version
 EDITOR           lsp [--write] [--force]
+SHELL            completion <zsh|bash>
 ```
 
 Options for every command: `--window <w>` acts on that window, `--json` prints JSON (`list`, `daemon status`),
@@ -653,8 +668,8 @@ timeout 300 swift test      # unit tests: layout engines, geometry, Lua host, IP
 | Target | Role |
 |---|---|
 | `CLua` | Vendored Lua 5.4.7 |
-| `Common` | IPC (length-prefixed JSON over a unix socket), command table, help and URL parsing |
-| `Core` | Pure layout engines, animator, gaps, navigation. No AppKit. |
+| `Common` | IPC (length-prefixed JSON over a unix socket), command table, help, URL parsing and shell completion |
+| `Core` | Pure layout engines, animator, gaps, navigation, overview key labels. No AppKit. |
 | `Scripting` | Lua host, chords, binds, gestures, config validation |
 | `Platform` | Accessibility threads, displays, event tap, overlays, SkyLight reader |
 | `App` | `wmd`: window manager state, commands, config, menu bar, URL handler |

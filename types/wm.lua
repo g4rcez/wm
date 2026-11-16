@@ -168,7 +168,7 @@
 ---@field description? string
 
 ---@class (exact) wm.PrefixConfig
----@field timeout? number Seconds to wait for the next key of a sequence, >= 0.1. Default 1.5.
+---@field timeout? number Deprecated and ignored. A sequence waits until the next key or Escape.
 ---@field menubar? boolean Show "..." in the menu bar icon while waiting. Default true.
 ---@field label? wm.PrefixLabel The floating label.
 
