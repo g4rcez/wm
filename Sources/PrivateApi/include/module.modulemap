@@ -1,0 +1,4 @@
+module PrivateApi {
+    header "PrivateApi.h"
+    export *
+}
