@@ -679,4 +679,5 @@ MIT license. `legal/THIRD_PARTY.md` has the full notices.
 
 ## License
 
-[confirm: license, then add a `LICENSE` file and name it here]
+wm is released under the MIT License. See [LICENSE](LICENSE). The notices of the code that wm includes are in
+[legal/THIRD_PARTY.md](legal/THIRD_PARTY.md).
