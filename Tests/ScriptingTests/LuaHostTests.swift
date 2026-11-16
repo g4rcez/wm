@@ -694,4 +694,67 @@ struct LuaHostTests {
         #expect(bridge.logs[0].contains("longer than 2 seconds"))
         #expect(bridge.logs[1] == "fast")
     }
+
+    // MARK: Tile templates
+
+    @Test func templatesStayBuiltInWhenTheConfigHasNone() throws {
+        let config = try host.load(configURL: dir.write("init.lua", "wm.config { layout = 'scrolling' }"))
+
+        #expect(config.settings.tiling.templates == SplitTemplate.allCases)
+        #expect(config.settings.scrolling.templates == SplitTemplate.allCases)
+    }
+
+    @Test func templatesAreListedPerLayoutAndMixBuiltInWithCustomOnes() throws {
+        let config = try host.load(configURL: dir.write("init.lua", """
+        wm.config {
+          tiling = { templates = { wm.templates.two, wm.templates.stack_left } },
+          scrolling = { templates = {
+            wm.templates.two_thirds,
+            { name = "70/30", key = "s", title = "Focus 70%", cells = { { 0, 0, 0.7, 1 }, { 0.7, 0, 0.3, 1 } } },
+            { name = "halves", cells = { { 0, 0, 1, 0.5 }, { 0, 0.5, 1, 0.5 } } },
+          } },
+        }
+        """))
+
+        #expect(config.settings.tiling.templates == [.two, .stackLeft])
+        #expect(config.settings.scrolling.templates == [
+            .twoThirds,
+            SplitTemplate(
+                name: "70/30", key: "s", title: "Focus 70%",
+                cells: [CGRect(x: 0, y: 0, width: 0.7, height: 1), CGRect(x: 0.7, y: 0, width: 0.3, height: 1)]),
+            SplitTemplate(
+                name: "halves", key: nil, title: "halves",
+                cells: [CGRect(x: 0, y: 0, width: 1, height: 0.5), CGRect(x: 0, y: 0.5, width: 1, height: 0.5)]),
+        ])
+    }
+
+    @Test func everyBuiltInTemplateIsExportedToLua() throws {
+        _ = try host.load(configURL: dir.write("init.lua", """
+        local ids = { "two", "three", "four", "five", "six", "stack_left", "stack_right", "two_thirds", "three_quarters", "one_quarter" }
+        local names = {}
+        for _, id in ipairs(ids) do names[#names + 1] = wm.templates[id].name end
+        wm.log(table.concat(names, ","))
+        """))
+
+        #expect(bridge.logs == ["2,3,4,5,6,2+1,1+2,2/3,3/4,1/4"])
+    }
+
+    @Test(arguments: [
+        ("wm.config { scrolling = { templates = {} } }", "'scrolling.templates' must not be empty"),
+        ("wm.config { tiling = { templates = { { name = 'chain', cells = { {0,0,.5,1}, {.5,0,.5,1} } } } } }", "'tiling.templates[1].name' must have no spaces and must not be \"chain\""),
+        ("wm.config { tiling = { templates = { { name = 'a', key = 'c', cells = { {0,0,.5,1}, {.5,0,.5,1} } } } } }", "'tiling.templates[1].key' must be one of a-z or 0-9, and not \"c\""),
+        ("wm.config { tiling = { templates = { wm.templates.two, wm.templates.two } } }", "'tiling.templates[2].name' \"2\" is already in this list"),
+        ("wm.config { tiling = { templates = { wm.templates.two, { name = 'x', key = '2', cells = { {0,0,.5,1}, {.5,0,.5,1} } } } } }", "'tiling.templates[2].key' \"2\" is already in this list"),
+        ("wm.config { scrolling = { templates = { { name = 'x' } } } }", "'scrolling.templates[1].cells' is required"),
+        ("wm.config { scrolling = { templates = { { name = 'x', cells = { {0,0,.5}, {.5,0,.5,1} } } } } }", "'scrolling.templates[1].cells[1]' must be { x, y, width, height }"),
+        ("wm.config { scrolling = { templates = { { name = 'x', cells = { {0,0,.6,1}, {.5,0,.5,1} } } } } }", "'scrolling.templates[1].cells' is not valid: the cells must fill the screen with straight cuts and no overlap"),
+        ("wm.config { scrolling = { templates = { { name = 'x', cells = { {0,0,1,1} } } } } }", "a template needs at least two cells"),
+        ("wm.workspace('1', { layout_options = { templates = {} } })", "unknown key 'layout_options.templates'"),
+    ])
+    func templateErrorsNameTheProblem(script: String, expected: String) throws {
+        let error = #expect(throws: ConfigError.self) {
+            try host.load(configURL: dir.write("init.lua", script))
+        }
+        #expect(error?.message.contains(expected) == true)
+    }
 }
