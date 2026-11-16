@@ -98,7 +98,7 @@ public let commandSections: [CommandSection] = [
     ]),
     CommandSection(title: "Interface", specs: [
         CommandSpec("switcher", "[next|prev|commit|cancel]", "", "Open the Alt+Tab window switcher."),
-        CommandSpec("overview", "", "", "Show all workspaces; drag a window onto a row to move it."),
+        CommandSpec("overview", "", "", "Show all workspaces; type a window's label to focus it."),
         CommandSpec("mode", "<name>", "", "Switch the binding mode (`main` is the default).", example: "wm mode resize"),
         CommandSpec("pointer", "<window|monitor>", "", "Move the mouse pointer to the center of the target."),
         CommandSpec(
@@ -134,6 +134,10 @@ public let commandSections: [CommandSection] = [
             "lsp", "", "[--write] [--force]", "Set up autocomplete for init.lua in your editor.",
             details: "Prints the folder of the type stubs and the .luarc.json that lua-language-server needs. --write saves it next to\nthe config file; --force replaces a .luarc.json that is already there. It works without the daemon.",
             example: "wm lsp --write"),
+        CommandSpec(
+            "completion", "<zsh|bash>", "", "Print the shell completion script.",
+            details: "It completes the commands, their arguments and options, and (when the daemon runs) window ids, workspaces and modes.\nLoad it when the shell starts. The script itself works without the daemon.",
+            example: "eval \"$(wm completion zsh)\""),
         CommandSpec("version", "", "", "Print the version."),
     ]),
 ]

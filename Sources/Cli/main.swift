@@ -25,6 +25,20 @@ func die(_ message: String, hint: String? = nil, code: Int32 = 1) -> Never {
 }
 
 var arguments = Array(CommandLine.arguments.dropFirst())
+
+// `wm __complete <words>` is what the completion scripts call. It must see the words as typed, so it runs before the
+// options are parsed. The daemon gives the windows, workspaces and modes; without it only the fixed words complete.
+if arguments.first == "__complete" {
+    func live(_ args: [String]) -> Data {
+        (try? sendRequest(ClientRequest(args: args), timeoutSeconds: 1)).map { Data($0.stdout.utf8) } ?? Data()
+    }
+    var source = CompletionSource()
+    source.windows = { parseLiveWindows(live(["list", "windows", "--json"])) }
+    source.workspaces = { parseLiveWorkspaces(live(["list", "workspaces", "--json"])) }
+    source.modes = { parseLiveModes(live(["list", "binds", "--json"])) }
+    write(renderCompletion(complete(Array(arguments.dropFirst()), source: source)), to: .standardOutput)
+    exit(0)
+}
 /// `wm --window <id> <command>`: the command acts on that window instead of the focused one.
 var windowId: UInt32?
 var windowSelector: String?
@@ -78,6 +92,14 @@ func appBundle() -> URL? {
     let home = FileManager.default.homeDirectoryForCurrentUser
     return [URL(fileURLWithPath: "/Applications/wm.app"), home.appendingPathComponent("Applications/wm.app")]
         .first { FileManager.default.fileExists(atPath: $0.path) }
+}
+
+if arguments.first == "completion" {
+    guard arguments.count == 2, let shell = CompletionShell(rawValue: arguments[1]) else {
+        die("expected a shell name", hint: "usage: wm completion <\(CompletionShell.allCases.map(\.rawValue).joined(separator: "|"))>", code: 2)
+    }
+    print(completionScript(for: shell), terminator: "")
+    exit(0)
 }
 
 if arguments.first == "lsp" {
