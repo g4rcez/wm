@@ -424,6 +424,36 @@ It is one block in the strip, so scrolling moves it as one screen. In the tiling
 windows of the workspace, and their number has to match. The picker has a one-character key on each picture: a number for
 the grids, `l` and `r` for `2+1` and `1+2`, `t`, `q` and `w` for `2/3`, `3/4` and `1/4`, and `c` for the chain.
 
+#### Your own templates
+
+`templates` in `tiling` and in `scrolling` replaces the list that the picker and the menu bar show for that layout. Each
+layout has its own list. Without `templates`, the layout lists the ten built-in ones. `wm.templates` has every built-in
+template, so a list can mix them with your own:
+
+```lua
+wm.config {
+  tiling = { templates = { wm.templates.two, wm.templates.four, wm.templates.stack_left } },
+  scrolling = {
+    templates = {
+      wm.templates.two_thirds,
+      { name = "70/30", key = "s", title = "Focus 70%", cells = { { 0, 0, 0.7, 1 }, { 0.7, 0, 0.3, 1 } } },
+    },
+  },
+}
+```
+
+`wm.templates` has `two`, `three`, `four`, `five`, `six`, `stack_left`, `stack_right`, `two_thirds`, `three_quarters` and
+`one_quarter`.
+
+- `name` is what `layout tile <name>` takes. It has no spaces, it is not `chain`, and it is unique in the list.
+- `key` is optional: one of `a-z` or `0-9`, not `c`, unique in the list. It picks the template in the picker.
+- `title` is optional: the text in the menu bar menu (the default is the name).
+- `cells` is a list of `{ x, y, width, height }` as fractions of the screen, in reading order. The windows take the cells in
+  that order. There are two or more cells. They fill the screen with straight cuts and do not overlap.
+- The chain stays last in the picker and the menu.
+- `layout tile <name>` also takes a built-in name that your list leaves out, so old binds keep working.
+- The shell completion for `wm layout tile` lists only the built-in names.
+
 ### Rotate
 
 `layout rotate cw` and `layout rotate ccw` move every window one slot around the layout. The slots keep their sizes. This

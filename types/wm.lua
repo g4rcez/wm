@@ -93,11 +93,32 @@
 ---@field active? wm.Color Color of the focused window's border. Default "#89b4fa".
 ---@field inactive? wm.Color Default "#00000000" (clear).
 
+--- A tile pattern for `layout tile`: the cells are fractions of the screen, in reading order, and must fill it with straight cuts.
+---@class (exact) wm.Template
+---@field name string What `layout tile <name>` takes. No spaces, not "chain", unique in its list.
+---@field key? string One key a-z or 0-9 (not "c") that picks it in the picker. Unique in its list.
+---@field title? string Text in the menu bar menu. Default: the name.
+---@field cells number[][] Two or more `{ x, y, width, height }`, each 0 to 1.
+
+--- The built-in templates, to put in a `templates` list.
+---@class wm.BuiltInTemplates
+---@field two wm.Template
+---@field three wm.Template
+---@field four wm.Template
+---@field five wm.Template
+---@field six wm.Template
+---@field stack_left wm.Template
+---@field stack_right wm.Template
+---@field two_thirds wm.Template
+---@field three_quarters wm.Template
+---@field one_quarter wm.Template
+
 ---@class (exact) wm.TilingConfig
 ---@field split_ratio? number Share of the cell that the first window gets, 0.1 to 0.9. Default 0.5.
 ---@field preserve_split? boolean Keep the orientation of a split when its sibling closes. Default true.
 ---@field force_split? "second"|"first" Where a new window goes in the split of the window it splits: "second" (right or bottom) or "first". Default "second".
 ---@field split_width_multiplier? number 0.1 to 3. A cell this many times wider than tall splits side by side, so an ultrawide screen shows more columns before stacking. Default 1.
+---@field templates? wm.Template[] The patterns that the picker and the menu bar list for this layout, instead of the built-in ones. Not empty. `layout tile <name>` still takes a built-in name that is not in the list.
 
 ---@class (exact) wm.VerticalStrip
 ---@field side? wm.Side Side of the screen. Default "right".
@@ -114,6 +135,7 @@
 ---@field sliver_width? number Points of an off-screen column that stay on screen, >= 0. Default 8.
 ---@field sliver_height? number Height fraction of an off-screen column, 0.05 to 1. Default 0.9.
 ---@field vertical? wm.VerticalStrip The vertical strip zone.
+---@field templates? wm.Template[] The patterns that the picker and the menu bar list for this layout, instead of the built-in ones. Not empty. `layout tile <name>` still takes a built-in name that is not in the list.
 
 ---@class (exact) wm.TabIndicatorConfig
 ---@field enabled? boolean Draw a bar with one segment per tab at the edge of a tabbed column. Default true.
@@ -338,6 +360,7 @@
 
 ---@class wm
 ---@field version string Version of the Lua API.
+---@field templates wm.BuiltInTemplates The built-in tile templates, to mix with your own in `templates`.
 wm = {}
 
 --- Sets options. Only while the config file loads.
