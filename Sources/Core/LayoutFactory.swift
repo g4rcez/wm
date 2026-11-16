@@ -1,0 +1,27 @@
+public func makeEngine(_ kind: LayoutKind, settings: Settings) -> any LayoutEngine {
+    switch kind {
+    case .tiling: DwindleEngine(settings: settings)
+    case .scrolling: ScrollingEngine(settings: settings)
+    }
+}
+
+/// A layout that can be written to disk and built again.
+public enum LayoutState: Codable, Sendable {
+    case tiling(DwindleEngine.State)
+    case scrolling(ScrollingEngine.State)
+
+    public var kind: LayoutKind {
+        switch self {
+        case .tiling: .tiling
+        case .scrolling: .scrolling
+        }
+    }
+}
+
+/// The engine that `state` was saved from, with the current settings.
+public func makeEngine(restoring state: LayoutState, settings: Settings) -> any LayoutEngine {
+    switch state {
+    case .tiling(let saved): DwindleEngine(settings: settings, state: saved)
+    case .scrolling(let saved): ScrollingEngine(settings: settings, state: saved)
+    }
+}
