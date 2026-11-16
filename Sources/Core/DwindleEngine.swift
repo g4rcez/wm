@@ -167,6 +167,14 @@ public struct DwindleEngine: LayoutEngine {
     }
 }
 
+extension DwindleEngine {
+    /// `true` when the cells (fractions of the unit square) can be cut into a split tree with straight cuts.
+    static func canPartition(_ cells: [CGRect]) -> Bool {
+        let unit = CGRect(x: 0, y: 0, width: 1, height: 1)
+        return Node.partition(cells.enumerated().map { (rect: $0.element, window: WindowID($0.offset)) }, in: unit) != nil
+    }
+}
+
 /// `.horizontal` puts the two children side by side, `.vertical` stacks them.
 private struct Split: Sendable, Codable {
     /// `nil` until the first layout decides it.

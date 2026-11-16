@@ -186,7 +186,8 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
         if let inactive = try color(tabs, "inactive") { settings.tabIndicator.inactive = inactive }
     }
 
-    if let tiling = try top.table("tiling", allowed: ["split_ratio", "preserve_split", "force_split", "split_width_multiplier"]) {
+    if let tiling = try top.table("tiling", allowed: ["split_ratio", "preserve_split", "force_split", "split_width_multiplier", "templates"]) {
+        if let list = try templates(tiling) { settings.tiling.templates = list }
         if let name = try tiling.choice("force_split", NewWindowSide.allCases.map(\.rawValue)) { settings.tiling.forceSplit = NewWindowSide(rawValue: name)! }
         if let factor = try tiling.number("split_width_multiplier", min: 0.1, max: 3) { settings.tiling.splitWidthMultiplier = factor }
         if let ratio = try tiling.number("split_ratio", min: 0.1, max: 0.9) { settings.tiling.splitRatio = ratio }
@@ -195,8 +196,9 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
 
     if let scrolling = try top.table("scrolling", allowed: [
         "presets", "default_width", "center", "sliver_width", "sliver_height", "vertical",
-        "always_center_single_column", "default_column_display", "preset_heights",
+        "always_center_single_column", "default_column_display", "preset_heights", "templates",
     ]) {
+        if let list = try templates(scrolling) { settings.scrolling.templates = list }
         if let presets = try scrolling.numbers("presets", in: 0.05...1) {
             guard !presets.isEmpty else { throw ConfigError(message: "\(owner): 'scrolling.presets' must not be empty") }
             settings.scrolling.presets = presets
@@ -257,6 +259,44 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
     if let url = try top.table("url", allowed: ["allow"]), let allow = try url.strings("allow") {
         settings.urlAllow = allow
     }
+}
+
+/// The `templates` list of the `tiling` or `scrolling` table: the patterns that the picker and the menu list.
+/// A template is `{ name, key?, title?, cells }`; `wm.templates` has the built-in ones in this shape.
+private func templates(_ group: Fields) throws -> [SplitTemplate]? {
+    guard let items = try group.list("templates") else { return nil }
+    let list = (group.path + ["templates"]).joined(separator: ".")
+    func fail(_ path: String, _ message: String) -> ConfigError { ConfigError(message: "\(group.owner): '\(path)' \(message)") }
+    guard !items.isEmpty else { throw fail(list, "must not be empty") }
+    var result: [SplitTemplate] = []
+    for (index, item) in items.enumerated() {
+        let at = "\(list)[\(index + 1)]"
+        let fields = try Fields(item, owner: group.owner, path: group.path + ["templates[\(index + 1)]"], allowed: ["name", "key", "title", "cells"])
+        guard let name = try fields.string("name"), !name.isEmpty else { throw fail(at + ".name", "is required, for example name = \"70/30\"") }
+        guard !name.contains(where: \.isWhitespace), name != "chain" else {
+            throw fail(at + ".name", "must have no spaces and must not be \"chain\"")
+        }
+        let key = try fields.string("key")
+        if let key, key.range(of: "^[a-z0-9]$", options: .regularExpression) == nil || key == "c" {
+            throw fail(at + ".key", "must be one of a-z or 0-9, and not \"c\" (the chain)")
+        }
+        guard let rows = try fields.list("cells") else { throw fail(at + ".cells", "is required, a list of { x, y, width, height }") }
+        let cells = try rows.enumerated().map { cellIndex, row -> CGRect in
+            guard case .array(let values) = row else { throw fail("\(at).cells[\(cellIndex + 1)]", "must be { x, y, width, height }") }
+            let numbers = values.compactMap { value -> Double? in
+                if case .number(let number) = value { number } else { nil }
+            }
+            guard numbers.count == 4, values.count == 4 else {
+                throw fail("\(at).cells[\(cellIndex + 1)]", "must be { x, y, width, height }, four numbers")
+            }
+            return CGRect(x: numbers[0], y: numbers[1], width: numbers[2], height: numbers[3])
+        }
+        if let problem = SplitTemplate.shapeError(cells) { throw fail(at + ".cells", "is not valid: " + problem) }
+        if result.contains(where: { $0.name == name }) { throw fail(at + ".name", "\"\(name)\" is already in this list") }
+        if let key, result.contains(where: { $0.key == key }) { throw fail(at + ".key", "\"\(key)\" is already in this list") }
+        result.append(SplitTemplate(name: name, key: key, title: try fields.string("title"), cells: cells))
+    }
+    return result
 }
 
 /// The options of `layout_options` in a workspace rule: the ones of `tiling` and of `scrolling` in `wm.config`, flat.

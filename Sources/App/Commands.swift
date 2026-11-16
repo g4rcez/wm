@@ -381,12 +381,21 @@ extension WindowManager {
         if name == "chain" {
             _ = workspace.engine.perform(.releaseTemplate, focused: id, in: layoutContext(forWorkspace: workspace.name))
         } else {
-            guard let template = SplitTemplate(rawValue: name) else { return fail("unknown pattern '\(name)'", 2, usage: "layout tile") }
+            // A name that the config left out of its list still works when it is a built-in one.
+            guard let template = templates(of: id).first(where: { $0.name == name }) ?? SplitTemplate.builtIn(named: name) else {
+                return fail("unknown pattern '\(name)'", 2, usage: "layout tile")
+            }
             if let error = workspace.engine.templateError(template, focused: id) { return fail(error) }
             _ = workspace.engine.perform(.applyTemplate(template), focused: id, in: layoutContext(forWorkspace: workspace.name))
         }
         relayout()
         return ok()
+    }
+
+    /// The tile templates of the layout of the window's workspace (the focused workspace without a window), as the config lists them.
+    func templates(of id: WindowID?) -> [SplitTemplate] {
+        let kind = id.flatMap { windows[$0] }.map { workspace($0.workspace).kind } ?? focusedWorkspace?.kind ?? settings.layout
+        return settings.templates(for: kind)
     }
 
     /// The template of the window's block, for the picker's first selection.

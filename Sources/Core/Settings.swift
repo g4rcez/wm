@@ -45,6 +45,8 @@ public struct TilingSettings: Sendable, Equatable {
     public var splitRatio: Double = 0.5
     /// Keep a split's orientation when its sibling is closed or the window is re-inserted.
     public var preserveSplit: Bool = true
+    /// The patterns that the picker and the menu bar list for this layout (`layout tile`).
+    public var templates: [SplitTemplate] = SplitTemplate.allCases
     public init() {}
 }
 
@@ -81,6 +83,8 @@ public struct ScrollingSettings: Sendable, Equatable {
     /// Height fraction of a parked column, centred vertically.
     public var sliverHeight: Double = 0.9
     public var vertical = VerticalStripSettings()
+    /// The patterns that the picker and the menu bar list for this layout (`layout tile`).
+    public var templates: [SplitTemplate] = SplitTemplate.allCases
     public init() {}
 }
 
@@ -203,4 +207,12 @@ public struct Settings: Sendable, Equatable {
     /// Commands a `wm://` URL may run besides the always-allowed ones. `exec` and `reload` are denied by default.
     public var urlAllow: [String] = []
     public init() {}
+
+    /// The tile templates of a layout, in the order of the picker.
+    public func templates(for layout: LayoutKind) -> [SplitTemplate] {
+        switch layout {
+        case .tiling: tiling.templates
+        case .scrolling: scrolling.templates
+        }
+    }
 }

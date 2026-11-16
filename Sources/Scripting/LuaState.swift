@@ -9,8 +9,8 @@ private let timeLimit: Int64 = 2_000_000_000
 private let deadlineKey = "wm.deadline"
 
 private let prelude = """
-local native, version = ...
-local wm = { version = version }
+local native, version, templates = ...
+local wm = { version = version, templates = templates }
 
 local function expect(ok, message)
   if not ok then error(message, 3) end
@@ -225,7 +225,8 @@ final class LuaState {
             lua_setfield(L, -2, name)
         }
         lua_pushstring(L, LuaHost.apiVersion)
-        if let message = protectedCall(arguments: 2) { throw ConfigError(message: message) }
+        pushValue(L, builtInTemplates)
+        if let message = protectedCall(arguments: 3) { throw ConfigError(message: message) }
     }
 
     /// A chord cannot be bound by itself and also start a sequence, and a sequence cannot start a longer one.
@@ -256,6 +257,23 @@ final class LuaState {
         handlers.append(Handler(event: event, filter: filter, ref: ref))
     }
 }
+
+/// `wm.templates`: the built-in tile templates by their Lua name, in the shape that `templates` in `wm.config` takes.
+private let builtInTemplates: LuaValue = {
+    let templates: [(String, SplitTemplate)] = [
+        ("two", .two), ("three", .three), ("four", .four), ("five", .five), ("six", .six),
+        ("stack_left", .stackLeft), ("stack_right", .stackRight),
+        ("two_thirds", .twoThirds), ("three_quarters", .threeQuarters), ("one_quarter", .oneQuarter),
+    ]
+    return .table(Dictionary(uniqueKeysWithValues: templates.map { id, template in
+        var fields: [String: LuaValue] = [
+            "name": .string(template.name), "title": .string(template.title),
+            "cells": .array(template.cells.map { .array([.number($0.minX), .number($0.minY), .number($0.width), .number($0.height)]) }),
+        ]
+        if let key = template.key { fields["key"] = .string(key) }
+        return (id, .table(fields))
+    }))
+}()
 
 // MARK: - Native functions
 //

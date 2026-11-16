@@ -4,12 +4,14 @@ import Platform
 
 /// Menu bar item: current workspace, config errors, reload and quit.
 @MainActor
-final class MenuBar: NSObject {
+final class MenuBar: NSObject, NSMenuDelegate {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let errorItem = NSMenuItem()
     private let workspaceItem = NSMenuItem()
     private let reload: () -> Void
     private let tile: (String) -> Void
+    /// The tile templates to list, as the config gives them for the layout in focus.
+    private let templates: () -> [SplitTemplate]
     private let configFolder: URL
     private var shown: String?
     private var shownLayout: String?
@@ -17,8 +19,9 @@ final class MenuBar: NSObject {
     /// The active binding mode, or `nil` in `main`.
     private var modeShown: String?
 
-    init(configFolder: URL, reload: @escaping () -> Void, tile: @escaping (String) -> Void) {
+    init(configFolder: URL, reload: @escaping () -> Void, templates: @escaping () -> [SplitTemplate], tile: @escaping (String) -> Void) {
         self.reload = reload
+        self.templates = templates
         self.tile = tile
         self.configFolder = configFolder
         super.init()
@@ -30,14 +33,7 @@ final class MenuBar: NSObject {
         menu.addItem(errorItem)
         menu.addItem(.separator())
         let tileMenu = NSMenu()
-        for template in TemplateGlyph.entries {
-            let title = template?.title ?? "Back to the chain"
-            let entry = NSMenuItem(title: title, action: #selector(applyTile(_:)), keyEquivalent: "")
-            entry.target = self
-            entry.image = TemplateGlyph.image(for: template)
-            entry.representedObject = TemplateGlyph.label(template)
-            tileMenu.addItem(entry)
-        }
+        tileMenu.delegate = self
         let tileItem = NSMenuItem(title: "Tile Windows", action: nil, keyEquivalent: "")
         tileItem.submenu = tileMenu
         menu.addItem(tileItem)
@@ -117,6 +113,18 @@ final class MenuBar: NSObject {
         errorItem.isHidden = message == nil
         errorItem.title = message.map { "⚠ " + String($0.prefix(80)) } ?? ""
         item.button?.toolTip = message
+    }
+
+    /// The tile submenu is filled each time it opens, so it follows the config and the layout in focus.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        for template in TemplateGlyph.entries(templates()) {
+            let entry = NSMenuItem(title: template?.title ?? "Back to the chain", action: #selector(applyTile(_:)), keyEquivalent: "")
+            entry.target = self
+            entry.image = TemplateGlyph.image(for: template)
+            entry.representedObject = TemplateGlyph.label(template)
+            menu.addItem(entry)
+        }
     }
 
     @objc private func applyTile(_ sender: NSMenuItem) {

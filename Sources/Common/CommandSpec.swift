@@ -79,7 +79,7 @@ public let commandSections: [CommandSection] = [
         CommandSpec("layout flip", "", "", "Turn every split from side by side to stacked (tiling)."),
         CommandSpec(
             "layout tile", "[pattern|chain]", "", "Arrange windows in a pattern; no pattern opens a picker.",
-            details: "Patterns: 2, 3, 4, 5, 6, 2+1, 1+2, 2/3, 3/4 (big window on the left), 1/4 (big window on the right). `chain` goes back to the plain layout.\nScrolling: the window and the next ones fill one screen. Tiling: all windows take the pattern, so their number must match.",
+            details: "Patterns: 2, 3, 4, 5, 6, 2+1, 1+2, 2/3, 3/4 (big window on the left), 1/4 (big window on the right). `chain` goes back to the plain layout. A config can list its own patterns with `templates` in `tiling` and `scrolling`.\nScrolling: the window and the next ones fill one screen. Tiling: all windows take the pattern, so their number must match.",
             example: "wm layout tile 2+1"),
         CommandSpec("layout split", "<toggle|swap>", "", "Flip the window's split, or swap its two sides (tiling)."),
         CommandSpec("layout split root", "", "", "Make the window a child of the root: half the screen."),

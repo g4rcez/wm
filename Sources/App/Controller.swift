@@ -114,7 +114,7 @@ final class AppController: HostBridge, @unchecked Sendable {
                 guard let monitor = manager.focusedMonitor else { return fail("there is no monitor") }
                 let id = target ?? manager.focused
                 pickerTarget = id
-                picker.show(on: monitor.workArea, current: manager.template(of: id))
+                picker.show(on: monitor.workArea, templates: manager.templates(of: id), current: manager.template(of: id))
                 return ok()
             }
         case "list" where args.dropFirst().first == "binds":

@@ -3,98 +3,126 @@ import CoreGraphics
 /// Ribbon-style arrangements: a group of consecutive windows fills one screen of the scrolling strip in a fixed
 /// pattern. The cells are in reading order (left to right, top to bottom); the windows of the group take them in the
 /// order they have in the strip. "Back to the chain" (no template) is the normal strip of single columns.
-public enum SplitTemplate: String, Sendable, CaseIterable, Codable {
-    /// Two windows side by side.
-    case two = "2"
-    /// Three windows in a row.
-    case three = "3"
-    /// Four windows, two across and two down.
-    case four = "4"
-    /// Five windows: three on top, two below that stretch to fill the width.
-    case five = "5"
-    /// Six windows in two rows of three.
-    case six = "6"
-    /// Two stacked on the left, one full-height window on the right. (Ribbon: `stack-left`.)
-    case stackLeft = "2+1"
-    /// One full-height window on the left, two stacked on the right. (Ribbon: `stack-right`.)
-    case stackRight = "1+2"
-    /// The focused window takes two thirds of the width, the next window the last third.
-    case twoThirds = "2/3"
-    /// The focused window takes three quarters of the width, the next window the last quarter.
-    case threeQuarters = "3/4"
-    /// The mirror of `threeQuarters`, for a workflow aligned to the right: the focused window takes the left quarter, the
-    /// next window the right three quarters.
-    case oneQuarter = "1/4"
+///
+/// The built-in templates are `static` values (`allCases` lists them). A config can make its own with `init`.
+public struct SplitTemplate: Sendable, Equatable, Codable {
+    /// What `layout tile <name>` takes. Unique in a list of templates.
+    public let name: String
+    /// The one-character key that picks the template in the picker, or `nil` for a template that has none.
+    /// The built-in grids use their number of windows; the others use a letter: `l` and `r` (the stack on the left or
+    /// on the right), `t` (thirds), `q` (three quarters on the left) and `w` (three quarters on the right). `c` is the
+    /// chain (see `TemplateGlyph`).
+    public let key: String?
+    /// The text in the menu bar menu.
+    public let title: String
+    /// The cells as fractions of the area the group fills: x, y, width, height, each 0...1.
+    public let cells: [CGRect]
+
+    public init(name: String, key: String? = nil, title: String? = nil, cells: [CGRect]) {
+        self.name = name
+        self.key = key
+        self.title = title ?? name
+        self.cells = cells
+    }
 
     /// How many windows the group has.
     public var count: Int { cells.count }
 
-    /// The cells as fractions of the area the group fills: x, y, width, height, each 0...1.
-    public var cells: [CGRect] {
-        switch self {
-        case .two:
-            [CGRect(x: 0, y: 0, width: 0.5, height: 1), CGRect(x: 0.5, y: 0, width: 0.5, height: 1)]
-        case .three:
-            (0..<3).map { CGRect(x: Double($0) / 3, y: 0, width: 1.0 / 3, height: 1) }
-        case .stackLeft:
-            [
-                CGRect(x: 0, y: 0, width: 0.5, height: 0.5),
-                CGRect(x: 0, y: 0.5, width: 0.5, height: 0.5),
-                CGRect(x: 0.5, y: 0, width: 0.5, height: 1),
-            ]
-        case .stackRight:
-            [
-                CGRect(x: 0, y: 0, width: 0.5, height: 1),
-                CGRect(x: 0.5, y: 0, width: 0.5, height: 0.5),
-                CGRect(x: 0.5, y: 0.5, width: 0.5, height: 0.5),
-            ]
-        case .four:
-            [
-                CGRect(x: 0, y: 0, width: 0.5, height: 0.5), CGRect(x: 0.5, y: 0, width: 0.5, height: 0.5),
-                CGRect(x: 0, y: 0.5, width: 0.5, height: 0.5), CGRect(x: 0.5, y: 0.5, width: 0.5, height: 0.5),
-            ]
-        case .five:
-            (0..<3).map { CGRect(x: Double($0) / 3, y: 0, width: 1.0 / 3, height: 0.5) }
-                + (0..<2).map { CGRect(x: Double($0) / 2, y: 0.5, width: 0.5, height: 0.5) }
-        case .twoThirds:
-            [CGRect(x: 0, y: 0, width: 2.0 / 3, height: 1), CGRect(x: 2.0 / 3, y: 0, width: 1.0 / 3, height: 1)]
-        case .threeQuarters:
-            [CGRect(x: 0, y: 0, width: 0.75, height: 1), CGRect(x: 0.75, y: 0, width: 0.25, height: 1)]
-        case .oneQuarter:
-            [CGRect(x: 0, y: 0, width: 0.25, height: 1), CGRect(x: 0.25, y: 0, width: 0.75, height: 1)]
-        case .six:
-            (0..<6).map { CGRect(x: Double($0 % 3) / 3, y: Double($0 / 3) / 2, width: 1.0 / 3, height: 0.5) }
-        }
+    /// Two windows side by side.
+    public static let two = SplitTemplate(
+        name: "2", key: "2", title: "Two across",
+        cells: [CGRect(x: 0, y: 0, width: 0.5, height: 1), CGRect(x: 0.5, y: 0, width: 0.5, height: 1)])
+    /// Three windows in a row.
+    public static let three = SplitTemplate(
+        name: "3", key: "3", title: "Three in a row",
+        cells: (0..<3).map { CGRect(x: Double($0) / 3, y: 0, width: 1.0 / 3, height: 1) })
+    /// Four windows, two across and two down.
+    public static let four = SplitTemplate(
+        name: "4", key: "4", title: "Four in a grid",
+        cells: [
+            CGRect(x: 0, y: 0, width: 0.5, height: 0.5), CGRect(x: 0.5, y: 0, width: 0.5, height: 0.5),
+            CGRect(x: 0, y: 0.5, width: 0.5, height: 0.5), CGRect(x: 0.5, y: 0.5, width: 0.5, height: 0.5),
+        ])
+    /// Five windows: three on top, two below that stretch to fill the width.
+    public static let five = SplitTemplate(
+        name: "5", key: "5", title: "Five in a grid",
+        cells: (0..<3).map { CGRect(x: Double($0) / 3, y: 0, width: 1.0 / 3, height: 0.5) }
+            + (0..<2).map { CGRect(x: Double($0) / 2, y: 0.5, width: 0.5, height: 0.5) })
+    /// Six windows in two rows of three.
+    public static let six = SplitTemplate(
+        name: "6", key: "6", title: "Six in a grid",
+        cells: (0..<6).map { CGRect(x: Double($0 % 3) / 3, y: Double($0 / 3) / 2, width: 1.0 / 3, height: 0.5) })
+    /// Two stacked on the left, one full-height window on the right. (Ribbon: `stack-left`.)
+    public static let stackLeft = SplitTemplate(
+        name: "2+1", key: "l", title: "Two stacked, one beside",
+        cells: [
+            CGRect(x: 0, y: 0, width: 0.5, height: 0.5),
+            CGRect(x: 0, y: 0.5, width: 0.5, height: 0.5),
+            CGRect(x: 0.5, y: 0, width: 0.5, height: 1),
+        ])
+    /// One full-height window on the left, two stacked on the right. (Ribbon: `stack-right`.)
+    public static let stackRight = SplitTemplate(
+        name: "1+2", key: "r", title: "One, then two stacked",
+        cells: [
+            CGRect(x: 0, y: 0, width: 0.5, height: 1),
+            CGRect(x: 0.5, y: 0, width: 0.5, height: 0.5),
+            CGRect(x: 0.5, y: 0.5, width: 0.5, height: 0.5),
+        ])
+    /// The focused window takes two thirds of the width, the next window the last third.
+    public static let twoThirds = SplitTemplate(
+        name: "2/3", key: "t", title: "Focus two thirds, one third beside",
+        cells: [CGRect(x: 0, y: 0, width: 2.0 / 3, height: 1), CGRect(x: 2.0 / 3, y: 0, width: 1.0 / 3, height: 1)])
+    /// The focused window takes three quarters of the width, the next window the last quarter.
+    public static let threeQuarters = SplitTemplate(
+        name: "3/4", key: "q", title: "Focus three quarters, one quarter beside",
+        cells: [CGRect(x: 0, y: 0, width: 0.75, height: 1), CGRect(x: 0.75, y: 0, width: 0.25, height: 1)])
+    /// The mirror of `threeQuarters`, for a workflow aligned to the right: the focused window takes the left quarter, the
+    /// next window the right three quarters.
+    public static let oneQuarter = SplitTemplate(
+        name: "1/4", key: "w", title: "Focus one quarter, three quarters beside",
+        cells: [CGRect(x: 0, y: 0, width: 0.25, height: 1), CGRect(x: 0.25, y: 0, width: 0.75, height: 1)])
+
+    /// The built-in templates, in the order of Ribbon's menu, then the wide ones.
+    public static let allCases: [SplitTemplate] = [
+        .two, .three, .four, .five, .six, .stackLeft, .stackRight, .twoThirds, .threeQuarters, .oneQuarter,
+    ]
+
+    /// The built-in template with this name.
+    public static func builtIn(named name: String) -> SplitTemplate? {
+        allCases.first { $0.name == name }
     }
 
-    /// The one-character key that picks the template in the picker. The grids are named by their number of windows
-    /// and use that number. The others use a letter: `l` and `r` (the stack on the left or on the right), `t` (thirds)
-    /// `q` (three quarters on the left) and `w` (three quarters on the right). `c` is the chain (see `TemplateGlyph`).
-    public var key: String {
-        switch self {
-        case .stackLeft: "l"
-        case .stackRight: "r"
-        case .twoThirds: "t"
-        case .threeQuarters: "q"
-        case .oneQuarter: "w"
-        case .two, .three, .four, .five, .six: rawValue
+    /// Why `cells` cannot be a template, or `nil` when they can: two or more cells that fill the unit square with
+    /// straight cuts (the tiling layout builds a split tree from them).
+    public static func shapeError(_ cells: [CGRect]) -> String? {
+        guard cells.count >= 2 else { return "a template needs at least two cells" }
+        let eps = 1e-9
+        let inside = cells.allSatisfy {
+            $0.width > eps && $0.height > eps && $0.minX > -eps && $0.minY > -eps && $0.maxX < 1 + eps && $0.maxY < 1 + eps
         }
+        guard inside else { return "every cell needs a positive size and must stay inside 0 to 1" }
+        let area = cells.reduce(0.0) { $0 + Double($1.width * $1.height) }
+        guard abs(area - 1) < 1e-6, DwindleEngine.canPartition(cells) else {
+            return "the cells must fill the screen with straight cuts and no overlap"
+        }
+        return nil
     }
 
-    /// The short name in Ribbon's menu.
-    public var title: String {
-        switch self {
-        case .two: "Two across"
-        case .three: "Three in a row"
-        case .stackLeft: "Two stacked, one beside"
-        case .stackRight: "One, then two stacked"
-        case .four: "Four in a grid"
-        case .five: "Five in a grid"
-        case .six: "Six in a grid"
-        case .twoThirds: "Focus two thirds, one third beside"
-        case .threeQuarters: "Focus three quarters, one quarter beside"
-        case .oneQuarter: "Focus one quarter, three quarters beside"
+    // A state file that an older version wrote has the name of a built-in template (a string) where this has the struct.
+    private enum CodingKeys: String, CodingKey { case name, key, title, cells }
+
+    public init(from decoder: Decoder) throws {
+        if let name = try? decoder.singleValueContainer().decode(String.self) {
+            guard let template = Self.builtIn(named: name) else {
+                throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "unknown template '\(name)'"))
+            }
+            self = template
+            return
         }
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            name: try values.decode(String.self, forKey: .name), key: try values.decodeIfPresent(String.self, forKey: .key),
+            title: try values.decode(String.self, forKey: .title), cells: try values.decode([CGRect].self, forKey: .cells))
     }
 
     /// The cell next to cell `index` in `direction`: the one that touches the edge on that side and overlaps it the

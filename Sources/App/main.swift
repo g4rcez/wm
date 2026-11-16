@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu = MenuBar(
             configFolder: configURL.deletingLastPathComponent(),
             reload: { [controller] in Task.detached { _ = controller!.reload() } },
+            templates: { [manager] in manager.templates(of: manager.focused) },
             tile: { [controller] name in Task.detached { _ = controller!.run(["layout", "tile", name]) } }
         )
         // While a key sequence waits for its next key: the menu bar icon and a small floating label show it.
