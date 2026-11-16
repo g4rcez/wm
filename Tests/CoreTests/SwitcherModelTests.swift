@@ -185,3 +185,61 @@ struct MiniatureTests {
         #expect(stacked.rows == [])
     }
 }
+
+@Suite("WindowHints")
+struct WindowHintsTests {
+    private func frames(_ count: Int) -> [WindowID: CGRect] {
+        Dictionary(uniqueKeysWithValues: (0..<count).map { (WindowID($0 + 1), CGRect(x: CGFloat($0) * 10, y: 0, width: 10, height: 10)) })
+    }
+
+    @Test func labelsFollowReadingOrder() {
+        let hints = WindowHints(frames: [
+            1: CGRect(x: 100, y: 0, width: 10, height: 10),
+            2: CGRect(x: 0, y: 0, width: 10, height: 10),
+            3: CGRect(x: 0, y: 50, width: 10, height: 10),
+        ])
+        #expect(hints.labels == [2: "a", 1: "s", 3: "d"])
+    }
+
+    @Test func aLabelNeverUsesTheNavigationKeys() {
+        let letters = Set(WindowHints(frames: frames(22)).labels.values)
+        #expect(letters.count == 22)
+        #expect(letters.isDisjoint(with: ["h", "j", "k", "l"]))
+    }
+
+    @Test func aSingleLetterFocusesItsWindow() {
+        var hints = WindowHints(frames: frames(3))
+        #expect(hints.press("s") == .focus(2))
+    }
+
+    @Test func moreWindowsThanLettersNeedTwoLetters() {
+        var hints = WindowHints(frames: frames(23))
+        #expect(hints.labels[1] == "aa")
+        #expect(hints.labels[23] == "sa")
+        #expect(hints.press("s") == .pending)
+        #expect(hints.typed == "s")
+        #expect(hints.press("a") == .focus(23))
+        #expect(hints.typed == "")
+    }
+
+    @Test func aWrongSecondLetterStartsOver() {
+        var hints = WindowHints(frames: frames(23))
+        #expect(hints.press("s") == .pending)
+        #expect(hints.press("m") == .pending)
+        #expect(hints.typed == "")
+    }
+
+    @Test func otherKeysAreLeftToTheCaller() {
+        var hints = WindowHints(frames: frames(3))
+        #expect(hints.press("h") == .ignored)
+        #expect(hints.press("enter") == .ignored)
+        #expect(hints.press("1") == .ignored)
+    }
+
+    @Test func deleteLastRemovesTheTypedLetter() {
+        var hints = WindowHints(frames: frames(23))
+        _ = hints.press("s")
+        hints.deleteLast()
+        #expect(hints.typed == "")
+    }
+}

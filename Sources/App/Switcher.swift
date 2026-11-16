@@ -12,7 +12,8 @@ import Scripting
 /// to restore.
 ///
 /// `overview` uses the same panel for all workspaces that hold windows, one row each: the arrow keys or `h j k l` move
-/// the selection, Return focuses the window and shows its workspace, Escape closes.
+/// the selection, Return focuses the window and shows its workspace, Escape closes. Every window has a key label
+/// (`WindowHints`): typing it focuses that window.
 @MainActor
 final class SwitcherController {
     private struct Session {
@@ -29,6 +30,8 @@ final class SwitcherController {
         /// The workspace of each row of the overview, in the same order as `labels`.
         var rowNames: [String] = []
         var isOverview = false
+        /// The overview gives every window a key label (`nil` in the Alt+Tab switcher).
+        var hints: WindowHints?
         var shown = false
     }
 
@@ -174,18 +177,19 @@ final class SwitcherController {
         let move = CGAffineTransform(translationX: -union.minX, y: -union.minY)
         func place(_ rect: CGRect) -> CGRect { rect.applying(fit).applying(move) }
 
+        let hints = rows.isEmpty ? nil : WindowHints(frames: model.frames)
         let tiles = model.frames.map { id, frame -> SwitcherOverlay.Tile in
             let info = manager.windows[id]?.info
             let icon = info.flatMap { NSRunningApplication(processIdentifier: $0.pid)?.icon }
             return SwitcherOverlay.Tile(
                 id: id, frame: place(frame), title: info?.title ?? "", appName: info?.appName ?? "",
-                icon: icon, image: images[id], isFloating: floating.contains(id)
+                icon: icon, image: images[id], isFloating: floating.contains(id), hint: hints?.labels[id]
             )
         }
         let labels = rows.map { SwitcherOverlay.Label(text: $0.text, frame: place($0.frame)) }
         var next = Session(
             model: model, hold: hold, monitorFrame: monitor.frame, panelSize: union.size, tiles: tiles,
-            viewports: model.viewports.map(place), labels: labels, rowNames: rowNames, isOverview: !rows.isEmpty
+            viewports: model.viewports.map(place), labels: labels, rowNames: rowNames, isOverview: !rows.isEmpty, hints: hints
         )
         // A tap that is over before the switcher opens (the modifier is already up) just switches to the previous window.
         if !hold.isEmpty, EventTap.currentFlags().intersection(hold).isEmpty {
@@ -208,6 +212,24 @@ final class SwitcherController {
         if session.isOverview, let direction = ["h": Direction.left, "j": .down, "k": .up, "l": .right][key] {
             move(direction)
             return true
+        }
+        if session.hints != nil, flags.intersection(Self.holdMask).isEmpty {
+            if key == "backspace" {
+                self.session?.hints?.deleteLast()
+                showHintPrefix()
+                return true
+            }
+            switch self.session?.hints?.press(key) {
+            case .focus(let id)?:
+                select(id)
+                commit()
+                return true
+            case .pending?:
+                showHintPrefix()
+                return true
+            case .ignored?, nil:
+                break
+            }
         }
         switch key {
         case "tab": step(flags.contains(.maskShift) ? -1 : 1)
@@ -240,6 +262,11 @@ final class SwitcherController {
     private func move(_ direction: Direction) {
         session?.model.move(direction)
         refreshSelection()
+    }
+
+    private func showHintPrefix() {
+        guard let session, session.shown else { return }
+        overlay.setHintPrefix(session.hints?.typed ?? "")
     }
 
     private func select(_ id: WindowID) {

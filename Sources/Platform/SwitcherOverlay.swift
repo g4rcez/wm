@@ -14,10 +14,12 @@ public final class SwitcherOverlay {
         public var icon: NSImage?
         public var image: CGImage?
         public var isFloating: Bool
+        /// The keys that focus this window (the overview of all workspaces).
+        public var hint: String?
 
         public init(
             id: WindowID, frame: CGRect, title: String, appName: String,
-            icon: NSImage? = nil, image: CGImage? = nil, isFloating: Bool = false
+            icon: NSImage? = nil, image: CGImage? = nil, isFloating: Bool = false, hint: String? = nil
         ) {
             self.id = id
             self.frame = frame
@@ -26,6 +28,7 @@ public final class SwitcherOverlay {
             self.icon = icon
             self.image = image
             self.isFloating = isFloating
+            self.hint = hint
         }
     }
 
@@ -185,6 +188,14 @@ public final class SwitcherOverlay {
 
         applySelection(selected, animated: false)
         panel.orderFrontRegardless()
+    }
+
+    /// Shows only the hints that start with the keys typed so far.
+    public func setHintPrefix(_ typed: String) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for layer in tileLayers.values { layer.setHintPrefix(typed) }
+        CATransaction.commit()
     }
 
     /// Moves the highlight. `nil` clears it.
@@ -373,6 +384,7 @@ private final class TileLayer: CALayer {
     private let icon = CALayer()
     private let label = CATextLayer()
     private let dash = CAShapeLayer()
+    private let hint = CATextLayer()
     private let scale: CGFloat
     private var isSelected = false
 
@@ -404,6 +416,14 @@ private final class TileLayer: CALayer {
         dash.lineWidth = 1.5
         dash.lineDashPattern = [5, 3]
         addSublayer(dash)
+        hint.contentsScale = scale
+        hint.fontSize = 12
+        hint.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .bold)
+        hint.alignmentMode = .center
+        hint.foregroundColor = CGColor(gray: 1, alpha: 1)
+        hint.backgroundColor = CGColor(gray: 0, alpha: 0.75)
+        hint.cornerRadius = 4
+        addSublayer(hint)
         applyStyle(color: CGColor(gray: 1, alpha: 1))
     }
 
@@ -447,11 +467,19 @@ private final class TileLayer: CALayer {
             label.string = tile.title.isEmpty ? tile.appName : tile.title
             label.frame = CGRect(x: inset, y: icon.frame.minY - labelHeight - 2, width: size.width - 2 * inset, height: labelHeight)
         }
+        hint.isHidden = tile.hint == nil
+        hint.string = tile.hint
+        let hintWidth = CGFloat(tile.hint?.count ?? 0) * 8 + 10
+        hint.frame = CGRect(x: size.width - hintWidth - inset, y: size.height - 18 - inset, width: hintWidth, height: 16)
         dash.isHidden = !tile.isFloating
         dash.frame = bounds
         dash.path = CGPath(
             roundedRect: bounds.insetBy(dx: 2, dy: 2), cornerWidth: 7, cornerHeight: 7, transform: nil
         )
+    }
+
+    func setHintPrefix(_ typed: String) {
+        hint.opacity = tile.hint.map { $0.hasPrefix(typed) } ?? true ? 1 : 0.15
     }
 
     func setSelected(_ on: Bool, color: CGColor) {
