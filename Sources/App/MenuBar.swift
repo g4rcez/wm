@@ -1,0 +1,128 @@
+import AppKit
+import Core
+import Platform
+
+/// Menu bar item: current workspace, config errors, reload and quit.
+@MainActor
+final class MenuBar: NSObject {
+    private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    private let errorItem = NSMenuItem()
+    private let workspaceItem = NSMenuItem()
+    private let reload: () -> Void
+    private let tile: (String) -> Void
+    private let configFolder: URL
+    private var shown: String?
+    private var shownLayout: String?
+    private var pendingShown = false
+    /// The active binding mode, or `nil` in `main`.
+    private var modeShown: String?
+
+    init(configFolder: URL, reload: @escaping () -> Void, tile: @escaping (String) -> Void) {
+        self.reload = reload
+        self.tile = tile
+        self.configFolder = configFolder
+        super.init()
+        let menu = NSMenu()
+        workspaceItem.isEnabled = false
+        menu.addItem(workspaceItem)
+        errorItem.isHidden = true
+        errorItem.isEnabled = false
+        menu.addItem(errorItem)
+        menu.addItem(.separator())
+        let tileMenu = NSMenu()
+        for template in TemplateGlyph.entries {
+            let title = template?.title ?? "Back to the chain"
+            let entry = NSMenuItem(title: title, action: #selector(applyTile(_:)), keyEquivalent: "")
+            entry.target = self
+            entry.image = TemplateGlyph.image(for: template)
+            entry.representedObject = TemplateGlyph.label(template)
+            tileMenu.addItem(entry)
+        }
+        let tileItem = NSMenuItem(title: "Tile Windows", action: nil, keyEquivalent: "")
+        tileItem.submenu = tileMenu
+        menu.addItem(tileItem)
+        menu.addItem(.separator())
+        let reloadItem = NSMenuItem(title: "Reload Config", action: #selector(reloadConfig), keyEquivalent: "r")
+        reloadItem.target = self
+        menu.addItem(reloadItem)
+        let folderItem = NSMenuItem(title: "Open Config Folder", action: #selector(openFolder), keyEquivalent: "")
+        folderItem.target = self
+        menu.addItem(folderItem)
+        menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: "Quit wm", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        item.menu = menu
+        item.button?.title = "▦"
+    }
+
+    /// `false` when macOS keeps the item off the menu bar (the app is not allowed in System Settings > Menu Bar, or
+    /// the bar has no room). The window server knows what is really on screen, so ask it: a shown status item
+    /// is an on-screen window of this process at the status window level.
+    var isVisible: Bool {
+        let statusLevel = Int(CGWindowLevelForKey(.statusWindow))
+        let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
+        let me = Int(ProcessInfo.processInfo.processIdentifier)
+        return windows.contains {
+            ($0[kCGWindowOwnerPID as String] as? Int) == me && ($0[kCGWindowLayer as String] as? Int) == statusLevel
+        }
+    }
+
+    var details: String {
+        guard let window = item.button?.window else { return "no window" }
+        return "frame=\(window.frame) shownByWindowServer=\(isVisible)"
+    }
+
+    /// What the icon shows, by priority: "..." while a key sequence waits, the binding mode, the workspace. All are
+    /// template images, so macOS tints them for light and dark menu bars.
+    private func refreshIcon() {
+        guard let button = item.button else { return }
+        if pendingShown {
+            button.title = ""
+            button.image = WorkspaceIcon.image(for: "...")
+        } else if let modeShown {
+            button.title = ""
+            button.image = WorkspaceIcon.modeImage(for: modeShown)
+        } else if let shown, !shown.isEmpty {
+            button.title = ""
+            button.image = WorkspaceIcon.image(for: shown)
+        } else {
+            button.image = nil
+            button.title = "▦"
+        }
+    }
+
+    /// Shows `name` in a rounded square.
+    func setWorkspace(_ name: String, layout: String? = nil) {
+        workspaceItem.title = name.isEmpty ? "wm" : "Workspace \(name)" + (layout.map { " · \($0)" } ?? "")
+        shownLayout = layout
+        guard shown != name else { return }
+        shown = name
+        refreshIcon()
+    }
+
+    /// Shows "..." in the icon while a key sequence waits for its next key.
+    func setPending(_ waiting: Bool) {
+        guard waiting != pendingShown else { return }
+        pendingShown = waiting
+        refreshIcon()
+    }
+
+    /// Shows the name of a binding mode in an outlined square. `nil` (the `main` mode) shows the workspace again.
+    func setMode(_ name: String?) {
+        guard name != modeShown else { return }
+        modeShown = name
+        refreshIcon()
+    }
+
+    func setError(_ message: String?) {
+        errorItem.isHidden = message == nil
+        errorItem.title = message.map { "⚠ " + String($0.prefix(80)) } ?? ""
+        item.button?.toolTip = message
+    }
+
+    @objc private func applyTile(_ sender: NSMenuItem) {
+        if let name = sender.representedObject as? String { tile(name) }
+    }
+
+    @objc private func reloadConfig() { reload() }
+    @objc private func openFolder() { NSWorkspace.shared.open(configFolder) }
+}
