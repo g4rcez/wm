@@ -1,0 +1,468 @@
+import AppKit
+import Core
+
+/// The Alt+Tab miniature: a blurred panel that shows a picture of each window. It only draws what it is given.
+/// The window never becomes key or main and never activates the app.
+@MainActor
+public final class SwitcherOverlay {
+    public struct Tile {
+        public var id: WindowID
+        /// In miniature space, already transformed to panel points (origin top-left of the layout).
+        public var frame: CGRect
+        public var title: String
+        public var appName: String
+        public var icon: NSImage?
+        public var image: CGImage?
+        public var isFloating: Bool
+
+        public init(
+            id: WindowID, frame: CGRect, title: String, appName: String,
+            icon: NSImage? = nil, image: CGImage? = nil, isFloating: Bool = false
+        ) {
+            self.id = id
+            self.frame = frame
+            self.title = title
+            self.appName = appName
+            self.icon = icon
+            self.image = image
+            self.isFloating = isFloating
+        }
+    }
+
+    /// A name above a row of the miniature (the overview of all workspaces has one row per workspace).
+    public struct Label {
+        public var text: String
+        /// The row, in panel points like `Tile.frame`.
+        public var frame: CGRect
+
+        public init(text: String, frame: CGRect) {
+            self.text = text
+            self.frame = frame
+        }
+    }
+
+    /// Clicking a tile gives its id. Clicking outside the panel gives `nil`.
+    public var onClick: ((WindowID?) -> Void)?
+    /// A tile was dragged and dropped on the row at this index of the labels (the overview of all workspaces).
+    public var onDrop: ((WindowID, Int) -> Void)?
+    public var isShown: Bool { panel.isVisible }
+
+    private static let padding: CGFloat = 20
+    private static let titleHeight: CGFloat = 30
+    private static let cornerRadius: CGFloat = 18
+
+    private let panel = SwitcherPanel()
+    private let clickView = ClickView()
+    private let effect = NSVisualEffectView()
+    private let host = NSView()
+    private let tint = CALayer()
+    private let titleLayer = CATextLayer()
+    private var tileLayers: [WindowID: TileLayer] = [:]
+    private var labelLayers: [CATextLayer] = []
+    private let dropHighlight = CAShapeLayer()
+    private var selectedColor = CGColor(gray: 1, alpha: 1)
+    /// Where the panel starts in the view that covers the monitor: tile and row rectangles are given in the panel.
+    private var panelOrigin: CGPoint = .zero
+    private var rowFrames: [CGRect] = []
+    /// Where a tile was before it was dragged, so a drop that changes nothing puts it back.
+    private var dragHome: [WindowID: CGPoint] = [:]
+
+    public init() {
+        panel.contentView = clickView
+        clickView.onClick = { [weak self] id in self?.onClick?(id) }
+        clickView.onDragMove = { [weak self] id, point in self?.dragMoved(id, to: point) }
+        clickView.onDragEnd = { [weak self] id, point in self?.dragEnded(id, at: point) }
+        dropHighlight.fillColor = CGColor(gray: 1, alpha: 0.10)
+        dropHighlight.lineWidth = 2
+        dropHighlight.isHidden = true
+        effect.material = .hudWindow
+        effect.blendingMode = .behindWindow
+        effect.state = .active
+        effect.appearance = NSAppearance(named: .darkAqua)
+        effect.maskImage = Self.roundedMask(radius: Self.cornerRadius)
+        clickView.addSubview(effect)
+
+        host.wantsLayer = true
+        host.layer?.addSublayer(tint)
+        host.layer?.addSublayer(dropHighlight)
+        tint.cornerRadius = Self.cornerRadius
+        tint.masksToBounds = true
+        titleLayer.fontSize = 13
+        titleLayer.alignmentMode = .center
+        titleLayer.truncationMode = .end
+        titleLayer.foregroundColor = CGColor(gray: 1, alpha: 0.9)
+        titleLayer.allowsFontSubpixelQuantization = true
+        host.layer?.addSublayer(titleLayer)
+        effect.addSubview(host)
+    }
+
+    /// `monitor` is the screen frame in Accessibility coordinates. `tiles` and `viewports` are in panel points.
+    public func show(
+        tiles: [Tile], viewports: [CGRect], labels: [Label] = [], panelSize: CGSize, selected: WindowID?,
+        settings: SwitcherSettings, on monitor: CGRect
+    ) {
+        let cocoa = Displays.cocoaRect(monitor)
+        panel.setFrame(cocoa, display: false)
+        let scale = NSScreen.screens.first { $0.frame.intersects(cocoa) }?.backingScaleFactor ?? 2
+
+        let pad = Self.padding
+        let size = CGSize(width: panelSize.width + 2 * pad, height: panelSize.height + 2 * pad + Self.titleHeight)
+        let origin = CGPoint(x: ((cocoa.width - size.width) / 2).rounded(), y: ((cocoa.height - size.height) / 2).rounded())
+        let panelRect = CGRect(origin: origin, size: size)
+        clickView.frame = CGRect(origin: .zero, size: cocoa.size)
+        effect.frame = panelRect
+        host.frame = CGRect(origin: .zero, size: size)
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+
+        for layer in tileLayers.values { layer.removeFromSuperlayer() }
+        tileLayers = [:]
+        dragHome = [:]
+        for layer in labelLayers { layer.removeFromSuperlayer() }
+        labelLayers = []
+        host.layer?.sublayers?.removeAll { $0 is CAShapeLayer && $0 !== dropHighlight }
+        dropHighlight.isHidden = true
+
+        tint.frame = host.bounds
+        tint.backgroundColor = Self.cgColor(settings.background)
+        titleLayer.contentsScale = scale
+        titleLayer.frame = CGRect(x: pad, y: (Self.titleHeight - 16) / 2, width: size.width - 2 * pad, height: 18)
+        selectedColor = Self.cgColor(settings.selected)
+
+        /// Miniature space has its origin top-left; the layers use Cocoa's bottom-left.
+        func place(_ rect: CGRect) -> CGRect {
+            CGRect(x: pad + rect.minX, y: size.height - pad - rect.maxY, width: rect.width, height: rect.height)
+        }
+
+        for viewport in viewports {
+            let outline = CAShapeLayer()
+            let rect = place(viewport)
+            outline.frame = rect
+            outline.path = CGPath(
+                roundedRect: CGRect(origin: .zero, size: rect.size).insetBy(dx: 0.5, dy: 0.5),
+                cornerWidth: 6, cornerHeight: 6, transform: nil
+            )
+            outline.fillColor = nil
+            outline.strokeColor = CGColor(gray: 1, alpha: 0.5)
+            outline.lineWidth = 1
+            outline.lineDashPattern = [6, 4]
+            host.layer?.addSublayer(outline)
+        }
+
+        // A row is the drop target of its workspace: the band from its name down to the bottom of its picture.
+        rowFrames = labels.map { label in
+            let row = place(label.frame)
+            return CGRect(x: 0, y: row.minY - 2, width: size.width, height: row.height + 22)
+        }
+        for label in labels {
+            let text = CATextLayer()
+            let row = place(label.frame)
+            text.string = label.text
+            text.fontSize = 11
+            text.foregroundColor = CGColor(gray: 1, alpha: 0.7)
+            text.truncationMode = .end
+            text.contentsScale = scale
+            text.frame = CGRect(x: row.minX, y: row.maxY + 3, width: row.width, height: 14)
+            host.layer?.addSublayer(text)
+            labelLayers.append(text)
+        }
+
+        var hitRects: [(WindowID, CGRect)] = []
+        for tile in tiles {
+            let layer = TileLayer(tile: tile, scale: scale)
+            layer.frame = place(tile.frame)
+            layer.relayout()
+            host.layer?.addSublayer(layer)
+            tileLayers[tile.id] = layer
+            hitRects.append((tile.id, layer.frame.offsetBy(dx: origin.x, dy: origin.y)))
+        }
+        clickView.tiles = hitRects
+        clickView.panelRect = panelRect
+        clickView.rows = rowFrames.map { $0.offsetBy(dx: origin.x, dy: origin.y) }
+        panelOrigin = origin
+
+        applySelection(selected, animated: false)
+        panel.orderFrontRegardless()
+    }
+
+    /// Moves the highlight. `nil` clears it.
+    public func select(_ id: WindowID?) {
+        applySelection(id, animated: true)
+    }
+
+    public func setImage(_ image: CGImage, for id: WindowID) {
+        guard let layer = tileLayers[id] else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.tile.image = image
+        layer.relayout()
+        CATransaction.commit()
+    }
+
+    public func hide() {
+        panel.orderOut(nil)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for layer in tileLayers.values { layer.removeFromSuperlayer() }
+        for layer in labelLayers { layer.removeFromSuperlayer() }
+        host.layer?.sublayers?.removeAll { $0 is CAShapeLayer && $0 !== dropHighlight }
+        dropHighlight.isHidden = true
+        CATransaction.commit()
+        tileLayers = [:]
+        labelLayers = []
+        rowFrames = []
+        dragHome = [:]
+        clickView.tiles = []
+        clickView.rows = []
+    }
+
+    // MARK: Dragging
+
+    /// The tile follows the pointer, and the row under it is highlighted. `point` is in the view of the monitor.
+    private func dragMoved(_ id: WindowID, to point: CGPoint) {
+        guard let layer = tileLayers[id] else { return }
+        if dragHome[id] == nil { dragHome[id] = layer.position }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.zPosition = 10
+        layer.position = CGPoint(x: point.x - panelOrigin.x, y: point.y - panelOrigin.y)
+        if let row = rowIndex(at: point) {
+            dropHighlight.frame = rowFrames[row]
+            dropHighlight.path = CGPath(
+                roundedRect: CGRect(origin: .zero, size: rowFrames[row].size).insetBy(dx: 1, dy: 1),
+                cornerWidth: 10, cornerHeight: 10, transform: nil
+            )
+            dropHighlight.strokeColor = selectedColor
+            dropHighlight.isHidden = false
+        } else {
+            dropHighlight.isHidden = true
+        }
+        CATransaction.commit()
+    }
+
+    private func dragEnded(_ id: WindowID, at point: CGPoint) {
+        dropHighlight.isHidden = true
+        if let layer = tileLayers[id] { layer.zPosition = 0 }
+        let row = rowIndex(at: point)
+        // The tile goes back first; a drop that moves the window rebuilds the overview anyway.
+        putBack(id)
+        if let row { onDrop?(id, row) }
+    }
+
+    private func putBack(_ id: WindowID) {
+        guard let layer = tileLayers[id], let home = dragHome.removeValue(forKey: id) else { return }
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.12)
+        layer.position = home
+        CATransaction.commit()
+    }
+
+    private func rowIndex(at point: CGPoint) -> Int? {
+        let local = CGPoint(x: point.x - panelOrigin.x, y: point.y - panelOrigin.y)
+        return rowFrames.firstIndex { $0.contains(local) }
+    }
+
+    private func applySelection(_ id: WindowID?, animated: Bool) {
+        CATransaction.begin()
+        if animated {
+            CATransaction.setAnimationDuration(0.12)
+        } else {
+            CATransaction.setDisableActions(true)
+        }
+        for (tileID, layer) in tileLayers {
+            layer.setSelected(tileID == id, color: selectedColor)
+            if tileID == id { layer.zPosition = 1 } else { layer.zPosition = 0 }
+        }
+        let tile = id.flatMap { tileLayers[$0]?.tile }
+        titleLayer.string = tile.map { [$0.appName, $0.title].filter { !$0.isEmpty }.joined(separator: " - ") } ?? ""
+        CATransaction.commit()
+    }
+
+    private static func cgColor(_ color: Color) -> CGColor {
+        CGColor(red: color.red, green: color.green, blue: color.blue, alpha: color.alpha)
+    }
+
+    private static func roundedMask(radius: CGFloat) -> NSImage {
+        let edge = radius * 2 + 1
+        let image = NSImage(size: NSSize(width: edge, height: edge), flipped: false) { rect in
+            NSColor.black.setFill()
+            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+            return true
+        }
+        image.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
+        image.resizingMode = .stretch
+        return image
+    }
+}
+
+/// Never key, never main: the app that the user works in keeps focus.
+private final class SwitcherPanel: NSPanel {
+    init() {
+        super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        level = .popUpMenu
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle, .transient]
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = false
+        ignoresMouseEvents = false
+        isReleasedWhenClosed = false
+        hidesOnDeactivate = false
+    }
+
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+}
+
+/// Covers the whole monitor so that a click outside the panel is seen.
+private final class ClickView: NSView {
+    /// Pointer travel, in points, that turns a click on a tile into a drag.
+    private static let dragThreshold: CGFloat = 5
+
+    var tiles: [(id: WindowID, rect: CGRect)] = []
+    /// The rows that a tile can be dropped on. Without rows (the Alt+Tab switcher) a tile cannot be dragged.
+    var rows: [CGRect] = []
+    var panelRect: CGRect = .zero
+    var onClick: ((WindowID?) -> Void)?
+    var onDragMove: ((WindowID, CGPoint) -> Void)?
+    var onDragEnd: ((WindowID, CGPoint) -> Void)?
+
+    private var pressed: (id: WindowID, start: CGPoint)?
+    private var dragging = false
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        dragging = false
+        if let hit = tiles.first(where: { $0.rect.contains(point) }) {
+            pressed = (hit.id, point)
+            // A drag is only possible with rows to drop on; otherwise the press is a click at once.
+            if rows.isEmpty { pressed = nil; onClick?(hit.id) }
+        } else {
+            pressed = nil
+            if !panelRect.contains(point) { onClick?(nil) }
+        }
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let pressed else { return }
+        let point = convert(event.locationInWindow, from: nil)
+        if !dragging, hypot(point.x - pressed.start.x, point.y - pressed.start.y) < Self.dragThreshold { return }
+        dragging = true
+        onDragMove?(pressed.id, point)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        defer { pressed = nil; dragging = false }
+        guard let pressed else { return }
+        if dragging {
+            onDragEnd?(pressed.id, convert(event.locationInWindow, from: nil))
+        } else {
+            onClick?(pressed.id)
+        }
+    }
+}
+
+/// One window in the miniature: thumbnail or icon plus title, a thin border, a dashed outline when floating.
+private final class TileLayer: CALayer {
+    var tile: SwitcherOverlay.Tile
+    private let thumb = CALayer()
+    private let badge = CALayer()
+    private let icon = CALayer()
+    private let label = CATextLayer()
+    private let dash = CAShapeLayer()
+    private let scale: CGFloat
+    private var isSelected = false
+
+    init(tile: SwitcherOverlay.Tile, scale: CGFloat) {
+        self.tile = tile
+        self.scale = scale
+        super.init()
+        contentsScale = scale
+        cornerRadius = 8
+        borderWidth = 1
+        masksToBounds = false
+        for layer in [thumb, badge, icon] {
+            layer.contentsScale = scale
+            addSublayer(layer)
+        }
+        thumb.contentsGravity = .resizeAspect
+        thumb.cornerRadius = 5
+        thumb.masksToBounds = true
+        badge.contentsGravity = .resizeAspect
+        icon.contentsGravity = .resizeAspect
+        label.contentsScale = scale
+        label.fontSize = 11
+        label.alignmentMode = .center
+        label.truncationMode = .end
+        label.foregroundColor = CGColor(gray: 1, alpha: 1)
+        addSublayer(label)
+        dash.fillColor = nil
+        dash.strokeColor = CGColor(gray: 1, alpha: 0.8)
+        dash.lineWidth = 1.5
+        dash.lineDashPattern = [5, 3]
+        addSublayer(dash)
+        applyStyle(color: CGColor(gray: 1, alpha: 1))
+    }
+
+    override init(layer: Any) {
+        let other = layer as! TileLayer
+        tile = other.tile
+        scale = other.scale
+        super.init(layer: layer)
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// Lays out the sublayers for the current `tile` data. The caller disables implicit animations.
+    func relayout() {
+        let size = bounds.size
+        let inset: CGFloat = 4
+        let iconImage = tile.icon?.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        if let image = tile.image {
+            thumb.isHidden = false
+            thumb.contents = image
+            thumb.frame = bounds.insetBy(dx: inset, dy: inset)
+            icon.isHidden = true
+            label.isHidden = true
+            let side = min(24, min(size.width, size.height) * 0.3)
+            badge.isHidden = iconImage == nil
+            badge.contents = iconImage
+            badge.frame = CGRect(x: inset + 2, y: inset + 2, width: side, height: side)
+        } else {
+            thumb.isHidden = true
+            thumb.contents = nil
+            badge.isHidden = true
+            let labelHeight: CGFloat = 16
+            let side = max(0, min(64, min(size.width - 2 * inset, size.height - labelHeight - 3 * inset)))
+            icon.isHidden = iconImage == nil
+            icon.contents = iconImage
+            icon.frame = CGRect(
+                x: (size.width - side) / 2, y: (size.height + labelHeight) / 2 - side / 2 + inset / 2,
+                width: side, height: side
+            )
+            label.isHidden = false
+            label.string = tile.title.isEmpty ? tile.appName : tile.title
+            label.frame = CGRect(x: inset, y: icon.frame.minY - labelHeight - 2, width: size.width - 2 * inset, height: labelHeight)
+        }
+        dash.isHidden = !tile.isFloating
+        dash.frame = bounds
+        dash.path = CGPath(
+            roundedRect: bounds.insetBy(dx: 2, dy: 2), cornerWidth: 7, cornerHeight: 7, transform: nil
+        )
+    }
+
+    func setSelected(_ on: Bool, color: CGColor) {
+        isSelected = on
+        applyStyle(color: color)
+        transform = on ? CATransform3DMakeScale(1.04, 1.04, 1) : CATransform3DIdentity
+    }
+
+    private func applyStyle(color: CGColor) {
+        borderColor = isSelected ? color : CGColor(gray: 1, alpha: 0.25)
+        borderWidth = isSelected ? 2 : 1
+        backgroundColor = CGColor(gray: 1, alpha: isSelected ? 0.22 : 0.08)
+    }
+}
