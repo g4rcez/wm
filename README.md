@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/icon-windows.svg" width="128" height="128" alt="The wm icon: a window with nine blocks, three of them lit on a diagonal">
+</p>
+
 # wm
 
 wm is a tiling window manager for macOS. It is written in Swift, runs with SIP on, and you configure it in Lua.
@@ -36,6 +40,20 @@ cd wm
 
 `./build-app.sh debug` makes a debug build. `NO_START=1 ./build-app.sh` builds without starting the daemon. If wm is
 already running, the script stops it before it replaces the bundle.
+
+A `Makefile` wraps the common tasks. `make` lists them:
+
+```sh
+make deps                                  # checks the Swift toolchain; installs librsvg and imagemagick (only for the icon) if missing
+make build                                 # compiles only: it does not touch the app that runs (CONFIG=debug for a debug build)
+make test                                  # runs the unit tests, with a 300 second timeout when timeout or gtimeout exists
+make identities                            # lists your code-signing certificates
+make install CODESIGN_IDENTITY="<name>"    # build, sign, copy to /Applications/wm.app, link wm in ~/.local/bin, start it
+```
+
+`make install` stops when there is no certificate (it uses `CODESIGN_IDENTITY`, else the first "Apple Development" one), so
+it never installs an ad hoc build that loses the permissions at every rebuild. `APP_DIR` and `BIN_DIR` change where it
+installs. It stops the running wm, replaces `wm.app` and starts the new one.
 
 ### Permissions
 
@@ -138,8 +156,11 @@ wm.bind("alt-t", "layout set tiling")
 wm.bind("alt-shift-c", "daemon reload")
 ```
 
-Save the file. wm reloads it on its own, and `wm daemon reload` does the same by hand. If the new file has an error, the
-old config stays active and the error shows in the menu bar and in the output of `wm daemon reload`.
+Save the file. wm reloads it on its own, and `wm daemon reload` does the same by hand. Each reload shows a notification of
+macOS: `Config reloaded: init.lua`, or `wm: config error` with the message. The first one asks you to allow notifications for
+wm; if you say no, wm still reloads and the answer is in the menu bar and in `wm logs`. A new notification replaces the last
+one, so saving often does not fill Notification Center. The load when wm starts shows none. If the new file has an error, the
+old config stays active and the error shows in the notification, in the menu bar and in the output of `wm daemon reload`.
 
 The config path is `~/.config/wm/init.lua`, or `$XDG_CONFIG_HOME/wm/init.lua`, or the file named by `$WM_CONFIG`.
 
@@ -174,6 +195,9 @@ a mode with `mode <name>` and leave it with `mode main`.
 
 ## Examples
 
+A complete configuration in use, with binds, a prefix key, binding modes, window rules and layouts, is in the author's dotfiles:
+[`config/wm/init.lua`](https://github.com/g4rcez/dotfiles/blob/master/config/wm/init.lua). It is a good place to see how the pieces below fit together.
+
 ### A resize mode with a key panel
 
 ```lua
@@ -199,7 +223,7 @@ wm.bind(PREFIX .. "f", "window fullscreen")
 wm.bind(PREFIX .. "tab", "switcher")
 ```
 
-After `alt-space`, wm waits 1.5 seconds for the next key and shows the keys that can follow.
+After `alt-space`, wm waits for the next key (or Escape) and shows the keys that can follow.
 
 ### A different layout per workspace and per monitor
 
@@ -251,6 +275,8 @@ wm.gesture { mods = "alt", direction = "right", command = "workspace next" }
 
 All keys are optional. Two `wm.config` calls merge. An unknown key is an error.
 
+For a whole file, see the [author's configuration](https://github.com/g4rcez/dotfiles/blob/master/config/wm/init.lua).
+
 ```lua
 wm.config {
   layout = "tiling",                   -- scrolling | tiling | master
@@ -269,7 +295,8 @@ wm.config {
                 force_split = "second",           -- where a new window goes in its split: "second" (right, bottom) or "first"
                 split_width_multiplier = 1 },     -- 2 or more keeps columns on an ultrawide screen before the first stacked split
   binds     = { long_press_timeout = 0.4,         -- seconds a key is held for a `long_press` bind
-                disable_system_cmd_tab = false },     -- true: turn off the Cmd+Tab of macOS while wm runs
+                disable_system_cmd_tab = false,   -- true: turn off the Cmd+Tab of macOS while wm runs
+                capslock = "hyper" },             -- CapsLock is the hyper modifier (a tap alone is Esc)
   scrolling = { presets = { 0.33, 0.5, 0.66, 1.0 }, default_width = 0.5, center = "on-overflow",
                 always_center_single_column = false,      -- a lone column sits in the middle (even with center = "never")
                 default_column_display = "normal",        -- "tabbed": every new column is a tab stack
@@ -295,7 +322,7 @@ wm.config {
 ### Chords and sequences
 
 A chord is modifiers and a key joined by `-` or `+`: `alt-h`, `cmd+ctrl-2`. The modifiers are `alt` (or `opt`), `cmd`,
-`ctrl` and `shift`. The key is a letter, a digit, or one of `esc`, `space`, `tab`, `enter`, `backspace`,
+`ctrl`, `shift` and `hyper` (see below). The key is a letter, a digit, or one of `esc`, `space`, `tab`, `enter`, `backspace`,
 `left`, `right`, `up`, `down`, `minus`, `equal`, `comma`, `period`, `slash`, `backslash`, `semicolon`, `quote`,
 `backtick`, `leftsquarebracket`, `rightsquarebracket`, `f1` to `f20`, `home`, `end`, `pageup` and `pagedown`.
 
@@ -309,23 +336,61 @@ picture of the hints. Clicks and drags already go through the hints.
 In one mode, a chord cannot be a bind by itself and also the start of a sequence, and a sequence cannot be the start of a
 longer one (`a>b` and `a>b>c`). Both are config errors. `wm.bind("cmd-h", "")` with an empty string swallows a key.
 
+### The hyper key, remaps and typing keys
+
+With `wm.config { binds = { capslock = "hyper" } }` CapsLock becomes the `hyper` modifier: hold it with a key to make a
+chord such as `hyper-k`, and a quick tap alone types Esc. wm sets the key mapping of the keyboards while it runs (like
+`hidutil`: it replaces any other `UserKeyMapping`, and takes it off again when it quits). A keyboard that connects later
+gets the mapping after wake or `wm daemon reload`. Quit Karabiner-Elements first: it takes the keyboard before wm sees it.
+A hyper chord that nothing binds is swallowed.
+
+```lua
+wm.config { binds = { capslock = "hyper" } }
+
+wm.remap("hyper-k", "up")                       -- types Up; the key repeats and comes up with it
+wm.remap("hyper-4", "cmd-right")
+wm.bind("hyper-w>1", "workspace 1")             -- Caps+w, then 1 (Caps can stay down or be released)
+wm.bind("hyper-s>p", "key press play")          -- a media key
+wm.bind("hyper-s>n", function()                 -- several things for one chord
+  wm.press("cmd-shift-4")
+  wm.exec("open -g raycast://extensions/raycast/confetti")
+end)
+
+wm.bind("hyper-v", "mode vim")                  -- a layer that stays on: a mode
+wm.mode("vim", {
+  h = { remap = "left" }, l = { remap = "right" }, w = { remap = "alt-right" },
+  esc = "mode main", ["hyper-v"] = "mode main",
+})
+```
+
+- `wm.remap(chord, key [, options])` types `key` when `chord` is pressed. Modifiers that are held besides the ones of
+  `chord` go with it: after `wm.remap("hyper-h", "left")`, `hyper-shift-h` types `shift-left`. In `wm.mode`, a remap is the
+  table `{ remap = "left" }`. A remap takes a single chord, not a sequence.
+- `wm.press(key)` (and `wm key press <key>`) types a key now. `key` is a chord such as `cmd-shift-4`, or a media key:
+  `volume_up`, `volume_down`, `mute`, `play`, `next`, `previous`, `brightness_up`, `brightness_down`.
+- `wm key send` types into one app and works for a background app. `key press` types for the system. Secure Keyboard Entry
+  (password fields, some terminals) blocks every key tap, so hyper chords do nothing there.
+- `hyper` works in chords only. `mouse` and `wm.gesture` modifiers stay `alt`, `cmd`, `ctrl` and `shift`.
+
 ### The key panel
 
 While a mode other than `main` is active, or while a prefix waits for its next key, a panel shows what you can press.
 It has a chip with the mode name and one chip per key, with the key's `description` or else its command:
 
 ```
-( resize )  ( H ) Wider   ( J ) Taller   ( K ) Shorter   ( L ) Narrower   ( esc ) Exit
+( resize )  ( h ) Wider   ( j ) Taller   ( k ) Shorter   ( l ) Narrower   ( esc ) Exit
 ```
 
 - The order is fixed: letters and digits, then chords with modifiers, then other keys, then `esc`.
+- A letter shows as it was written (`h`, `⇧y`, `⌥w`), not in capitals. Named keys show as a glyph so the chips stay narrow:
+  `[ ] , . - = / \\ ; ' \``, `← ↑ → ↓`, `␣` (space), `⇥` (tab), `↩` (enter), `⌫` (backspace) and `⌦` (delete).
 - A bind with `hidden = true` is left out, and so is a bind that only swallows a key. Universal binds show in every mode.
 - After a prefix chord, the first chip is the prefix and the keys are the ones that can follow. A key that starts a longer
   sequence shows `…`.
 - The layout follows the position. In the middle (`top-center`, `center`, `bottom-center`) the keys form a grid in a row,
   with the mode chip on the left. At a side (`top-left`, `top-right`, `bottom-left`, `bottom-right`, and the older `left` and
   `right`) the panel is a list with one key per line. A long list gets more columns instead of growing taller than 70% of
-  the screen.
+  the screen, and the columns have the same height.
 - `show_keys = false` leaves only the mode chip. `wm notify` uses the same pill, with text only, even when
   `enabled = false`.
 
@@ -761,8 +826,8 @@ LAYOUT           layout set <scrolling|tiling> | balance | rotate | flip | tile 
                  layout split <toggle|swap|root|ratio> | column <width|match|expand|center|center-visible>
                  layout stack <join|leave|tabs|equalize|height> | column move <first|last|n>
 INTERFACE        switcher | overview | palette | menu | mode <name> | pointer <window|monitor> | zen [on|off]
-                 exec [options] <command> | batch <commands> | set <key> <value> | notify <text> | key send <chord>
-INSPECT          list [windows|workspaces|monitors|memory|binds] | subscribe
+                 exec [options] <command> | batch <commands> | set <key> <value> | notify <text> | key send <chord> | key press <chord>
+INSPECT          list [windows|workspaces|monitors|memory|binds] | subscribe | logs [-n count] [-f] [-o otel|json]
 DAEMON           daemon start | stop | status | reload | version
 EDITOR           lsp [--write] [--force]
 SHELL            completion <zsh|bash>
@@ -792,6 +857,30 @@ $ wm list windows
 
 `wm daemon status` exits with 1 when wm does not run, so a script can test it. `wm subscribe` prints one JSON event per
 line until you stop it.
+
+### Logs
+
+The daemon writes its log to `$XDG_STATE_HOME/wm/wm.log` (`~/.local/state/wm/wm.log` by default), one JSON record per
+line, and to its stderr as before. At 5 MB the file becomes `wm.log.1`, so the log takes about 10 MB at most. `wm logs`
+reads the file, so it works when the daemon is stopped or has crashed.
+
+```
+$ wm logs -n 2
+2026-11-16T22:57:03.123Z INFO  config loaded: /Users/me/.config/wm/init.lua source=config
+2026-11-16T22:57:09.870Z ERROR config error: ... source=config
+
+$ wm logs -f -o json
+{"time":"2026-11-16T22:58:00.000Z","level":"warn","message":"blocked wm:// command 'exec'; ...","source":"url"}
+```
+
+- The default output is text in the OpenTelemetry log data model: the time (UTC), the severity (`DEBUG`, `INFO`, `WARN`,
+  `ERROR`), the message, then the attributes (`source=`). A new line in a message is written `\n`, so a record is one line.
+- `-o json` (`--output json`) prints one flat JSON object per line: `time`, `level`, `message` and `source`. Use it with `jq`.
+- `-n count` (`--lines`) shows the last records, 100 by default; `-n 0` shows all of them. `-f` (`--follow`) waits for new
+  records until you stop it.
+- `source` is `lua` for `wm.log` and for scripts that fail, `config`, `exec`, `url`, `state`, `memory`, `login`, `daemon` or `window`.
+  A `window` record (level `debug`) says what wm did with a window that opened: its app id, title, workspace, whether it floats,
+  and which rule matched. `wm logs -f` shows why a window was tiled or floated.
 
 ### Choosing a window
 
@@ -824,8 +913,8 @@ wins, then the lowest id. No match is an error. The flag goes before or after th
 
 ## Lua API
 
-`wm.config`, `wm.bind`, `wm.mode`, `wm.gesture`, `wm.rule`, `wm.workspace`, `wm.on`, `wm.dispatch`, `wm.query`,
-`wm.exec`, `wm.log` and `wm.version`.
+`wm.config`, `wm.bind`, `wm.remap`, `wm.mode`, `wm.gesture`, `wm.rule`, `wm.workspace`, `wm.on`, `wm.dispatch`, `wm.query`,
+`wm.exec`, `wm.press`, `wm.log` and `wm.version`.
 
 - `wm.dispatch(command [, { window = id or selector }])` runs a command. It returns stdout, or `nil, stderr` when the
   command failed.
@@ -844,6 +933,32 @@ wins, then the lowest id. No match is an error. The flag goes before or after th
 - Events: `window_open`, `window_close`, `window_focus`, `workspace_changed`, `special_changed`, `monitor_changed`,
   `layout_changed`, `mode_changed` and `config_reloaded`. `wm.on(event, [filter,] handler)` takes an optional table of
   fields that must match.
+- `wm.exec(command)` runs a shell command and returns nothing. It does not wait for the command and it drops its output.
+  wm runs it as `/bin/zsh -c "<command>"`, which does not read `.zshrc`: use absolute paths (`/opt/homebrew/bin/htop`).
+  `$HOME` and `$(...)` work. A folder such as `/Applications/Foo.app` is not a command: use `open -a Foo`, or the program
+  inside it (`/Applications/Foo.app/Contents/MacOS/foo`). A command that cannot start is in `wm logs` (source `exec`).
+
+  ```lua
+  wm.bind("alt-t", function() wm.exec("open -a Terminal") end)
+  wm.bind("alt-shift-t", "exec open -a Terminal")      -- the same, as a command string
+  ```
+
+  To give the new window options (a workspace, a size, floating), use the `exec` command of wm through `wm.dispatch`.
+  The options are `--float`, `--tile`, `--center`, `--maximize`, `--no-focus`, `--workspace <n>`, `--monitor <m>`,
+  `--width <fraction>`, `--size <w>,<h>` and `--layout <name>`, and they go before `--`. They add to the `wm.rule` rules.
+
+  ```lua
+  wm.dispatch("exec --float --center --size 0.5,0.5 -- /Applications/kitty.app/Contents/MacOS/kitty -e htop")
+  ```
+- `wm.press(key)` types a key now (`"play"`, `"cmd-shift-4"`), and `wm.remap(chord, key)` makes a chord type another key. See
+  [The hyper key, remaps and typing keys](#the-hyper-key-remaps-and-typing-keys).
+- `wm.config`, `wm.bind`, `wm.remap`, `wm.mode`, `wm.gesture`, `wm.rule` and `wm.workspace` work only while the config file
+  loads (not inside a bind or an event handler). `wm.dispatch`, `wm.exec`, `wm.press`, `wm.query`, `wm.log` and `wm.on` work
+  everywhere. A function bind or handler runs on its own thread, so a slow one never blocks the keyboard; one that runs
+  longer than 2 seconds is stopped. `wm.log` writes to `wm logs`, a script that fails too (source `lua`).
+- The config folder is on Lua's `package.path`, so a long config can be split in files: `require("hyper")` loads
+  `hyper.lua` that sits next to `init.lua`. A change to `init.lua` reloads the config; after a change in a module, run
+  `wm daemon reload`.
 
 ### Editor support
 
@@ -882,6 +997,144 @@ event, and a warning for a wrong value (`layout = "grid"`) or a wrong event name
 inside a table (`gaps = { outr = 1 }`). wm still rejects it when the config loads.
 
 A test keeps the stubs in step with the API: it fails when a `wm` function or a top-level config key has no stub.
+
+## Replace Karabiner-Elements with wm
+
+wm can do the common part of a Karabiner-Elements setup that is built around a hyper key: CapsLock as the hyper key (Esc when
+tapped alone), keys that type other keys (`hyper-h` types Left), layers of shortcuts (`hyper-w`, then a key) that run
+commands, open apps and URLs or send media keys, and a layer that stays on (a vim mode). It does not do everything
+that Karabiner does, see [What wm does not do](#what-wm-does-not-do).
+
+### Karabiner to wm
+
+| Karabiner-Elements | wm |
+|---|---|
+| CapsLock to hyper, Esc when alone | `wm.config { binds = { capslock = "hyper" } }`. A tap alone types Esc. wm uses it first, so it also closes the key panel and leaves a mode that binds Esc. |
+| `from` hyper + key, `to` another key | `wm.remap("hyper-k", "up")` |
+| `to` with modifiers (`right_arrow` with `left_command`) | `wm.remap("hyper-4", "cmd-right")` |
+| `shell_command`, `open` an app or a URL | a function bind: `function() wm.exec("open -a Spotify") end`, or the command string `"exec open -a Spotify"` |
+| Media, volume and brightness keys | `"key press play"`, `volume_up`, `volume_down`, `mute`, `next`, `previous`, `brightness_up`, `brightness_down` |
+| A sublayer: press hyper + `w`, then a key | a key sequence: `wm.bind("hyper-w>1", "workspace 1")` |
+| A layer that stays on (`set_variable` and `variable_if`) | a mode: `wm.bind("hyper-v", "mode vim")` with `wm.mode("vim", { ... })` |
+| The layer notification | the key panel, which lists the keys that can follow, with their `description` |
+| Several actions for one key (`to` is a list) | one function bind that calls `wm.exec`, `wm.press` and `wm.dispatch` |
+
+Key names: `return_or_enter` is `enter`, `spacebar` is `space`, `escape` is `esc`, `delete_or_backspace` is `backspace`,
+`delete_forward` is `delete`, `hyphen` is `minus`, `equal_sign` is `equal`, `open_bracket` is `leftsquarebracket`,
+`close_bracket` is `rightsquarebracket`, `grave_accent_and_tilde` is `backtick`, and `left_arrow`, `right_arrow`, `up_arrow`
+and `down_arrow` are `left`, `right`, `up` and `down`. Letters, digits, `tab`, `comma`, `period`, `slash`, `backslash`,
+`semicolon`, `quote`, `home`, `end`, `pageup`, `pagedown` and `f1` to `f20` have the same names.
+
+### Move over
+
+If you want a full configuration to read first, the author's is [on GitHub](https://github.com/g4rcez/dotfiles/blob/master/config/wm/init.lua).
+
+1. **Quit Karabiner-Elements** and stop it from starting at login. It takes the keyboard before wm sees it, so both cannot
+   own CapsLock.
+2. Give wm the Accessibility permission, as for the other binds (see [Permissions](#permissions)).
+3. Put the new binds in their own file, `~/.config/wm/hyper.lua`, and load it at the end of `init.lua`:
+
+   ```lua
+   require("hyper")
+   ```
+4. Run `wm daemon reload`. A mistake in the file is in the menu bar, in the output of the command and in `wm logs`. Then
+   `wm list binds` shows what wm took.
+5. Try each kind of bind (see the list below), then delete the Karabiner configuration when you are sure.
+
+An example of `hyper.lua`, with the shapes that you need to translate a whole file:
+
+```lua
+wm.config { binds = { capslock = "hyper" } }
+
+local function run(command)
+  return function() wm.exec(command) end
+end
+local function open(url) return run("open -g '" .. url .. "'") end
+local function app(name) return run("open -a '" .. name .. "'") end
+
+-- Keys that hyper + key types.
+wm.remap("hyper-k", "up",    { description = "Up" })
+wm.remap("hyper-j", "down",  { description = "Down" })
+wm.remap("hyper-h", "left",  { description = "Left" })
+wm.remap("hyper-l", "right", { description = "Right" })
+wm.remap("hyper-4", "cmd-right", { description = "End of line" })
+wm.remap("hyper-0", "cmd-left",  { description = "Start of line" })
+
+-- A direct shortcut.
+wm.bind("hyper-e", open("raycast://extensions/raycast/emoji-symbols/search-emoji-symbols"), { description = "Emojis" })
+
+-- A layer: hyper + w, then a key. Every key of it is a sequence.
+for n = 1, 9 do
+  wm.bind("hyper-w>" .. n, "workspace " .. n, { description = "Workspace " .. n })
+  wm.bind("hyper-m>" .. n, "window send workspace " .. n, { description = "Send window to " .. n })
+end
+wm.bind("hyper-w>f", "window fullscreen", { description = "Fullscreen" })
+wm.bind("hyper-w>h", "focus left --wrap",  { description = "Focus left" })
+wm.bind("hyper-w>l", "focus right --wrap", { description = "Focus right" })
+
+-- A system layer: media keys and a script.
+wm.bind("hyper-s>p", "key press play",         { description = "Play or pause" })
+wm.bind("hyper-s>l", "key press next",         { description = "Next track" })
+wm.bind("hyper-s>h", "key press previous",     { description = "Previous track" })
+wm.bind("hyper-s>equal", "key press volume_up",   { description = "Volume up" })
+wm.bind("hyper-s>minus", "key press volume_down", { description = "Volume down" })
+wm.bind("hyper-s>n", run("osascript $HOME/bin/clear-notifications"), { description = "Clear notifications" })
+
+-- Open apps.
+wm.bind("hyper-o>s", app("Spotify"),  { description = "Spotify" })
+wm.bind("hyper-o>t", app("Telegram"), { description = "Telegram" })
+
+-- A layer that stays on: vim keys, until Esc (or hyper + v again).
+wm.bind("hyper-v", "mode vim", { description = "Vim mode" })
+wm.mode("vim", {
+  h = { remap = "left",  description = "Left" },
+  j = { remap = "down",  description = "Down" },
+  k = { remap = "up",    description = "Up" },
+  l = { remap = "right", description = "Right" },
+  w = { remap = "alt-right", description = "Word right" },
+  b = { remap = "alt-left",  description = "Word left" },
+  esc = { "mode main", description = "Exit" },
+  ["hyper-v"] = { "mode main", description = "Exit" },
+})
+```
+
+What to try after the reload:
+
+- Tap CapsLock alone: Esc. Tap it while the key panel is open: the panel closes.
+- Hold CapsLock and press `k`: Up, and holding `k` repeats it. With Shift also held, it selects.
+- Press `hyper-w`: the key panel shows the keys that follow. Press `1`: workspace 1. Esc cancels a sequence.
+- Press `hyper-v`: the vim mode shows in the panel. `h`, `j`, `k` and `l` move, and Esc leaves.
+- Quit wm: CapsLock works as it did before.
+
+### What is different
+
+- **A layer is a sequence, not a held key.** In Karabiner a layer works while you hold the hyper key, or stays on after a
+  tap, depending on its `hold` setting. In wm, `hyper-w>1` is hyper + `w`, then `1`; the hyper key may stay down or be
+  released between the two keys. Releasing it does not cancel the layer; Esc does. A layer that must stay on is a mode.
+- **A chord is a bind or the start of a sequence, not both.** `hyper-w` cannot do something by itself and also start
+  `hyper-w>1`. wm rejects this when the config loads. A sequence cannot start a longer one either (`a>b` and `a>b>c`).
+- **Every hyper chord that is not bound is swallowed**, so a typo never types a letter into the app.
+- **How CapsLock is remapped.** wm sets the key mapping of the keyboards, as `hidutil` does, to send CapsLock as F18, and
+  takes it away when it quits. It replaces any other `UserKeyMapping` that is set while wm runs. A keyboard that connects
+  later (Bluetooth) gets the mapping after the next wake, or after `wm daemon reload`.
+- **If wm crashes**, CapsLock stays mapped to F18 until wm starts again. This puts it back at once:
+
+  ```sh
+  hidutil property --set '{"UserKeyMapping":[]}'
+  ```
+
+### What wm does not do
+
+- **Secure Keyboard Entry.** Password fields and some terminals block every event tap, so hyper chords and remaps do nothing
+  there. Karabiner works in those places because it is a driver.
+- **No per-app or per-device rules.** There is no `frontmost_application_if` or `device_if`. For a chord that must act
+  differently in an app, use a function bind and look at `wm.query("focused")`.
+- **No left and right modifier distinction**, no `fn` or Globe key, no modifier-only chords (apart from the hyper key), no
+  simultaneous keys, and no mouse button or pointing device remaps.
+- **Tap and hold is only for the hyper key** (and for any other chord with `long_press = true` in the bind options, see
+  [Bind options](#bind-options)). A tap of another modifier key does not do anything.
+- **Media keys** are typed as system events. `next` and `previous` send the same keys as F9 and F7. Brightness works on
+  displays that macOS can control with the keyboard.
 
 ## URL scheme
 
@@ -949,8 +1202,8 @@ A layout that you change in the config while wm is stopped wins over the saved o
 - **The switcher shows icons and not pictures.** Grant Screen Recording, or set `switcher = { thumbnails = false }`.
 - **A window hides behind others, or stays out of the layout.** Some windows (dialogs, palettes) float by design. Use
   `wm window float` to toggle one, or add a rule.
-- **My config has an error.** The old config stays active. The message is in the menu bar and in the output of
-  `wm daemon reload`.
+- **My config has an error.** The old config stays active. The message is in the menu bar, in the output of
+  `wm daemon reload` and in `wm logs`.
 - **wm and another window manager fight.** Quit the other one. Quitting wm puts every hidden window back on screen.
 
 ## Limits
@@ -973,6 +1226,9 @@ A layout that you change in the config while wm is stopped wins over the saved o
 timeout 300 swift test      # unit tests: layout engines, geometry, Lua host, IPC, command parsing
 ./build-app.sh debug        # a debug build of the app bundle
 ```
+
+The app icon is `assets/icon-windows.svg`. `bundle/wm.icns` is made from it by `assets/make-icns.sh` (it needs `rsvg-convert`,
+`magick` and `iconutil`), and `build-app.sh` copies it into the app. Run the script again when the SVG changes.
 
 | Target | Role |
 |---|---|
