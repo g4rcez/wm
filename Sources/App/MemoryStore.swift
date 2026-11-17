@@ -1,3 +1,4 @@
+import Common
 import Core
 import Foundation
 
@@ -12,12 +13,12 @@ enum MemoryStore {
         do {
             let memory = try JSONDecoder().decode(WindowMemory.self, from: data)
             guard memory.version == WindowMemory.currentVersion else {
-                fputs("wmd: ignoring \(url.path): version \(memory.version)\n", stderr)
+                Log.write(.warn, "ignoring \(url.path): version \(memory.version)", source: "memory", prefix: "wmd")
                 return WindowMemory()
             }
             return memory
         } catch {
-            fputs("wmd: ignoring \(url.path): \(error)\n", stderr)
+            Log.write(.warn, "ignoring \(url.path): \(error)", source: "memory", prefix: "wmd")
             return WindowMemory()
         }
     }

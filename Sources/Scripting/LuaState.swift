@@ -30,18 +30,36 @@ function wm.bind(chord, action, options)
   done(native.bind("main", chord, action, options))
 end
 
+-- Types `target` when `chord` is pressed: the key goes down, repeats and comes up with it.
+function wm.remap(chord, target, options)
+  expect(type(chord) == "string", "wm.remap expects a chord string like 'hyper-k'")
+  expect(type(target) == "string", "wm.remap expects the key to type, like 'left' or 'cmd-right'")
+  expect(options == nil or type(options) == "table", "wm.remap: the options must be a table like { description = '...' }")
+  done(native.bind("main", chord, { remap = target }, options))
+end
+
+function wm.press(chord)
+  expect(type(chord) == "string", "wm.press expects a key like 'play' or 'cmd-shift-4'")
+  return native.dispatch("key press " .. chord, nil)
+end
+
 function wm.mode(name, binds)
   expect(type(name) == "string" and name ~= "", "wm.mode expects a mode name")
   expect(type(binds) == "table", "wm.mode expects a table of chord = action")
   done(native.reset_mode(name))
   for chord, action in pairs(binds) do
-    -- A table is an action with options: { "focus left", description = "...", repeating = false }.
+    -- A table is an action with options: { "focus left", description = "...", repeating = false },
+    -- or a remap: { remap = "left", description = "..." }.
     if type(action) == "table" then
       local options = {}
       for key, value in pairs(action) do
-        if key ~= 1 then options[key] = value end
+        if key ~= 1 and key ~= "remap" then options[key] = value end
       end
-      done(native.bind(name, chord, action[1], options))
+      if action.remap ~= nil then
+        done(native.bind(name, chord, { remap = action.remap }, options))
+      else
+        done(native.bind(name, chord, action[1], options))
+      end
     else
       done(native.bind(name, chord, action))
     end
@@ -181,7 +199,7 @@ final class LuaState {
 
     func call(ref: Int32) {
         lua_rawgeti(L, registryIndex, lua_Integer(ref))
-        if let message = protectedCall(arguments: 0) { bridge.log("function failed: \(message)") }
+        if let message = protectedCall(arguments: 0) { bridge.logError("function failed: \(message)") }
     }
 
     func fire(event: String, payload: [String: LuaValue]) {
@@ -189,7 +207,7 @@ final class LuaState {
             lua_rawgeti(L, registryIndex, lua_Integer(handler.ref))
             pushValue(L, .table(payload))
             if let message = protectedCall(arguments: 1) {
-                bridge.log("handler for event '\(event)' failed: \(message)")
+                bridge.logError("handler for event '\(event)' failed: \(message)")
             }
         }
     }
@@ -327,6 +345,7 @@ private extension BindAction {
         switch self {
         case .command(let command): command
         case .function: "function"
+        case .remap(let target): "remap \(target)"
         }
     }
 }
@@ -376,6 +395,18 @@ private func nativeBind(_ L: OpaquePointer?) -> Int32 {
             action = .command(command.trimmingCharacters(in: .whitespaces).isEmpty ? "noop" : command)
         case LUA_TFUNCTION:
             action = functionAction(L, at: 3, state)
+        case LUA_TTABLE:
+            let fields = try Fields(readValue(L, 3), owner: "wm.remap", allowed: ["remap"])
+            guard let keyText = try fields.string("remap") else { throw ConfigError(message: "mode '\(mode)': the action for chord '\(text)' needs a 'remap' key") }
+            guard chords.count == 1, trigger == .press, options.repeating != true else {
+                throw ConfigError(message: "mode '\(mode)': '\(text)' is a remap; it needs a single chord that runs when the key goes down")
+            }
+            let target: Chord
+            do { target = try parseChord(keyText, allowMedia: true) } catch { throw ConfigError(message: "mode '\(mode)': remap of '\(text)': \(error)") }
+            guard !target.modifiers.contains(.hyper) else {
+                throw ConfigError(message: "mode '\(mode)': remap of '\(text)': 'hyper' is not a key that wm can type")
+            }
+            action = .remap(target)
         default:
             throw ConfigError(message: "mode '\(mode)': the action for chord '\(text)' must be a command string or a function")
         }

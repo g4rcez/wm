@@ -319,18 +319,23 @@ final class AppController: HostBridge, @unchecked Sendable {
     }
 
     /// `key send <chord>`: a key press for the app of a window, which does not get the focus.
+    /// `key press <chord>`: a key press for the system, as if typed (a media key such as `play` also works).
     @MainActor private func sendKey(_ words: [String], target: WindowID?) -> ServerAnswer {
-        guard words.first == "send", let text = words.dropFirst().first else { return fail("key needs send and a chord", 2, usage: "key send") }
-        guard let chord = try? parseChord(text), let code = KeyCodes.code(for: chord.key) else {
+        guard let verb = words.first, ["send", "press"].contains(verb), let text = words.dropFirst().first else {
+            return fail("key needs send or press, and a chord", 2, usage: "key send")
+        }
+        if verb == "press" {
+            guard let chord = try? parseChord(text, allowMedia: true), !chord.modifiers.contains(.hyper) else {
+                return fail("'\(text)' is not a chord like cmd-shift-r or a media key like play", 2, usage: "key press")
+            }
+            KeyOutput.tap(chord)
+            return ok()
+        }
+        guard let chord = try? parseChord(text), !chord.modifiers.contains(.hyper), let code = KeyCodes.code(for: chord.key) else {
             return fail("'\(text)' is not a chord like cmd-shift-r", 2, usage: "key send")
         }
         guard let id = target ?? manager.focused, let window = manager.windows[id] else { return fail("there is no window to send the key to") }
-        var flags: CGEventFlags = []
-        if chord.modifiers.contains(.shift) { flags.insert(.maskShift) }
-        if chord.modifiers.contains(.control) { flags.insert(.maskControl) }
-        if chord.modifiers.contains(.option) { flags.insert(.maskAlternate) }
-        if chord.modifiers.contains(.command) { flags.insert(.maskCommand) }
-        EventTap.post(keyCode: code, flags: flags, toPID: window.info.pid)
+        EventTap.post(keyCode: code, flags: KeyOutput.flags(of: chord.modifiers), toPID: window.info.pid)
         return ok()
     }
 
@@ -351,7 +356,7 @@ final class AppController: HostBridge, @unchecked Sendable {
             try process.run()
             return process.processIdentifier
         } catch {
-            log("exec failed: \(error)")
+            Log.write(.error, "exec failed: \(error)", source: "exec")
             return nil
         }
     }
@@ -361,11 +366,11 @@ final class AppController: HostBridge, @unchecked Sendable {
     @MainActor func handle(url: URL) {
         guard let request = commandRequest(fromURL: url), let command = request.args.first else { return }
         if urlBlockedCommands.contains(command), !manager.settings.urlAllow.contains(command) {
-            log("blocked wm:// command '\(command)'; add it to url.allow to permit it")
+            Log.write(.warn, "blocked wm:// command '\(command)'; add it to url.allow to permit it", source: "url")
             return
         }
         let answer = run(request)
-        if answer.exitCode != 0 { log(answer.stderr.trimmingCharacters(in: .whitespacesAndNewlines)) }
+        if answer.exitCode != 0 { Log.write(.error, answer.stderr.trimmingCharacters(in: .whitespacesAndNewlines), source: "url") }
     }
 
     // MARK: - Config
@@ -381,21 +386,35 @@ final class AppController: HostBridge, @unchecked Sendable {
         return ok("reloading\n")
     }
 
-    func reload() -> ServerAnswer {
+    /// Loads the config. `notify`: tell the user in a notification of macOS how it went; the load at the start does not.
+    func reload(notify: Bool = true) -> ServerAnswer {
         guard FileManager.default.fileExists(atPath: configURL.path) else {
             let message = "no config at \(configURL.path); using defaults"
             onMain { apply(LoadedConfig(settings: Settings(), binds: [:], rules: [])); onConfigError(message) }
+            if notify { notifyConfig(title: "wm: no config", body: message) }
             return fail(message)
         }
         do {
             let loaded = try host.load(configURL: configURL)
             onMain { apply(loaded); onConfigError(nil) }
+            Log.write(.info, "config loaded: \(configURL.path)", source: "config")
+            if notify { notifyConfig(title: "wm", body: "Config reloaded: \(configURL.lastPathComponent)") }
             return ok("config reloaded\n")
         } catch {
             let message = (error as? ConfigError)?.message ?? "\(error)"
-            log("config error: \(message)")
+            Log.write(.error, "config error: \(message)", source: "config")
             onMain { onConfigError(message) }
+            if notify { notifyConfig(title: "wm: config error", body: message) }
             return fail(message)
+        }
+    }
+
+    /// One notification for the config: a new one replaces the last.
+    private func notifyConfig(title: String, body: String) {
+        Task {
+            do { try await SystemNotification.post(title: title, body: body, id: "wm.config") } catch {
+                Log.write(.debug, "cannot show a notification: \(error)", source: "notification")
+            }
         }
     }
 
@@ -408,9 +427,26 @@ final class AppController: HostBridge, @unchecked Sendable {
         SystemShortcuts.setCommandTab(enabled: !disabled)
     }
 
-    /// Gives macOS its Cmd+Tab back. Runs when the daemon quits.
+    /// `binds.capslock`: CapsLock sends F18 while the config asks for the hyper key. It also runs on a reload, so that a keyboard
+    /// that connected since gets the mapping.
+    private var capsLockMapped = false
+
+    @MainActor private func setCapsLockHyper(_ on: Bool) {
+        guard on || capsLockMapped else { return }
+        capsLockMapped = on
+        KeyboardRemap.setCapsLockToF18(on)
+    }
+
+    /// Gives macOS its Cmd+Tab and its CapsLock back. Runs when the daemon quits.
     @MainActor func restoreSystemShortcuts() {
         setSystemCmdTab(disabled: false)
+        setCapsLockHyper(false)
+    }
+
+    /// After sleep the keyboards may have been set up again.
+    @MainActor func keyboardsWoke() {
+        guard capsLockMapped else { return }
+        KeyboardRemap.setCapsLockToF18(true)
     }
 
     @MainActor private func apply(_ loaded: LoadedConfig) {
@@ -423,6 +459,7 @@ final class AppController: HostBridge, @unchecked Sendable {
         input.longPressBinds = loaded.longPressBinds
         input.holdBinds = loaded.holdBinds
         setSystemCmdTab(disabled: loaded.settings.binds.disableSystemCmdTab)
+        setCapsLockHyper(loaded.settings.binds.capsLockHyper)
         input.noRepeat = loaded.noRepeat
         input.gestures = loaded.gestures
         bindRecords = loaded.bindRecords
@@ -443,7 +480,7 @@ final class AppController: HostBridge, @unchecked Sendable {
             if wanted, service.status != .enabled { try service.register() }
             if !wanted, service.status == .enabled { try service.unregister() }
         } catch {
-            log("start_at_login: \(error)")
+            Log.write(.error, "start_at_login: \(error)", source: "login")
         }
     }
 
@@ -477,8 +514,13 @@ final class AppController: HostBridge, @unchecked Sendable {
         runShell(command)
     }
 
+    /// `wm.log` of a script.
     func log(_ message: String) {
-        FileHandle.standardError.write(Data("wm: \(message)\n".utf8))
+        Log.write(.info, message, source: "lua")
+    }
+
+    func logError(_ message: String) {
+        Log.write(.error, message, source: "lua")
     }
 }
 

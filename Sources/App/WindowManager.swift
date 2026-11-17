@@ -1,4 +1,5 @@
 import AppKit
+import Common
 import Core
 import Platform
 import Scripting
@@ -357,6 +358,15 @@ final class WindowManager {
             floatFrame = CGRect(origin: origin, size: size)
         }
         windows[info.id] = ManagedWindow(info: info, workspace: workspaceName, floating: floating, minimized: info.isMinimized, floatFrame: floatFrame ?? (floating ? info.frame : nil))
+        // A window that opens after the start: what `wm logs` needs to say why it was floated, tiled or moved. The first scan
+        // reads every window that is open already, and says nothing.
+        if didFirstScan {
+            let app = info.bundleID.isEmpty ? "(no bundle id)" : info.bundleID
+            Log.write(
+                .debug,
+                "window opened: id=\(info.id) app=\(app) name=\(info.appName) title=\(info.title.debugDescription) workspace=\(workspaceName) floating=\(floating) rule=\(Self.describe(rule))\(remembered == nil ? "" : " remembered=yes")",
+                source: "window")
+        }
         let target = workspace(workspaceName)
         if let layout = rule?.layout, target.engine.windows.isEmpty { target.kind = layout; target.engine = makeEngine(layout, settings: settings(forWorkspace: workspaceName)) }
         if !floating, !info.isMinimized {
@@ -419,7 +429,7 @@ final class WindowManager {
     }
 
     private func saveMemory() {
-        do { try MemoryStore.write(memory) } catch { fputs("wmd: cannot save \(MemoryStore.url.path): \(error)\n", stderr) }
+        do { try MemoryStore.write(memory) } catch { Log.write(.error, "cannot save \(MemoryStore.url.path): \(error)", source: "memory", prefix: "wmd") }
     }
 
     /// `smart_split` and `split_under_pointer`: the new window opens on the side of a tile that the pointer is nearest to. With
@@ -615,7 +625,7 @@ final class WindowManager {
             try StateStore.write(data)
             lastSaved = data
         } catch {
-            fputs("wmd: cannot save state: \(error)\n", stderr)
+            Log.write(.error, "cannot save state: \(error)", source: "state", prefix: "wmd")
         }
     }
 
@@ -681,6 +691,22 @@ final class WindowManager {
         if workspace.engine is ScrollingEngine,
            workspace.engine.perform(.maximize, focused: id, in: layoutContext(forWorkspace: workspace.name)) { return }
         workspace.maximized.insert(id)
+    }
+
+    /// The settings of a rule in a few words, for the log.
+    private static func describe(_ rule: WindowRule?) -> String {
+        guard let rule else { return "none" }
+        var parts: [String] = []
+        if let float = rule.float { parts.append(float ? "float" : "tile") }
+        if let size = rule.size { parts.append("size \(size.width)x\(size.height)") }
+        if rule.center { parts.append("center") }
+        if let workspace = rule.workspace { parts.append("workspace \(workspace)") }
+        if let layout = rule.layout { parts.append("layout \(layout.rawValue)") }
+        if rule.maximize == true { parts.append("maximize") }
+        if let width = rule.width { parts.append("width \(width)") }
+        if let monitor = rule.monitor { parts.append("monitor \(monitor)") }
+        if rule.focus == false { parts.append("no-focus") }
+        return parts.isEmpty ? "matched (no options)" : parts.joined(separator: ",")
     }
 
     /// Rules apply in order. A matching rule with `stop = false` lets later rules add to it; later values win.

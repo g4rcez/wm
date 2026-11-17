@@ -61,16 +61,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             try controller.startServer()
         } catch SocketError.alreadyRunning {
-            fputs("wmd: another instance is already running\n", stderr)
+            Log.write(.error, "another instance is already running", source: "daemon", prefix: "wmd")
             exit(1)
         } catch {
-            fputs("wmd: cannot start the command socket: \(error)\n", stderr)
+            Log.write(.error, "cannot start the command socket: \(error)", source: "daemon", prefix: "wmd")
             exit(1)
         }
         watcher = ConfigWatcher(fileURL: configURL) { [controller] in
             Task.detached { _ = controller!.reload() }
         }
-        Task.detached { [controller] in _ = controller!.reload() }
+        Task.detached { [controller] in _ = controller!.reload(notify: false) }
         awaitAccessibility()
     }
 
@@ -127,6 +127,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func startWindowControl() {
+        // After sleep the keyboards may be set up again, and the CapsLock mapping with them.
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.controller.keyboardsWoke() }
+        }
         manager.start()
         if !controller.input.start() {
             menu.setError("Cannot listen for keys: check Accessibility permission")
@@ -149,7 +153,7 @@ if CommandLine.arguments.contains(where: { $0 == "--background" || $0 == "-d" })
         print("wmd started in the background (pid \(child.processIdentifier))")
         exit(0)
     } catch {
-        fputs("wmd: cannot start in the background: \(error)\n", stderr)
+        Log.write(.error, "cannot start in the background: \(error)", source: "daemon", prefix: "wmd")
         exit(1)
     }
 }

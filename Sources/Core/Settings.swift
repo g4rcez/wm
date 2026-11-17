@@ -240,6 +240,8 @@ public struct BindSettings: Sendable, Equatable {
     public var longPressTimeout: Double = 0.4
     /// Turn off the Cmd+Tab and Cmd+Shift+Tab of macOS while wm runs, so a wm bind on them is the only switcher.
     public var disableSystemCmdTab = false
+    /// CapsLock is the `hyper` modifier (`binds.capslock = "hyper"`): held with a key it makes a chord that starts with `hyper-`, and a tap alone is Esc.
+    public var capsLockHyper = false
     public init() {}
 }
 

@@ -1,3 +1,4 @@
+import AppKit
 @preconcurrency import CoreGraphics
 import Foundation
 
@@ -39,6 +40,8 @@ public final class EventTap: @unchecked Sendable {
     public var onMouse: MouseHandler?
     /// A modifier key changed. The event is never swallowed: apps would be left with stuck modifiers.
     public var onFlags: FlagsHandler?
+    /// macOS turned the tap off and it is on again. Key ups that came in the meantime are lost.
+    public var onReenabled: (@MainActor () -> Void)?
 
     private var port: CFMachPort?
     /// A separate tap for pointer movement. It stays disabled unless something needs the pointer, so mouse moves do not
@@ -46,14 +49,31 @@ public final class EventTap: @unchecked Sendable {
     private var pointerPort: CFMachPort?
     private var pointerWanted = false
 
-    /// Types a key. The event carries `ownEventTag`, so this tap does not treat it as a hotkey.
+    /// Types a key: a press and a release. The events carry `ownEventTag`, so this tap does not treat them as hotkeys.
     public static func post(keyCode: Int, flags: CGEventFlags) {
-        for down in [true, false] {
-            guard let event = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(keyCode), keyDown: down) else { return }
-            event.flags = flags
-            event.setIntegerValueField(.eventSourceUserData, value: ownEventTag)
-            event.post(tap: .cghidEventTap)
-        }
+        post(keyCode: keyCode, flags: flags, down: true, isRepeat: false)
+        post(keyCode: keyCode, flags: flags, down: false, isRepeat: false)
+    }
+
+    /// One half of a key press: the key goes down (`isRepeat`: it is held and repeats) or comes up. Used to remap a key, so
+    /// that a held key repeats and a key up follows the key down.
+    public static func post(keyCode: Int, flags: CGEventFlags, down: Bool, isRepeat: Bool) {
+        guard let event = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(keyCode), keyDown: down) else { return }
+        event.flags = flags
+        event.setIntegerValueField(.eventSourceUserData, value: ownEventTag)
+        if isRepeat { event.setIntegerValueField(.keyboardEventAutorepeat, value: 1) }
+        event.post(tap: .cghidEventTap)
+    }
+
+    /// One half of a press of a media key (`NX_KEYTYPE_*`): volume, brightness, play. Macs get these as system events, not as keys.
+    public static func postMedia(key: Int, down: Bool) {
+        // Subtype 8 is NX_SUBTYPE_AUX_CONTROL_BUTTONS; data1 holds the key in the high half and the state (0xA down, 0xB up) in bits 8...15.
+        let data = (key << 16) | ((down ? 0xA : 0xB) << 8)
+        guard let event = NSEvent.otherEvent(
+            with: .systemDefined, location: .zero, modifierFlags: NSEvent.ModifierFlags(rawValue: down ? 0xA00 : 0xB00), timestamp: 0,
+            windowNumber: 0, context: nil, subtype: 8, data1: data, data2: -1)?.cgEvent else { return }
+        event.setIntegerValueField(.eventSourceUserData, value: ownEventTag)
+        event.post(tap: .cghidEventTap)
     }
 
     /// Types a key into one app, without moving the focus: `wm key send`. The app gets it even when it is in the background.
@@ -125,6 +145,7 @@ public final class EventTap: @unchecked Sendable {
             }
             if let port { CGEvent.tapEnable(tap: port, enable: true) }
             if let pointerPort, pointerWanted { CGEvent.tapEnable(tap: pointerPort, enable: true) }
+            onReenabled?()
             return pass
         case .keyDown:
             guard event.getIntegerValueField(.eventSourceUserData) != Self.ownEventTag else { return pass }

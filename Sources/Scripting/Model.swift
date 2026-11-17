@@ -13,6 +13,8 @@ public enum BindAction: Sendable, Equatable {
     case command(String)
     /// A Lua function; pass the id to `LuaHost.call(function:)`.
     case function(Int)
+    /// Types this key instead of the bound one (`wm.remap`): the key goes down, repeats and comes up with it.
+    case remap(Chord)
 }
 
 /// When a bind runs: when the key goes down (the default), when it comes up, when it is held for a while, or for each
@@ -230,4 +232,10 @@ public protocol HostBridge: AnyObject, Sendable {
     func query(_ what: String) -> LuaValue
     func exec(_ command: String)
     func log(_ message: String)
+    /// A script or a handler that failed. The default is a plain `log`.
+    func logError(_ message: String)
+}
+
+public extension HostBridge {
+    func logError(_ message: String) { log(message) }
 }

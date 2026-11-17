@@ -3,9 +3,19 @@ import Foundation
 
 /// The key list of the floating label, like a which-key plugin: the keys that can be pressed now, with what they do.
 public enum WhichKey {
-    /// A chord as it is drawn on its chip: modifiers as symbols, a letter in capitals (`⌥H`), other names as they are.
+    /// The glyph that a key name is drawn as, so a chip stays narrow: `leftsquarebracket` is `[`, `left` is `←`. Letters,
+    /// digits and the names that have no glyph (`esc`, `home`, `f5`) are drawn as they are.
+    private static let glyphs: [String: String] = [
+        "minus": "-", "equal": "=", "comma": ",", "period": ".", "slash": "/", "backslash": "\\", "semicolon": ";", "quote": "'",
+        "backtick": "`", "leftsquarebracket": "[", "rightsquarebracket": "]",
+        "left": "←", "right": "→", "up": "↑", "down": "↓",
+        "space": "␣", "tab": "⇥", "enter": "↩", "backspace": "⌫", "delete": "⌦", "pageup": "⇞", "pagedown": "⇟",
+    ]
+
+    /// A chord as it is drawn on its chip: modifiers as symbols, then the key as it was written (`⌥h`, `⇧y`) or its glyph
+    /// (`⌘[`, `←`).
     public static func display(_ chord: Chord) -> String {
-        chord.modifiers.symbols + (chord.key.count == 1 ? chord.key.uppercased() : chord.key)
+        chord.modifiers.symbols + (glyphs[chord.key] ?? chord.key)
     }
 
     /// The keys of `mode` (and the universal ones) that can be pressed after the `pending` steps of a sequence (none at

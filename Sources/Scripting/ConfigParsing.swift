@@ -296,9 +296,10 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
         }
     }
 
-    if let binds = try top.table("binds", allowed: ["long_press_timeout", "disable_system_cmd_tab"]) {
+    if let binds = try top.table("binds", allowed: ["long_press_timeout", "disable_system_cmd_tab", "capslock"]) {
         if let seconds = try binds.number("long_press_timeout", min: 0.1, max: 3) { settings.binds.longPressTimeout = seconds }
         if let flag = try binds.bool("disable_system_cmd_tab") { settings.binds.disableSystemCmdTab = flag }
+        if let role = try binds.choice("capslock", ["hyper"]) { settings.binds.capsLockHyper = role == "hyper" }
     }
 
     if let master = try top.table("master", allowed: ["ratio", "count", "orientation", "new_window"]) {

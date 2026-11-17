@@ -1,3 +1,4 @@
+import Common
 import Core
 import Foundation
 
@@ -61,12 +62,12 @@ enum StateStore {
         do {
             let state = try JSONDecoder().decode(SavedState.self, from: data)
             guard state.version == SavedState.currentVersion else {
-                fputs("wmd: ignoring \(url.path): version \(state.version)\n", stderr)
+                Log.write(.warn, "ignoring \(url.path): version \(state.version)", source: "state", prefix: "wmd")
                 return nil
             }
             return state
         } catch {
-            fputs("wmd: ignoring \(url.path): \(error)\n", stderr)
+            Log.write(.warn, "ignoring \(url.path): \(error)", source: "state", prefix: "wmd")
             return nil
         }
     }

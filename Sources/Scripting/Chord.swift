@@ -8,13 +8,15 @@ public struct Modifiers: OptionSet, Sendable, Hashable {
     public static let control = Modifiers(rawValue: 1 << 1)
     public static let option = Modifiers(rawValue: 1 << 2)
     public static let command = Modifiers(rawValue: 1 << 3)
+    /// The key that `binds.capslock = "hyper"` makes of CapsLock. It is not a flag of macOS: wm keeps the state itself.
+    public static let hyper = Modifiers(rawValue: 1 << 4)
 
     /// The display order of the modifiers, with the name and the symbol of each.
     private static let displayOrder: [(modifier: Modifiers, name: String, symbol: String)] = [
-        (.control, "ctrl", "⌃"), (.option, "alt", "⌥"), (.shift, "shift", "⇧"), (.command, "cmd", "⌘"),
+        (.hyper, "hyper", "✦"), (.control, "ctrl", "⌃"), (.option, "alt", "⌥"), (.shift, "shift", "⇧"), (.command, "cmd", "⌘"),
     ]
 
-    /// The names of the modifiers in this set, in the order ctrl, alt, shift, cmd.
+    /// The names of the modifiers in this set, in the order hyper, ctrl, alt, shift, cmd.
     var names: [String] { Self.displayOrder.filter { contains($0.modifier) }.map(\.name) }
 
     /// The symbols of the modifiers in this set, in the order ⌃⌥⇧⌘.
@@ -26,7 +28,7 @@ public struct Chord: Hashable, Sendable, CustomStringConvertible {
     public var modifiers: Modifiers
     public var key: String
 
-    /// Canonical display name such as `ctrl-alt-shift-cmd-p`: modifiers in the order ctrl, alt, shift, cmd, then the key.
+    /// Canonical display name such as `ctrl-alt-shift-cmd-p`: modifiers in the order hyper, ctrl, alt, shift, cmd, then the key.
     public var description: String {
         (modifiers.names + [key]).joined(separator: "-")
     }
@@ -56,6 +58,14 @@ private let modifierNames: [String: Modifiers] = [
     "cmd": .command, "command": .command,
 ]
 
+/// The modifiers of a chord. Gestures and the mouse take `modifierNames`: they read the flags of macOS, which have no hyper.
+private let chordModifierNames = modifierNames.merging(["hyper": .hyper]) { first, _ in first }
+
+/// Keys that wm can type but that are not on a US keyboard row: `wm.remap`, `wm.press` and `key press` take them.
+public let mediaKeyNames: Set<String> = [
+    "volume_up", "volume_down", "mute", "play", "next", "previous", "brightness_up", "brightness_down",
+]
+
 private let keyAliases: [String: String] = [
     "escape": "esc", "return": "enter",
     "leftarrow": "left", "rightarrow": "right", "uparrow": "up", "downarrow": "down",
@@ -74,7 +84,8 @@ private let singleKeys: Set<String> = Set("abcdefghijklmnopqrstuvwxyz0123456789"
 private let functionKeys: Set<String> = Set((1...20).map { "f\($0)" })
 
 /// Parses `alt-shift-h`, `cmd + ctrl - 2`, `esc`. Modifiers and key are joined by `-` or `+`; the last token is the key.
-public func parseChord(_ text: String) throws -> Chord {
+/// `allowMedia`: the key can also be a media key such as `play`; only for keys that wm types, not for keys that it binds.
+public func parseChord(_ text: String, allowMedia: Bool = false) throws -> Chord {
     func fail(_ reason: String) -> ChordError {
         ChordError(message: "invalid chord '\(text)': \(reason)")
     }
@@ -87,15 +98,15 @@ public func parseChord(_ text: String) throws -> Chord {
 
     var modifiers: Modifiers = []
     for token in tokens.dropLast() {
-        guard let modifier = modifierNames[token] else {
-            throw fail("unknown modifier '\(token)' (use shift, ctrl, alt, cmd)")
+        guard let modifier = chordModifierNames[token] else {
+            throw fail("unknown modifier '\(token)' (use hyper, shift, ctrl, alt, cmd)")
         }
         modifiers.insert(modifier)
     }
 
     let token = tokens[tokens.count - 1]
     let key = keyAliases[token] ?? token
-    guard namedKeys.contains(key) || singleKeys.contains(key) || functionKeys.contains(key) else {
+    guard namedKeys.contains(key) || singleKeys.contains(key) || functionKeys.contains(key) || (allowMedia && mediaKeyNames.contains(key)) else {
         throw fail("unknown key '\(token)'")
     }
     return Chord(modifiers: modifiers, key: key)

@@ -76,7 +76,7 @@ if arguments == ["version"] || arguments == ["--version"] {
 if let first = arguments.first, !commandNames.contains(first) {
     die("unknown command '\(first)'", hint: unknownCommandHint(first) ?? "run `wm help` to see the commands", code: 2)
 }
-let localCommands = [["daemon", "start"], ["daemon", "stop"], ["subscribe"]]
+let localCommands = [["daemon", "start"], ["daemon", "stop"], ["subscribe"], ["logs"]]
 if windowId != nil || windowSelector != nil, localCommands.contains(where: { Array(arguments.prefix($0.count)) == $0 }) {
     die("--window does not apply to '\(arguments.prefix(2).filter { !$0.hasPrefix("--") }.joined(separator: " "))'", code: 2)
 }
@@ -101,6 +101,30 @@ if arguments.first == "completion" {
     }
     print(completionScript(for: shell), terminator: "")
     exit(0)
+}
+
+if arguments.first == "logs" {
+    let options: LogsOptions
+    do { options = try LogsOptions(parsing: Array(arguments.dropFirst())) } catch let error as LogsOptions.Failure {
+        die(error.message, hint: "usage: \(LogsOptions.usage)", code: 2)
+    }
+    let url = defaultLogURL()
+    let tail = LogFile.tail(options.lines, from: url)
+    if tail.records.isEmpty, !options.follow, !FileManager.default.fileExists(atPath: url.path) {
+        printError("wm: no log yet (\(url.path))\n")
+        exit(0)
+    }
+    func show(_ records: [LogRecord]) {
+        guard !records.isEmpty else { return }
+        write(records.map { options.format.render($0) + "\n" }.joined(), to: .standardOutput)
+    }
+    show(tail.records)
+    guard options.follow else { exit(0) }
+    var follower = LogFollower(offset: tail.offset)
+    while true {
+        usleep(250_000)
+        show(follower.poll(url: url))
+    }
 }
 
 if arguments.first == "lsp" {

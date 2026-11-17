@@ -45,11 +45,13 @@ public enum PillLayout {
     }
 
     /// A list for a side of the screen: one key per line, filled column by column. With more than `maxRows` items it
-    /// gets more columns, so it does not grow taller than the screen.
+    /// gets more columns, so it does not grow taller than the screen, and the columns have the same height (up to one
+    /// item): 44 items with room for 26 rows are 2 columns of 22, not 26 and 18.
     public static func list(count: Int, maxRows: Int) -> Grid {
         guard count > 0 else { return Grid(rows: 0, columns: 0, visible: 0, truncated: false, columnMajor: true) }
-        let rows = min(count, max(maxRows, 1))
-        return Grid(rows: rows, columns: (count + rows - 1) / rows, visible: count, truncated: false, columnMajor: true)
+        let capacity = max(maxRows, 1)
+        let columns = (count + capacity - 1) / capacity
+        return Grid(rows: (count + columns - 1) / columns, columns: columns, visible: count, truncated: false, columnMajor: true)
     }
 
     /// The grid with the fewest rows (at most `maxRows`) that is not wider than `maxWidth`. When even `maxRows` rows are

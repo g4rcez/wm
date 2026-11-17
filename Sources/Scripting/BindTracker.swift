@@ -22,6 +22,12 @@ public struct BindLookup: Sendable, Equatable {
 
     /// What a repeat of the held key runs: the hold bind, else the press bind unless it does not repeat.
     var repeatAction: BindAction? { hold ?? (noRepeat ? nil : press) }
+
+    /// The key that a remap types, when the press bind is a remap and nothing else is bound to the chord.
+    var remapTarget: Chord? {
+        guard case .remap(let target)? = press, release == nil, longPress == nil, hold == nil else { return nil }
+        return target
+    }
 }
 
 /// The rules for the triggers of a bind, apart from the event tap, so they can be tested.
@@ -37,6 +43,10 @@ public struct BindTracker: Sendable {
         case run(BindAction)
         case startLongPress(keyCode: Int)
         case cancelLongPress(keyCode: Int)
+        /// A remapped key goes down (or repeats) as this chord.
+        case remapDown(Chord, isRepeat: Bool)
+        /// The remapped key comes up.
+        case remapUp(Chord)
     }
 
     private struct Held {
@@ -51,6 +61,12 @@ public struct BindTracker: Sendable {
     /// `swallow` says whether the key event is used up.
     public mutating func keyDown(keyCode: Int, isRepeat: Bool, lookup: BindLookup) -> (swallow: Bool, effects: [Effect]) {
         guard !lookup.isEmpty else { return (false, []) }
+        if let target = lookup.remapTarget {
+            // The key goes through as the target key, so its key up must follow it.
+            if isRepeat, lookup.noRepeat { return (true, []) }
+            held[keyCode] = Held(lookup: lookup)
+            return (true, [.remapDown(target, isRepeat: isRepeat)])
+        }
         if isRepeat, held[keyCode] != nil {
             // The key is held. A long-press bind keeps the key for itself; else a repeat runs the hold or the press bind.
             guard lookup.longPress == nil, let action = lookup.repeatAction else { return (true, []) }
@@ -65,6 +81,7 @@ public struct BindTracker: Sendable {
 
     public mutating func keyUp(keyCode: Int) -> (swallow: Bool, effects: [Effect]) {
         guard let state = held.removeValue(forKey: keyCode) else { return (false, []) }
+        if let target = state.lookup.remapTarget { return (true, [.remapUp(target)]) }
         var effects: [Effect] = []
         if state.lookup.longPress != nil {
             effects.append(.cancelLongPress(keyCode: keyCode))

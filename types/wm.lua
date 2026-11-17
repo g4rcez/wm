@@ -203,6 +203,7 @@
 ---@class (exact) wm.BindsConfig
 ---@field long_press_timeout? number Seconds a key is held for a `long_press` bind, 0.1 to 3. Default 0.4.
 ---@field disable_system_cmd_tab? boolean Turn off the Cmd+Tab and Cmd+Shift+Tab of macOS while wm runs. Default false.
+---@field capslock? "hyper" Make CapsLock the `hyper` modifier for chords such as `hyper-k`: a tap alone types Esc. wm sets the key mapping of the keyboards (like `hidutil`) while it runs. Default: CapsLock is not changed.
 
 --- The options of a bind (third argument of `wm.bind`, or a table with the action first in `wm.mode`).
 ---@class (exact) wm.BindOptions
@@ -453,8 +454,24 @@ function wm.config(options) end
 ---@param options? wm.BindOptions
 function wm.bind(chord, action, options) end
 
+--- Types a key when a chord is pressed. The key goes down, repeats and comes up with it, and the modifiers that are held
+--- besides the ones of `chord` go with it: with `wm.remap("hyper-h", "left")`, `hyper-shift-h` types shift-left.
+--- `target` is a chord such as `left`, `cmd-right`, or a media key: volume_up, volume_down, mute, play, next, previous,
+--- brightness_up, brightness_down. Only while the config file loads.
+---@param chord wm.Chord A single chord. `hyper` is a modifier when `binds.capslock = "hyper"`.
+---@param target string
+---@param options? wm.BindOptions
+function wm.remap(chord, target, options) end
+
+--- Types a key now, as a press and a release (the same as `wm key press`). Works in a function bind.
+---@param chord string A chord such as `cmd-shift-4`, or a media key such as `play`.
+---@return string? stdout
+---@return string? stderr
+function wm.press(chord) end
+
 --- Defines a mode (a submap). `wm.bind("alt-shift-r", "mode resize")` enters it, `esc = "mode main"` leaves it.
---- A key is a chord or a key sequence; an action can be a table `{ "command", description = "...", hidden = true }`.
+--- A key is a chord or a key sequence; an action can be a table `{ "command", description = "...", hidden = true }`,
+--- or a remap `{ remap = "left", description = "..." }`.
 --- The key panel lists the binds of the active mode. Only while the config file loads.
 ---@param name string
 ---@param binds table<wm.Chord, wm.Action|table>
@@ -519,6 +536,6 @@ function wm.query(kind) end
 ---@param command string
 function wm.exec(command) end
 
---- Writes to the wm log. Arguments are joined with a space.
+--- Writes to the wm log (`wm logs`, level info, source `lua`). Arguments are joined with a space.
 ---@param ... any
 function wm.log(...) end

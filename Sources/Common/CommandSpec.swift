@@ -202,6 +202,10 @@ public let commandSections: [CommandSection] = [
             "key send", "<chord>", "", "Send a key to the window's app, without focusing it.",
             details: "Use --window to choose the app. For a global hotkey of an app: bind a chord to this command.",
             example: "wm --window app:OBS key send cmd-shift-r"),
+        CommandSpec(
+            "key press", "<chord>", "", "Type a key, as if you pressed it.",
+            details: "A chord such as cmd-shift-4, or a media key: volume_up, volume_down, mute, play, next, previous,\nbrightness_up, brightness_down. In Lua: wm.press(\"play\").",
+            example: "wm key press play"),
     ]),
     CommandSection(title: "Inspect", specs: [
         CommandSpec(
@@ -209,6 +213,10 @@ public let commandSections: [CommandSection] = [
             details: "`what` is windows, workspaces, monitors, memory or binds. With no argument it lists the workspaces and their windows. --focused lists only the focused window (or, with monitors, the focused monitor).\n--json prints JSON for scripts. `list binds` shows every key bind with its description.",
             example: "wm list windows --json"),
         CommandSpec("subscribe", "", "", "Print one JSON event per line until stopped."),
+        CommandSpec(
+            "logs", "", "[--lines=n] [--follow] [--output=otel|json]", "Show the log of the daemon.",
+            details: "Short forms: -n, -f, -o. The default output is text in the OpenTelemetry log data model: time, severity, message,\nattributes. -o json prints one JSON object per line (time, level, message, source). It shows the last 100 records;\n-n 0 shows all. --follow waits for new records. It reads the log file ($XDG_STATE_HOME/wm/wm.log, else\n~/.local/state/wm/wm.log), so it works when the daemon is not running.",
+            example: "wm logs -f -o json"),
     ]),
     CommandSection(title: "Daemon", specs: [
         CommandSpec("daemon start", "", "", "Start wm in the background."),

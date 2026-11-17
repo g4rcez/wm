@@ -36,6 +36,11 @@ final class InputRouter {
     var picker: TemplatePicker?
     /// The modifiers of the key press being handled (empty outside a key press), for commands that depend on them.
     private(set) var currentFlags: CGEventFlags = []
+    /// CapsLock as the hyper key (`binds.capslock = "hyper"`): `hyperDown` while it is held. A tap that no other key used is Esc.
+    private var hyperDown = false
+    private var hyperUsed = false
+    private var hyperDownAt = Date.distantPast
+    private var hyperEnabled: Bool { manager.settings.binds.capsLockHyper }
     private let manager: WindowManager
     private let run: (_ command: String) -> Void
     private let call: (_ function: Int) -> Void
@@ -50,6 +55,7 @@ final class InputRouter {
     func start() -> Bool {
         tap.onKey = { [unowned self] code, flags, isRepeat in handleKey(code, flags, isRepeat: isRepeat) }
         tap.onKeyUp = { [unowned self] code, flags in
+            if hyperEnabled, code == KeyboardRemap.hyperKeyCode { return hyperKeyUp() }
             let outcome = tracker.keyUp(keyCode: code)
             apply(outcome.effects, flags: flags)
             return outcome.swallow
@@ -60,6 +66,8 @@ final class InputRouter {
             switcher?.flagsChanged(flags)
             palette?.flagsChanged(flags)
         }
+        // The key ups of the hyper key are lost while the tap is off, and a hyper key that stays down would eat every key.
+        tap.onReenabled = { [unowned self] in hyperDown = false }
         tap.onButton = { [unowned self] isDown in manager.mouseButton(isDown: isDown) }
         tap.onMouse = { [unowned self] event in
             if event.kind == .down { switcher?.pointerPressed(at: event.location) }
@@ -69,11 +77,15 @@ final class InputRouter {
     }
 
     private func handleKey(_ code: Int, _ flags: CGEventFlags, isRepeat: Bool) -> Bool {
+        if hyperEnabled, code == KeyboardRemap.hyperKeyCode { return hyperKeyDown(isRepeat: isRepeat) }
         guard let key = KeyCodes.name(for: code) else { return false }
+        if hyperDown { hyperUsed = true }
         if let palette, palette.isOpen { return palette.handleKey(key, flags: flags) }
         if let switcher, switcher.isOpen { return switcher.handleKey(key, flags: flags) }
         if let picker, picker.isOpen { return picker.handleKey(key) }
-        let chord = Chord(modifiers: Self.modifiers(of: flags), key: key)
+        var modifiers = Self.modifiers(of: flags)
+        if hyperDown { modifiers.insert(.hyper) }
+        let chord = Chord(modifiers: modifiers, key: key)
 
         if !pending.isEmpty {
             // A key held down after the prefix must not count as the second key.
@@ -91,7 +103,56 @@ final class InputRouter {
             beginSequence(chord, mode: mode)
             return true
         }
-        return false
+        if let remap = remapLookup(for: chord, mode: mode) {
+            let outcome = tracker.keyDown(keyCode: code, isRepeat: isRepeat, lookup: remap)
+            apply(outcome.effects, flags: flags)
+            return outcome.swallow
+        }
+        // A hyper chord that nothing uses is not typed: the keys are not for the app.
+        return chord.modifiers.contains(.hyper)
+    }
+
+    private func hyperKeyDown(isRepeat: Bool) -> Bool {
+        if !isRepeat, !hyperDown {
+            hyperDown = true
+            hyperUsed = false
+            hyperDownAt = Date()
+        }
+        return true
+    }
+
+    /// A hyper key that was pressed and released alone, and quickly, is Esc. The router gets the Esc first, so that it closes
+    /// what Esc closes (the keys of a prefix, the palette, a mode with `esc = "mode main"`); only an Esc that the router does
+    /// not use goes on to the app. A key that wm types carries its own tag and never comes back to this tap.
+    private func hyperKeyUp() -> Bool {
+        guard hyperDown else { return true }
+        hyperDown = false
+        guard !hyperUsed, Date().timeIntervalSince(hyperDownAt) < manager.settings.binds.longPressTimeout,
+              let code = KeyCodes.code(for: "esc") else { return true }
+        if !handleKey(code, [], isRepeat: false) { KeyOutput.tap(Chord(modifiers: [], key: "esc")) }
+        // A bind of Esc that waits for the key up (`release`, `long_press`) has its key up now.
+        apply(tracker.keyUp(keyCode: code).effects, flags: [])
+        return true
+    }
+
+    /// A remap that holds for a chord with more modifiers than it names: `hyper-h` → `left` also takes `hyper-shift-h`, and
+    /// types `shift-left`. The remap with the most modifiers wins.
+    private func remapLookup(for chord: Chord, mode: String) -> BindLookup? {
+        guard !chord.modifiers.isEmpty else { return nil }
+        var best: (source: Chord, target: Chord)?
+        for name in [mode, universalMode] {
+            for (source, action) in binds[name] ?? [:] {
+                guard case let .remap(target) = action, source.key == chord.key, chord.modifiers.isSuperset(of: source.modifiers) else { continue }
+                if let current = best {
+                    let (count, currentCount) = (source.modifiers.rawValue.nonzeroBitCount, current.source.modifiers.rawValue.nonzeroBitCount)
+                    guard count > currentCount || (count == currentCount && source.description < current.source.description) else { continue }
+                }
+                best = (source, target)
+            }
+        }
+        guard let (source, target) = best else { return nil }
+        let extra = chord.modifiers.subtracting(source.modifiers).subtracting(.hyper)
+        return BindLookup(press: .remap(Chord(modifiers: target.modifiers.union(extra), key: target.key)))
     }
 
     /// What the binds of `mode` and the universal binds say about a chord.
@@ -120,6 +181,10 @@ final class InputRouter {
                 }
             case .cancelLongPress(let code):
                 longPressTimers.removeValue(forKey: code)?.invalidate()
+            case .remapDown(let chord, let isRepeat):
+                KeyOutput.post(chord, down: true, isRepeat: isRepeat)
+            case .remapUp(let chord):
+                KeyOutput.post(chord, down: false)
             }
         }
     }
@@ -139,6 +204,7 @@ final class InputRouter {
         switch action {
         case let .command(command): run(command)
         case let .function(id): call(id)
+        case let .remap(chord): KeyOutput.tap(chord)
         }
     }
 
@@ -209,23 +275,31 @@ final class InputRouter {
 
     /// The next key of a sequence. A key that continues no sequence ends it and is eaten, as in tmux; Escape cancels. A sequence waits without a timeout.
     private func continueSequence(with chord: Chord, flags: CGEventFlags) -> Bool {
-        if chord.key == "esc", chord.modifiers.isEmpty {
+        if chord.key == "esc", chord.modifiers.subtracting(.hyper).isEmpty {
             cancelSequence()
             return true
         }
-        let steps = pending + [chord]
-        if let action = sequences[pendingMode]?[steps] ?? sequences[universalMode]?[steps] {
-            cancelSequence()
-            perform(action, flags: flags)
-        } else if hasSequence(in: pendingMode, startingWith: steps) {
-            pending = steps
-            updatePending()
-        } else if chord.isScreenshotShortcut {
+        // The hyper key may still be down for the next step: `hyper-w>1` takes `hyper-1` as well as `1`.
+        var candidates = [chord]
+        if chord.modifiers.contains(.hyper) { candidates.append(Chord(modifiers: chord.modifiers.subtracting(.hyper), key: chord.key)) }
+        for candidate in candidates {
+            let steps = pending + [candidate]
+            if let action = sequences[pendingMode]?[steps] ?? sequences[universalMode]?[steps] {
+                cancelSequence()
+                perform(action, flags: flags)
+                return true
+            }
+            if hasSequence(in: pendingMode, startingWith: steps) {
+                pending = steps
+                updatePending()
+                return true
+            }
+        }
+        if chord.isScreenshotShortcut {
             // A screenshot of the key hints: macOS takes the keys, and the hints and the prefix stay as they are.
             return false
-        } else {
-            cancelSequence()
         }
+        cancelSequence()
         return true
     }
 

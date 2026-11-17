@@ -3,6 +3,14 @@
 public enum KeyCodes {
     public static func code(for name: String) -> Int? { byName[name] }
     public static func name(for code: Int) -> String? { byCode[code] }
+    /// The `NX_KEYTYPE_*` number of a media key (`volume_up`, `play`), for `EventTap.postMedia`.
+    public static func mediaKey(for name: String) -> Int? { media[name] }
+
+    private static let media: [String: Int] = [
+        "volume_up": 0, "volume_down": 1, "brightness_up": 2, "brightness_down": 3, "mute": 7, "play": 16,
+        // The fast-forward and rewind keys of F9 and F7 (NX_KEYTYPE_FAST, NX_KEYTYPE_REWIND): a tap skips the track.
+        "next": 19, "previous": 20,
+    ]
 
     private static let byName: [String: Int] = [
         "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7, "c": 8, "v": 9, "b": 11, "q": 12, "w": 13,
