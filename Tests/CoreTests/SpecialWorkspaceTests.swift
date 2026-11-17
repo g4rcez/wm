@@ -47,4 +47,31 @@ struct SpecialWorkspaceTests {
     @Test func theViewportLeavesFivePercentOnEachSide() {
         #expect(SpecialWorkspace.viewport(in: CGRect(x: 0, y: 0, width: 1000, height: 600)) == CGRect(x: 50, y: 30, width: 900, height: 540))
     }
+
+    @Test func theViewportTakesTheGivenFractionOfTheWorkArea() {
+        #expect(SpecialWorkspace.viewport(in: CGRect(x: 0, y: 0, width: 1000, height: 600), size: 0.8) == CGRect(x: 100, y: 60, width: 800, height: 480))
+        #expect(SpecialWorkspace.viewport(in: CGRect(x: 0, y: 0, width: 1000, height: 600), size: 1) == CGRect(x: 0, y: 0, width: 1000, height: 600))
+    }
+
+    @Test func aNormalWindowHidesTheSpecialWorkspaceOfItsOwnMonitor() {
+        let hiding = SpecialWorkspace.monitorsHiding(
+            onFocusOf: 1, shown: [1: "special:term", 2: "special:notes"], otherMonitors: false) { _ in true }
+        #expect(hiding == [1])
+    }
+
+    @Test func withTheSettingItHidesTheSpecialWorkspacesOfEveryMonitor() {
+        let hiding = SpecialWorkspace.monitorsHiding(
+            onFocusOf: 1, shown: [1: "special:term", 2: "special:notes"], otherMonitors: true) { _ in true }
+        #expect(hiding == [1, 2])
+    }
+
+    @Test func anEmptySpecialWorkspaceStays() {
+        let hiding = SpecialWorkspace.monitorsHiding(
+            onFocusOf: 1, shown: [1: "special:term", 2: "special:notes"], otherMonitors: true) { $0 == "special:notes" }
+        #expect(hiding == [2])
+    }
+
+    @Test func nothingHidesWhenNoSpecialWorkspaceIsShown() {
+        #expect(SpecialWorkspace.monitorsHiding(onFocusOf: 1, shown: [:], otherMonitors: true) { _ in true } == [])
+    }
 }

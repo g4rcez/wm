@@ -25,9 +25,18 @@ public enum SpecialWorkspace {
         return next
     }
 
-    /// The area of a shown special workspace: 5% of the work area stays free on each side, so it does not look like
-    /// a normal workspace.
-    public static func viewport(in workArea: CGRect) -> CGRect {
-        workArea.insetBy(dx: workArea.width * 0.05, dy: workArea.height * 0.05)
+    /// The area of a shown special workspace: a `size` fraction (0.9 by default) of the work area, in the middle, so it does
+    /// not look like a normal workspace.
+    public static func viewport(in workArea: CGRect, size: Double = 0.9) -> CGRect {
+        let width = workArea.width * size, height = workArea.height * size
+        return CGRect(x: workArea.midX - width / 2, y: workArea.midY - height / 2, width: width, height: height)
+    }
+
+    /// The monitors whose shown special workspace hides when a window of a normal workspace gets the focus. That window
+    /// is on `windowMonitor`. An empty special workspace stays: the user opened it to start an app in it.
+    public static func monitorsHiding(
+        onFocusOf windowMonitor: UInt32, shown: [UInt32: String], otherMonitors: Bool, hasWindows: (String) -> Bool
+    ) -> [UInt32] {
+        shown.filter { (otherMonitors || $0.key == windowMonitor) && hasWindows($0.value) }.keys.sorted()
     }
 }
