@@ -17,16 +17,27 @@ public struct SplitTemplate: Sendable, Equatable, Codable {
     public let title: String
     /// The cells as fractions of the area the group fills: x, y, width, height, each 0...1.
     public let cells: [CGRect]
+    /// Where the cells sit, as fractions of the area that the layout tiles: x, y, width, height. The whole area by default.
+    /// A smaller area leaves a margin, for example the middle two thirds.
+    public let area: CGRect
 
-    public init(name: String, key: String? = nil, title: String? = nil, cells: [CGRect]) {
+    /// The whole area.
+    public static let unit = CGRect(x: 0, y: 0, width: 1, height: 1)
+
+    public init(name: String, key: String? = nil, title: String? = nil, cells: [CGRect], area: CGRect = SplitTemplate.unit) {
         self.name = name
         self.key = key
         self.title = title ?? name
         self.cells = cells
+        self.area = area
     }
 
     /// How many windows the group has.
     public var count: Int { cells.count }
+
+    /// A template with one cell and a smaller area (`center`). It does not arrange windows: the tiling layout keeps its
+    /// windows as they are and lays them out inside the area, for any number of windows.
+    public var isFrame: Bool { cells.count == 1 }
 
     /// Two windows side by side.
     public static let two = SplitTemplate(
@@ -82,34 +93,50 @@ public struct SplitTemplate: Sendable, Equatable, Codable {
         name: "1/4", key: "w", title: "Focus one quarter, three quarters beside",
         cells: [CGRect(x: 0, y: 0, width: 0.25, height: 1), CGRect(x: 0.25, y: 0, width: 0.75, height: 1)])
 
-    /// The built-in templates, in the order of Ribbon's menu, then the wide ones.
+    /// The windows share the middle two thirds of the width, with a sixth of margin on each side. Tiling layout only.
+    public static let centered = SplitTemplate(
+        name: "center", key: "z", title: "Centered, two thirds wide",
+        cells: [unit], area: CGRect(x: 1.0 / 6, y: 0, width: 2.0 / 3, height: 1))
+
+    /// The built-in templates, in the order of Ribbon's menu, then the wide ones. Both layouts can use them.
     public static let allCases: [SplitTemplate] = [
         .two, .three, .four, .five, .six, .stackLeft, .stackRight, .twoThirds, .threeQuarters, .oneQuarter,
     ]
 
+    /// What the tiling layout lists without `templates` in the config: the grids and the centered frame.
+    public static let tilingCases: [SplitTemplate] = allCases + [.centered]
+
     /// The built-in template with this name.
     public static func builtIn(named name: String) -> SplitTemplate? {
-        allCases.first { $0.name == name }
+        tilingCases.first { $0.name == name }
     }
 
     /// Why `cells` cannot be a template, or `nil` when they can: two or more cells that fill the unit square with
-    /// straight cuts (the tiling layout builds a split tree from them).
-    public static func shapeError(_ cells: [CGRect]) -> String? {
-        guard cells.count >= 2 else { return "a template needs at least two cells" }
+    /// straight cuts (the tiling layout builds a split tree from them). One cell is a frame: it is the whole unit square, and
+    /// `area` is smaller than the unit square. `area` stays inside the unit square.
+    public static func shapeError(_ cells: [CGRect], area: CGRect = unit) -> String? {
         let eps = 1e-9
-        let inside = cells.allSatisfy {
-            $0.width > eps && $0.height > eps && $0.minX > -eps && $0.minY > -eps && $0.maxX < 1 + eps && $0.maxY < 1 + eps
+        func inside(_ rect: CGRect) -> Bool {
+            rect.width > eps && rect.height > eps && rect.minX > -eps && rect.minY > -eps && rect.maxX < 1 + eps && rect.maxY < 1 + eps
         }
-        guard inside else { return "every cell needs a positive size and must stay inside 0 to 1" }
-        let area = cells.reduce(0.0) { $0 + Double($1.width * $1.height) }
-        guard abs(area - 1) < 1e-6, DwindleEngine.canPartition(cells) else {
+        guard inside(area) else { return "the area needs a positive size and must stay inside 0 to 1" }
+        let isWholeArea = abs(area.minX) < eps && abs(area.minY) < eps && abs(area.width - 1) < eps && abs(area.height - 1) < eps
+        if cells.count == 1, !isWholeArea {
+            let cell = cells[0]
+            let isUnit = abs(cell.minX) < eps && abs(cell.minY) < eps && abs(cell.width - 1) < eps && abs(cell.height - 1) < eps
+            return isUnit ? nil : "a template with one cell and an area needs the cell { 0, 0, 1, 1 }"
+        }
+        guard cells.count >= 2 else { return "a template needs at least two cells" }
+        guard cells.allSatisfy(inside) else { return "every cell needs a positive size and must stay inside 0 to 1" }
+        let total = cells.reduce(0.0) { $0 + Double($1.width * $1.height) }
+        guard abs(total - 1) < 1e-6, DwindleEngine.canPartition(cells) else {
             return "the cells must fill the screen with straight cuts and no overlap"
         }
         return nil
     }
 
     // A state file that an older version wrote has the name of a built-in template (a string) where this has the struct.
-    private enum CodingKeys: String, CodingKey { case name, key, title, cells }
+    private enum CodingKeys: String, CodingKey { case name, key, title, cells, area }
 
     public init(from decoder: Decoder) throws {
         if let name = try? decoder.singleValueContainer().decode(String.self) {
@@ -122,7 +149,8 @@ public struct SplitTemplate: Sendable, Equatable, Codable {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
             name: try values.decode(String.self, forKey: .name), key: try values.decodeIfPresent(String.self, forKey: .key),
-            title: try values.decode(String.self, forKey: .title), cells: try values.decode([CGRect].self, forKey: .cells))
+            title: try values.decode(String.self, forKey: .title), cells: try values.decode([CGRect].self, forKey: .cells),
+            area: try values.decodeIfPresent(CGRect.self, forKey: .area) ?? Self.unit)
     }
 
     /// The cell next to cell `index` in `direction`: the one that touches the edge on that side and overlaps it the

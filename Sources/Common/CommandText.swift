@@ -77,15 +77,15 @@ public struct WindowFlagError: Error, Equatable {
     }
 }
 
-/// Whether `text` names a window without an id: `focused`, `app:<name>`, `title:<regex>` or `pid:<number>`.
+/// Whether `text` names a window without an id: `focused`, `app:<name>`, `title:<regex>`, `mark:<name>` or `pid:<number>`.
 public func isWindowSelector(_ text: String) -> Bool {
     if text == "focused" { return true }
-    for prefix in ["app:", "title:"] where text.hasPrefix(prefix) { return text.count > prefix.count }
+    for prefix in ["app:", "title:", "mark:"] where text.hasPrefix(prefix) { return text.count > prefix.count }
     if text.hasPrefix("pid:") { return Int32(text.dropFirst(4)) != nil }
     return false
 }
 
-private let windowFlagHint = "a window id, or app:<name>, title:<regex>, pid:<n>, focused"
+private let windowFlagHint = "a window id, or app:<name>, title:<regex>, mark:<name>, pid:<n>, focused"
 
 /// Takes `--window <window>` or `--window=<window>` out of the arguments, wherever it is: `wm --window 5 close` and
 /// `wm close --window 5` mean the same. The window is an id (`windowId`) or a selector (`selector`, see

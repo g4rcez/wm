@@ -3,6 +3,17 @@ import Foundation
 
 public enum ScrollPhase: Sendable { case began, changed, ended, none }
 
+public enum MouseButton: Sendable { case left, right }
+public enum MouseEventKind: Sendable { case down, dragged, up }
+
+/// A mouse button press, drag step or release.
+public struct MouseEvent: Sendable {
+    public var kind: MouseEventKind
+    public var button: MouseButton
+    public var location: CGPoint
+    public var flags: CGEventFlags
+}
+
 /// Session event taps for hotkeys, trackpad scrolling and (when asked for) pointer movement. All handlers run on the main thread.
 /// A handler returns `true` to swallow the event.
 public final class EventTap: @unchecked Sendable {
@@ -11,6 +22,8 @@ public final class EventTap: @unchecked Sendable {
     public typealias ScrollHandler = @MainActor (_ dx: CGFloat, _ dy: CGFloat, _ flags: CGEventFlags, _ phase: ScrollPhase) -> Bool
     public typealias PointerHandler = @MainActor (_ location: CGPoint) -> Void
     public typealias ButtonHandler = @MainActor (_ isDown: Bool) -> Void
+    /// Return `true` to swallow the event. The left button also goes to `onButton`, unless this swallows it.
+    public typealias MouseHandler = @MainActor (_ event: MouseEvent) -> Bool
     public typealias FlagsHandler = @MainActor (_ flags: CGEventFlags) -> Void
 
     /// Events that this process posts carry this tag, so the tap lets them through.
@@ -23,6 +36,7 @@ public final class EventTap: @unchecked Sendable {
     public var onPointer: PointerHandler?
     /// Left mouse button pressed or released. The event is never swallowed.
     public var onButton: ButtonHandler?
+    public var onMouse: MouseHandler?
     /// A modifier key changed. The event is never swallowed: apps would be left with stuck modifiers.
     public var onFlags: FlagsHandler?
 
@@ -63,6 +77,10 @@ public final class EventTap: @unchecked Sendable {
             | (1 << CGEventType.scrollWheel.rawValue)
             | (1 << CGEventType.leftMouseDown.rawValue)
             | (1 << CGEventType.leftMouseUp.rawValue)
+            | (1 << CGEventType.leftMouseDragged.rawValue)
+            | (1 << CGEventType.rightMouseDown.rawValue)
+            | (1 << CGEventType.rightMouseUp.rawValue)
+            | (1 << CGEventType.rightMouseDragged.rawValue)
             | (1 << CGEventType.flagsChanged.rawValue)
         let callback: CGEventTapCallBack = { _, type, event, context in
             guard let context else { return Unmanaged.passUnretained(event) }
@@ -100,6 +118,11 @@ public final class EventTap: @unchecked Sendable {
         let pass = Unmanaged.passUnretained(event)
         switch type {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
+            // Keys that arrive while the tap is off go to macOS, not to the binds.
+            if ProcessInfo.processInfo.environment["WM_DEBUG"] != nil {
+                let reason = type == .tapDisabledByTimeout ? "timeout" : "user input"
+                FileHandle.standardError.write(Data("wm: the event tap was disabled by macOS (\(reason))\n".utf8))
+            }
             if let port { CGEvent.tapEnable(tap: port, enable: true) }
             if let pointerPort, pointerWanted { CGEvent.tapEnable(tap: pointerPort, enable: true) }
             return pass
@@ -125,8 +148,12 @@ public final class EventTap: @unchecked Sendable {
         case .mouseMoved:
             onPointer?(event.location)
             return pass
-        case .leftMouseDown, .leftMouseUp:
-            onButton?(type == .leftMouseDown)
+        case .leftMouseDown, .leftMouseUp, .leftMouseDragged, .rightMouseDown, .rightMouseUp, .rightMouseDragged:
+            let button: MouseButton = [.leftMouseDown, .leftMouseUp, .leftMouseDragged].contains(type) ? .left : .right
+            let kind: MouseEventKind = [.leftMouseDown, .rightMouseDown].contains(type) ? .down
+                : [.leftMouseUp, .rightMouseUp].contains(type) ? .up : .dragged
+            if onMouse?(MouseEvent(kind: kind, button: button, location: event.location, flags: event.flags)) == true { return nil }
+            if type == .leftMouseDown || type == .leftMouseUp { onButton?(type == .leftMouseDown) }
             return pass
         case .flagsChanged:
             onFlags?(event.flags)

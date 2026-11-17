@@ -69,8 +69,8 @@ public func renderOverview(monitors: [OverviewMonitor], workspaces: [OverviewWor
         lines.append(header)
         for window in workspace.windows {
             var row = "  " + (window.focused ? "* " : "  ")
-            row += String(window.id).padding(toLength: idWidth, withPad: " ", startingAt: 0)
-            row += "  " + window.app.padding(toLength: appWidth, withPad: " ", startingAt: 0)
+            row += String(window.id).padded(to: idWidth)
+            row += "  " + window.app.padded(to: appWidth)
             if !window.title.isEmpty { row += "  " + window.title }
             var marks: [String] = []
             if window.floating { marks.append("(floating)") }
@@ -79,8 +79,7 @@ public func renderOverview(monitors: [OverviewMonitor], workspaces: [OverviewWor
             if let strip = window.strip { marks.append("[\(strip)]") }
             if !marks.isEmpty { row += "  " + marks.joined(separator: " ") }
             // An app column pads short names; do not leave blanks at the end of the line.
-            while row.hasSuffix(" ") { row.removeLast() }
-            lines.append(row)
+            lines.append(row.withoutTrailingBlanks)
         }
     }
     return lines.joined(separator: "\n") + (lines.isEmpty ? "" : "\n")

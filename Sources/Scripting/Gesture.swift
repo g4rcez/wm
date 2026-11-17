@@ -9,16 +9,24 @@ public enum GestureDirection: String, Sendable, Equatable, CaseIterable {
 /// A swipe with a modifier held (`wm.gesture`): a two-finger scroll that goes far enough in one direction runs the
 /// command, once. macOS scroll events do not say how many fingers are down, so a gesture is a modifier and a direction.
 /// With natural scrolling (the macOS default) the direction is the direction of the fingers.
+///
+/// With `fingers` set (3 or 4) it is a swipe on the trackpad itself, read from the private MultitouchSupport framework:
+/// the finger count is known there. `modifiers` can still be required, and are empty when the swipe needs none.
 public struct Gesture: Sendable, Equatable {
     public var modifiers: Modifiers
+    public var fingers: Int?
     public var direction: GestureDirection
     public var action: BindAction
     /// How far the scroll has to go, in points.
     public var threshold: Double
     public var description: String?
 
-    public init(modifiers: Modifiers, direction: GestureDirection, action: BindAction, threshold: Double = 100, description: String? = nil) {
+    public init(
+        modifiers: Modifiers = [], fingers: Int? = nil, direction: GestureDirection, action: BindAction, threshold: Double = 100,
+        description: String? = nil
+    ) {
         self.modifiers = modifiers
+        self.fingers = fingers
         self.direction = direction
         self.action = action
         self.threshold = threshold
@@ -43,6 +51,7 @@ public struct GestureTracker: Sendable {
 
     private struct Session {
         var modifiers: Modifiers
+        var fingers: Int?
         var horizontal: Bool?
         var claimed = false
         var x = 0.0, y = 0.0
@@ -59,16 +68,19 @@ public struct GestureTracker: Sendable {
     public init() {}
 
     public mutating func scroll(
-        dx: Double, dy: Double, modifiers: Modifiers, phase: GesturePhase, time: TimeInterval, gestures: [Gesture]
+        dx: Double, dy: Double, modifiers: Modifiers, phase: GesturePhase, time: TimeInterval, gestures: [Gesture],
+        fingers: Int? = nil
     ) -> Outcome {
         if phase == .began { session = nil }
-        let matching = gestures.filter { $0.modifiers == modifiers }
+        let matching = gestures.filter { $0.modifiers == modifiers && $0.fingers == fingers }
         guard !matching.isEmpty else {
             session = nil
             return .ignored
         }
-        if let current = session, current.modifiers != modifiers || time - current.lastTime > Self.pause { session = nil }
-        var state = session ?? Session(modifiers: modifiers, lastTime: time)
+        if let current = session, current.modifiers != modifiers || current.fingers != fingers || time - current.lastTime > Self.pause {
+            session = nil
+        }
+        var state = session ?? Session(modifiers: modifiers, fingers: fingers, lastTime: time)
         state.lastTime = time
         defer { session = state }
 

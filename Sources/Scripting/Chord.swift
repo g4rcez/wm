@@ -8,6 +8,17 @@ public struct Modifiers: OptionSet, Sendable, Hashable {
     public static let control = Modifiers(rawValue: 1 << 1)
     public static let option = Modifiers(rawValue: 1 << 2)
     public static let command = Modifiers(rawValue: 1 << 3)
+
+    /// The display order of the modifiers, with the name and the symbol of each.
+    private static let displayOrder: [(modifier: Modifiers, name: String, symbol: String)] = [
+        (.control, "ctrl", "⌃"), (.option, "alt", "⌥"), (.shift, "shift", "⇧"), (.command, "cmd", "⌘"),
+    ]
+
+    /// The names of the modifiers in this set, in the order ctrl, alt, shift, cmd.
+    var names: [String] { Self.displayOrder.filter { contains($0.modifier) }.map(\.name) }
+
+    /// The symbols of the modifiers in this set, in the order ⌃⌥⇧⌘.
+    var symbols: String { Self.displayOrder.filter { contains($0.modifier) }.map(\.symbol).joined() }
 }
 
 /// A key combination. `key` is a canonical lowercase name such as `h`, `2`, `esc` or `leftsquarebracket`.
@@ -17,18 +28,17 @@ public struct Chord: Hashable, Sendable, CustomStringConvertible {
 
     /// Canonical display name such as `ctrl-alt-shift-cmd-p`: modifiers in the order ctrl, alt, shift, cmd, then the key.
     public var description: String {
-        var parts: [String] = []
-        if modifiers.contains(.control) { parts.append("ctrl") }
-        if modifiers.contains(.option) { parts.append("alt") }
-        if modifiers.contains(.shift) { parts.append("shift") }
-        if modifiers.contains(.command) { parts.append("cmd") }
-        parts.append(key)
-        return parts.joined(separator: "-")
+        (modifiers.names + [key]).joined(separator: "-")
     }
 
     public init(modifiers: Modifiers, key: String) {
         self.modifiers = modifiers
         self.key = key
+    }
+
+    /// The screenshot shortcuts of macOS: Cmd+Shift+3, 4, 5 or 6, also with Ctrl (the picture goes to the clipboard).
+    public var isScreenshotShortcut: Bool {
+        modifiers.isSuperset(of: [.command, .shift]) && !modifiers.contains(.option) && ["3", "4", "5", "6"].contains(key)
     }
 }
 

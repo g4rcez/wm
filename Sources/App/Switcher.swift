@@ -25,14 +25,24 @@ final class SwitcherController {
         var tiles: [SwitcherOverlay.Tile]
         /// The on-screen parts of the layout, in panel points like the tiles.
         var viewports: [CGRect]
-        /// The overview of all workspaces: one name per row, and `h j k l` move the selection.
-        var labels: [SwitcherOverlay.Label] = []
-        /// The workspace of each row of the overview, in the same order as `labels`.
-        var rowNames: [String] = []
-        var isOverview = false
-        /// The overview gives every window a key label (`nil` in the Alt+Tab switcher).
-        var hints: WindowHints?
+        /// The overview of all workspaces (the Alt+Tab switcher has none).
+        var overview: OverviewSession?
+        var isOverview: Bool { overview != nil }
+        /// `switcher --all`: every window of every workspace, most recent first.
+        var isAll = false
         var shown = false
+    }
+
+    /// What the overview panel shows, and what the search needs to filter it.
+    private struct OverviewSession {
+        var geometry: OverviewGeometry
+        var rows: [OverviewOverlay.RowInfo]
+        /// The workspace of each row, in the same order as `rows` (the last one is the new workspace).
+        var rowNames: [String]
+        var cards: [OverviewOverlay.Card]
+        /// What the search looks at in each window, in lower case: the title, the app, the workspace and the marks.
+        var haystacks: [WindowID: String]
+        var query = ""
     }
 
     /// The modifiers that keep the switcher open. Shift is not one of them: it only reverses Tab.
@@ -40,6 +50,9 @@ final class SwitcherController {
 
     private let manager: WindowManager
     private let overlay = SwitcherOverlay()
+    private let overviewOverlay = OverviewOverlay()
+    /// The search text that the overview opens with again after a window was closed from it.
+    private var pendingQuery = ""
     private let thumbnails = ThumbnailService()
     private var images: [WindowID: CGImage] = [:]
     private var session: Session?
@@ -48,6 +61,16 @@ final class SwitcherController {
     private var captureTask: Task<Void, Never>?
     private var lastFocused: WindowID?
     private var refreshTimer: Timer?
+    /// wm parks the windows of other workspaces off screen, where ScreenCaptureKit cannot see them (`ThumbnailService` falls
+    /// back to SkyLight for those). Pictures are also taken while the windows are visible, and kept for the overview: an
+    /// app that does not draw while it is parked leaves a stale picture.
+    private var visibleRefresh: Timer?
+    private var capturedAt: [WindowID: Date] = [:]
+    /// The window that `cmd-w` asked to close. When it is gone, the panel opens again without it.
+    private var closing: WindowID?
+
+    /// The last picture of a window, taken while it was on screen. The palette shows it as a preview.
+    func cachedImage(_ id: WindowID) -> CGImage? { images[id] }
 
     /// The modifiers of the key press that is being handled right now (empty for commands from the CLI or a URL).
     var chordFlags: () -> CGEventFlags = { [] }
@@ -58,10 +81,28 @@ final class SwitcherController {
             if let id { select(id); commit() } else { cancel() }
         }
         overlay.onDrop = { [unowned self] id, row in drop(id, onRow: row) }
+        // A click focuses the card that was clicked, also a dimmed one that the search does not select.
+        overviewOverlay.onClick = { [unowned self] id in
+            close()
+            if let id { manager.focus(id) }
+        }
+        overviewOverlay.onClose = { [unowned self] id in closeWindow(id) }
+        overviewOverlay.onHover = { [unowned self] id in if session?.model.selected != id { select(id) } }
+        overviewOverlay.onDrop = { [unowned self] id, row in drop(id, onRow: row) }
         manager.events.add { [unowned self] name, payload in
             switch name {
-            case "window_focus": windowFocused(payload["id"])
-            case "window_close": if case let .number(id)? = payload["id"] { images[WindowID(id)] = nil }
+            case "window_focus":
+                windowFocused(payload["id"])
+                scheduleVisibleRefresh()
+            case "workspace_changed", "window_open", "layout_changed", "config_reloaded": scheduleVisibleRefresh()
+            case "window_close":
+                guard case let .number(raw)? = payload["id"] else { break }
+                images[WindowID(raw)] = nil
+                capturedAt[WindowID(raw)] = nil
+                if closing == WindowID(raw) {
+                    closing = nil
+                    reopen()
+                }
             default: break
             }
         }
@@ -71,85 +112,202 @@ final class SwitcherController {
 
     // MARK: - Commands
 
-    /// `switcher`, `switcher next`, `switcher prev`, `switcher commit`, `switcher cancel`.
+    /// `switcher [next|prev|commit|cancel] [--all]`. With `--all` it lists the windows of all workspaces.
     func command(_ arguments: [String], preselect: WindowID? = nil) -> String? {
-        switch arguments.first {
-        case nil, "open":
-            if isOpen { step(1) } else { return open(preselect: preselect) }
-        case "next": if isOpen { step(1) } else { return open(preselect: preselect) }
-        case "prev": if isOpen { step(-1) } else { return open(reverse: true, preselect: preselect) }
+        let all = arguments.contains("--all")
+        let words = arguments.filter { $0 != "--all" }
+        switch words.first {
+        case nil, "open", "next":
+            if isOpen { step(1) } else { return open(preselect: preselect, all: all) }
+        case "prev": if isOpen { step(-1) } else { return open(reverse: true, preselect: preselect, all: all) }
         case "commit": commit()
         case "cancel": cancel()
-        default: return "usage: switcher [next|prev|commit|cancel]"
+        default: return "usage: switcher [next|prev|commit|cancel] [--all]"
         }
         return nil
     }
 
+    /// `switcher --all`: a row of tiles, one per window of every workspace, most recent first. Choosing one shows its
+    /// workspace.
+    private func openAll(reverse: Bool, preselect: WindowID?, hold: CGEventFlags?) -> String? {
+        guard let monitor = manager.focusedMonitor else { return "no monitor" }
+        let listed = manager.windows.filter { !$0.value.isOutOfLayout }.keys
+        let ids = manager.recent.filter { listed.contains($0) } + listed.filter { !manager.recent.contains($0) }.sorted()
+        let overview = Miniature.grid(ids, tile: CGSize(width: 320, height: 200), columns: min(max(ids.count, 1), 5), spacing: 24)
+        var model = SwitcherModel(overview: overview, floating: [:], mru: ids, focused: manager.focused)
+        guard model.selected != nil else { return "no windows to switch between" }
+        if reverse { model.step(-2) }
+        if let preselect { model.select(preselect) }
+        let error = present(model, floating: [], on: monitor, hold: hold ?? chordFlags().intersection(Self.holdMask))
+        session?.isAll = true
+        return error
+    }
+
+    /// After a reboot the layouts hold places for windows that have not opened yet. They have nothing to show.
+    private func withoutPlaceholders(_ overview: LayoutOverview) -> LayoutOverview {
+        LayoutOverview(frames: overview.frames.filter { manager.windows[$0.key] != nil }, viewports: overview.viewports)
+    }
+
+    /// `cmd-w` in the panel: the app is asked to close the selected window. The panel opens again when it is gone.
+    private func closeSelected() {
+        guard let id = session?.model.selected else { return }
+        closeWindow(id)
+    }
+
+    private func closeWindow(_ id: WindowID) {
+        guard let managed = manager.windows[id] else { return }
+        closing = id
+        manager.watcher(for: managed.info.pid)?.close(id)
+    }
+
+    private func reopen() {
+        guard let current = session else { return }
+        let hold = current.hold, wasOverview = current.isOverview, wasAll = current.isAll
+        pendingQuery = current.overview?.query ?? ""
+        close()
+        if wasOverview {
+            _ = overview()
+        } else {
+            _ = open(all: wasAll, hold: hold)
+        }
+    }
+
     /// Returns an error message when the switcher cannot open.
-    private func open(reverse: Bool = false, preselect: WindowID? = nil) -> String? {
+    private func open(reverse: Bool = false, preselect: WindowID? = nil, all: Bool = false, hold: CGEventFlags? = nil) -> String? {
+        if all { return openAll(reverse: reverse, preselect: preselect, hold: hold) }
         guard let monitor = manager.focusedMonitor, let workspace = manager.focusedWorkspace else { return "no monitor" }
         let context = manager.layoutContext(forWorkspace: workspace.name)
-        let overview = workspace.engine.overview(in: context, focused: manager.focused)
+        let overview = withoutPlaceholders(workspace.engine.overview(in: context, focused: manager.focused))
         var floating: [WindowID: CGRect] = [:]
-        for (id, window) in manager.windows where window.workspace == workspace.name && window.floating && !window.minimized {
+        for (id, window) in manager.windows where window.workspace == workspace.name && window.floating && !window.isOutOfLayout {
             floating[id] = manager.currentFrame(of: id) ?? window.info.frame
         }
         var model = SwitcherModel(overview: overview, floating: floating, mru: workspace.history, focused: manager.focused)
         guard model.selected != nil else { return "no windows to switch between" }
         if reverse { model.step(-2) }
         if let preselect { model.select(preselect) }
-        return present(model, floating: Set(floating.keys), on: monitor, hold: chordFlags().intersection(Self.holdMask))
+        return present(model, floating: Set(floating.keys), on: monitor, hold: hold ?? chordFlags().intersection(Self.holdMask))
     }
 
-    /// `overview`: opens the miniature of all workspaces, or closes it when it is open. Dragging a window onto the row
-    /// of another workspace moves it there; the last row (not with native desktops) is a new, empty workspace.
+    /// `overview`: opens the overview of all workspaces, or closes it when it is open. A row shows a workspace in its own
+    /// layout. Typing searches the windows, a click focuses one, and dragging a window onto another row moves it there;
+    /// the last row is a new, empty workspace.
     func overview(selecting wanted: WindowID? = nil) -> String? {
         if isOpen {
             cancel()
             return nil
         }
         guard let monitor = manager.focusedMonitor else { return "no monitor" }
-        // Native desktops that are not shown hold windows that wm cannot reach.
-        let shownDesktops = Set(manager.monitors.map { NativeWorkspaceName.desktop(of: $0.workspace) })
+        let shownNames = Set(manager.monitors.map(\.workspace))
         let names = manager.workspaces.keys
-            .filter { name in manager.windows.values.contains { $0.workspace == name && !$0.minimized } }
-            .filter { !manager.isNative || shownDesktops.contains(NativeWorkspaceName.desktop(of: $0)) }
+            .filter { name in shownNames.contains(name) || manager.windows.values.contains { $0.workspace == name && !$0.isOutOfLayout } }
             .sorted {
                 let special = (SpecialWorkspace.isSpecial($0), SpecialWorkspace.isSpecial($1))
                 return special.0 == special.1 ? $0.compare($1, options: .numeric) == .orderedAscending : special.1
             }
-        var parts: [LayoutOverview] = []
-        var floating: Set<WindowID> = []
+        var inputs: [OverviewRowInput] = []
+        var infos: [OverviewOverlay.RowInfo] = []
+        var cards: [OverviewOverlay.Card] = []
+        var haystacks: [WindowID: String] = [:]
         for name in names {
             let context = manager.layoutContext(forWorkspace: name)
-            var part = manager.workspace(name).engine.overview(in: context, focused: manager.focused)
+            let workspace = manager.workspace(name)
+            var part = withoutPlaceholders(workspace.engine.overview(in: context, focused: manager.focused))
             // A floating window is at a place on the screen; a scrolling strip shows the screen at its scroll position.
-            let scrolled = (part.viewports.first?.minX ?? context.viewport.minX) - context.viewport.minX
-            for (id, window) in manager.windows where window.workspace == name && window.floating && !window.minimized {
-                part.frames[id] = (window.floatFrame ?? window.info.frame).offsetBy(dx: scrolled, dy: 0)
+            let down = (workspace.engine as? ScrollingEngine)?.runsVertically(in: context) == true
+            let scrolledX = down ? 0 : (part.viewports.first?.minX ?? context.viewport.minX) - context.viewport.minX
+            let scrolledY = down ? (part.viewports.first?.minY ?? context.viewport.minY) - context.viewport.minY : 0
+            var floating: Set<WindowID> = []
+            for (id, window) in manager.windows where window.workspace == name && window.floating && !window.isOutOfLayout {
+                part.frames[id] = (window.floatFrame ?? window.info.frame).offsetBy(dx: scrolledX, dy: scrolledY)
                 floating.insert(id)
             }
-            parts.append(part)
+            inputs.append(OverviewRowInput(frames: part.frames, viewports: part.viewports, screen: context.viewport.size))
+            let count = part.frames.count
+            infos.append(OverviewOverlay.RowInfo(
+                name: name, subtitle: "\(workspace.kind.rawValue) · \(count == 0 ? "empty" : count == 1 ? "1 window" : "\(count) windows")",
+                isCurrent: manager.focusedWorkspace?.name == name, isEmpty: count == 0))
+            for id in part.frames.keys {
+                guard let window = manager.windows[id] else { continue }
+                let icon = NSRunningApplication(processIdentifier: window.info.pid)?.icon
+                cards.append(OverviewOverlay.Card(
+                    id: id, title: window.info.title, appName: window.info.appName, icon: icon, image: images[id], isFloating: floating.contains(id)))
+                haystacks[id] = ([window.info.title, window.info.appName, "workspace " + name] + manager.marks(of: id)).joined(separator: " ").lowercased()
+            }
         }
-        var rowNames = names
-        var rowTexts = names
-        if !manager.isNative {
-            // An empty screen at the end: a window dropped there goes to the first workspace that nobody uses.
-            let taken = Set(names).union(manager.monitors.map(\.workspace))
-            let fresh = (1...).lazy.map(String.init).first { !taken.contains($0) }!
-            parts.append(LayoutOverview(frames: [:], viewports: [CGRect(origin: .zero, size: monitor.workArea.size)]))
-            rowNames.append(fresh)
-            rowTexts.append("+ new workspace \(fresh)")
-        }
-        // The rows need room for their names: about 22 points of the panel, whatever the scale is.
-        let scale = fit(Miniature.rows(parts, spacing: 0).overview, on: monitor).a
-        let stacked = Miniature.rows(parts, spacing: 22 / scale)
-        var model = SwitcherModel(overview: stacked.overview, floating: [:], mru: manager.focusedWorkspace?.history ?? [], focused: manager.focused)
-        guard model.selected != nil else { return "no windows to show" }
-        if let focused = manager.focused { model.select(focused) }
+        guard !cards.isEmpty else { return "no windows to show" }
+        // An empty screen at the end: a window dropped there goes to the first workspace that nobody uses.
+        let taken = Set(names).union(shownNames)
+        let fresh = (1...).lazy.map(String.init).first { !taken.contains($0) }!
+        inputs.append(OverviewRowInput(frames: [:], viewports: [], screen: monitor.workArea.size))
+        infos.append(OverviewOverlay.RowInfo(name: fresh, subtitle: "new workspace", isNew: true))
+
+        let settings = manager.settings.switcher
+        let geometry = OverviewLayout.compute(
+            inputs, panelWidth: max(min(monitor.frame.width * min(settings.maxScale, 0.82), 1560), 640),
+            maxPanelHeight: monitor.frame.height * settings.maxScale)
+        let query = pendingQuery
+        pendingQuery = ""
+        let data = OverviewSession(geometry: geometry, rows: infos, rowNames: names + [fresh], cards: cards, haystacks: haystacks, query: query)
+        var model = overviewModel(data, matching: matches(in: data))
         if let wanted { model.select(wanted) }
-        let rows = zip(rowTexts, stacked.rows).map { SwitcherOverlay.Label(text: $0, frame: $1) }
-        return present(model, floating: floating, rows: rows, rowNames: rowNames, on: monitor, hold: [])
+        var next = Session(model: model, hold: [], monitorFrame: monitor.frame, panelSize: geometry.panel, tiles: [], viewports: [], overview: data)
+        next.shown = false
+        session = next
+        startTimers(delay: 0)
+        if settings.thumbnails, !ThumbnailService.hasPermission { ThumbnailService.requestOnce() }
+        return nil
+    }
+
+    /// The windows whose title, app, workspace or marks hold every word of the search. `nil` without a search.
+    private func matches(in data: OverviewSession) -> Set<WindowID>? {
+        let words = data.query.lowercased().split(separator: " ").map(String.init)
+        guard !words.isEmpty else { return nil }
+        return Set(data.cards.map(\.id).filter { id in words.allSatisfy { data.haystacks[id]?.contains($0) == true } })
+    }
+
+    /// The selection moves among the cards as they lie on the panel, the matching ones when there is a search. The most
+    /// recent window is first, so the best match is under the keys.
+    private func overviewModel(_ data: OverviewSession, matching: Set<WindowID>?) -> SwitcherModel {
+        let frames = data.geometry.cards.filter { matching?.contains($0.key) ?? true }
+        var model = SwitcherModel(overview: LayoutOverview(frames: frames, viewports: []), floating: [:], mru: manager.recent, focused: manager.focused)
+        if matching != nil, let first = model.order.first {
+            model.select(first)
+        } else if let focused = manager.focused {
+            model.select(focused)
+        }
+        return model
+    }
+
+    /// Typing in the overview: the search text changes, and the cards that do not match are dimmed.
+    private func setQuery(_ text: String) {
+        guard var current = session, var data = current.overview else { return }
+        data.query = text
+        let found = matches(in: data)
+        current.overview = data
+        current.model = overviewModel(data, matching: found)
+        session = current
+        guard current.shown else { return }
+        overviewOverlay.setSearch(text, matches: found, total: data.cards.count)
+        overviewOverlay.select(current.model.selected)
+    }
+
+    /// The character that a key adds to the search, or `nil` for a key that is not text.
+    private static func searchCharacter(_ key: String) -> String? {
+        switch key {
+        case "space": return " "
+        case "minus": return "-"
+        case "period": return "."
+        case "comma": return ","
+        case "slash": return "/"
+        default:
+            guard key.count == 1, let scalar = key.unicodeScalars.first, CharacterSet.alphanumerics.contains(scalar) else { return nil }
+            return key
+        }
+    }
+
+    private static func nsColor(_ color: Color) -> NSColor {
+        NSColor(red: color.red, green: color.green, blue: color.blue, alpha: color.alpha)
     }
 
     /// The transform that fits a layout into most of the screen; the overlay adds its own padding and title row.
@@ -157,17 +315,14 @@ final class SwitcherController {
         let settings = manager.settings.switcher
         let bounds = CGRect(
             x: 0, y: 0,
-            width: monitor.frame.width * settings.maxScale - 40,
-            height: monitor.frame.height * settings.maxScale - 70
+            width: monitor.frame.width * settings.maxScale - SwitcherOverlay.chromeSize.width,
+            height: monitor.frame.height * settings.maxScale - SwitcherOverlay.chromeSize.height
         )
         return Miniature.transform(fitting: Array(overview.frames.values) + overview.viewports, into: bounds, padding: 0, maxScale: 1)
     }
 
-    /// Opens the panel for a model. `rows` (the overview of all workspaces) are in the model's coordinate space.
-    private func present(
-        _ model: SwitcherModel, floating: Set<WindowID>, rows: [SwitcherOverlay.Label] = [], rowNames: [String] = [],
-        on monitor: Monitor, hold: CGEventFlags
-    ) -> String? {
+    /// Opens the Alt+Tab panel for a model.
+    private func present(_ model: SwitcherModel, floating: Set<WindowID>, on monitor: Monitor, hold: CGEventFlags) -> String? {
         let settings = manager.settings.switcher
         let rects = Array(model.frames.values) + model.viewports
         let fit = fit(LayoutOverview(frames: model.frames, viewports: model.viewports), on: monitor)
@@ -177,19 +332,17 @@ final class SwitcherController {
         let move = CGAffineTransform(translationX: -union.minX, y: -union.minY)
         func place(_ rect: CGRect) -> CGRect { rect.applying(fit).applying(move) }
 
-        let hints = rows.isEmpty ? nil : WindowHints(frames: model.frames)
         let tiles = model.frames.map { id, frame -> SwitcherOverlay.Tile in
             let info = manager.windows[id]?.info
             let icon = info.flatMap { NSRunningApplication(processIdentifier: $0.pid)?.icon }
             return SwitcherOverlay.Tile(
                 id: id, frame: place(frame), title: info?.title ?? "", appName: info?.appName ?? "",
-                icon: icon, image: images[id], isFloating: floating.contains(id), hint: hints?.labels[id]
+                icon: icon, image: images[id], isFloating: floating.contains(id), workspace: manager.windows[id]?.workspace ?? ""
             )
         }
-        let labels = rows.map { SwitcherOverlay.Label(text: $0.text, frame: place($0.frame)) }
         var next = Session(
             model: model, hold: hold, monitorFrame: monitor.frame, panelSize: union.size, tiles: tiles,
-            viewports: model.viewports.map(place), labels: labels, rowNames: rowNames, isOverview: !rows.isEmpty, hints: hints
+            viewports: model.viewports.map(place)
         )
         // A tap that is over before the switcher opens (the modifier is already up) just switches to the previous window.
         if !hold.isEmpty, EventTap.currentFlags().intersection(hold).isEmpty {
@@ -199,7 +352,7 @@ final class SwitcherController {
         }
         next.shown = false
         session = next
-        startTimers(delay: rows.isEmpty ? settings.delay : 0)
+        startTimers(delay: settings.delay)
         if settings.thumbnails, !ThumbnailService.hasPermission { ThumbnailService.requestOnce() }
         return nil
     }
@@ -209,26 +362,19 @@ final class SwitcherController {
     /// Handles a key press while the switcher is open. Returns `true` when the key is used up.
     func handleKey(_ key: String, flags: CGEventFlags) -> Bool {
         guard let session else { return false }
-        if session.isOverview, let direction = ["h": Direction.left, "j": .down, "k": .up, "l": .right][key] {
-            move(direction)
+        if key == "w", flags.contains(.maskCommand) {
+            closeSelected()
             return true
         }
-        if session.hints != nil, flags.intersection(Self.holdMask).isEmpty {
+        if let data = session.overview, flags.intersection(Self.holdMask).isEmpty {
+            // In the overview, text goes into the search.
             if key == "backspace" {
-                self.session?.hints?.deleteLast()
-                showHintPrefix()
+                setQuery(String(data.query.dropLast()))
                 return true
             }
-            switch self.session?.hints?.press(key) {
-            case .focus(let id)?:
-                select(id)
-                commit()
+            if let character = Self.searchCharacter(key) {
+                setQuery(data.query + character)
                 return true
-            case .pending?:
-                showHintPrefix()
-                return true
-            case .ignored?, nil:
-                break
             }
         }
         switch key {
@@ -237,7 +383,8 @@ final class SwitcherController {
         case "right": move(.right)
         case "up": move(.up)
         case "down": move(.down)
-        case "enter", "space": commit()
+        case "enter": commit()
+        case "space": if session.isOverview { return true } else { commit() }
         case "esc": cancel()
         default:
             // Any other key ends the switcher and is typed as usual.
@@ -245,6 +392,15 @@ final class SwitcherController {
             return false
         }
         return true
+    }
+
+    /// A mouse button went down at `point` (the screen, with the origin at the top left). A click outside the overview
+    /// closes it, and the click goes on to what is under it. This comes from the event tap, so it does not depend on the
+    /// overview window catching the click: a window with nothing drawn on it can let clicks through.
+    func pointerPressed(at point: CGPoint) {
+        guard let session, session.isOverview else { return }
+        let origin = session.monitorFrame.origin
+        if !overviewOverlay.panelFrame.offsetBy(dx: origin.x, dy: origin.y).contains(point) { close() }
     }
 
     func flagsChanged(_ flags: CGEventFlags) {
@@ -264,11 +420,6 @@ final class SwitcherController {
         refreshSelection()
     }
 
-    private func showHintPrefix() {
-        guard let session, session.shown else { return }
-        overlay.setHintPrefix(session.hints?.typed ?? "")
-    }
-
     private func select(_ id: WindowID) {
         session?.model.select(id)
         refreshSelection()
@@ -276,7 +427,7 @@ final class SwitcherController {
 
     private func refreshSelection() {
         guard let session, session.shown else { return }
-        overlay.select(session.model.selected)
+        if session.isOverview { overviewOverlay.select(session.model.selected) } else { overlay.select(session.model.selected) }
     }
 
     private func commit() {
@@ -291,12 +442,11 @@ final class SwitcherController {
     }
 
     /// A window was dropped on a row of the overview: it moves to that workspace and the overview opens again with the
-    /// new layout. The focus stays where it is. With native desktops only a row of the same desktop can be reached.
+    /// new layout. The focus stays where it is.
     private func drop(_ id: WindowID, onRow row: Int) {
-        guard let session, session.rowNames.indices.contains(row), let window = manager.windows[id] else { return }
-        let name = session.rowNames[row]
+        guard let rowNames = session?.overview?.rowNames, rowNames.indices.contains(row), let window = manager.windows[id] else { return }
+        let name = rowNames[row]
         guard name != window.workspace else { return }
-        if manager.isNative, NativeWorkspaceName.desktop(of: name) != NativeWorkspaceName.desktop(of: window.workspace) { return }
         close()
         manager.sendQuietly(id, to: name)
         _ = overview(selecting: id)
@@ -310,6 +460,7 @@ final class SwitcherController {
         pollTimer = nil
         session = nil
         overlay.hide()
+        overviewOverlay.hide()
     }
 
     // MARK: - Overlay and pictures
@@ -331,18 +482,55 @@ final class SwitcherController {
         guard var current = session, !current.shown else { return }
         current.shown = true
         session = current
-        overlay.show(
-            tiles: current.tiles, viewports: current.viewports, labels: current.labels, panelSize: current.panelSize,
-            selected: current.model.selected, settings: manager.settings.switcher, on: current.monitorFrame
-        )
+        if let data = current.overview {
+            let settings = manager.settings.switcher
+            overviewOverlay.show(
+                geometry: data.geometry, rows: data.rows, cards: data.cards, selected: current.model.selected, query: data.query,
+                accent: Self.nsColor(settings.selected), background: Self.nsColor(settings.background), on: current.monitorFrame)
+            if !data.query.isEmpty { overviewOverlay.setSearch(data.query, matches: matches(in: data), total: data.cards.count) }
+        } else {
+            overlay.show(
+                tiles: current.tiles, viewports: current.viewports, labels: [], panelSize: current.panelSize,
+                selected: current.model.selected, settings: manager.settings.switcher, on: current.monitorFrame
+            )
+        }
         guard manager.settings.switcher.thumbnails, ThumbnailService.hasPermission else { return }
-        let ids = current.tiles.map(\.id)
+        let ids = current.overview?.cards.map(\.id) ?? current.tiles.map(\.id)
         captureTask = Task { [thumbnails] in
             let captured = await thumbnails.capture(ids)
             guard !Task.isCancelled else { return }
             for (id, image) in captured {
                 images[id] = image
-                if session != nil { overlay.setImage(image, for: id) }
+                capturedAt[id] = Date()
+                if let current = session {
+                    if current.isOverview { overviewOverlay.setImage(image, for: id) } else { overlay.setImage(image, for: id) }
+                }
+            }
+        }
+    }
+
+    /// A second after the last change of focus or layout, the windows that are on screen get a new picture (at most one in 3
+    /// seconds each). A window that a workspace switch parks later keeps its last picture for the overview.
+    private func scheduleVisibleRefresh() {
+        guard manager.settings.switcher.thumbnails, ThumbnailService.hasPermission else { return }
+        visibleRefresh?.invalidate()
+        visibleRefresh = Timer.scheduledTimer(withTimeInterval: 1, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshVisible() }
+        }
+    }
+
+    private func refreshVisible() {
+        guard session == nil else { return }
+        let now = Date()
+        let ids = manager.windows.filter { id, window in
+            !window.isOutOfLayout && manager.isVisible(window.workspace) && now.timeIntervalSince(capturedAt[id] ?? .distantPast) > 3
+        }.map(\.key)
+        guard !ids.isEmpty else { return }
+        Task { [thumbnails] in
+            let captured = await thumbnails.capture(ids)
+            for (id, image) in captured {
+                images[id] = image
+                capturedAt[id] = Date()
             }
         }
     }

@@ -7,6 +7,15 @@ struct SavedWindow: Codable {
     var workspace: String
     var floating: Bool
     var floatFrame: CGRect?
+    /// Missing in a state that an older wm saved.
+    var marks: [String]?
+    /// The title and the place in the layout, to find the window again after a reboot (when the ids are new). Missing in a
+    /// state that an older wm saved.
+    var title: String?
+    var order: Int?
+    /// A sticky window (`window sticky`) and the monitor that it follows. Missing in a state that an older wm saved.
+    var sticky: Bool?
+    var stickyMonitor: UInt32?
 }
 
 struct SavedWorkspace: Codable {
@@ -19,18 +28,23 @@ struct SavedWorkspace: Codable {
 /// What the next daemon needs to put the windows that are still open back where they were.
 struct SavedState: Codable {
     static let currentVersion = 1
+    static let workspaceMode = "emulated"
 
     var version = currentVersion
-    /// `WorkspaceMode` raw value. A state saved in the other mode is not used.
+    /// A state saved by the removed native mode has another value, and is not used.
     var mode: String
     var windows: [SavedWindow]
     var workspaces: [String: SavedWorkspace]
     /// Display id to the workspace it showed.
     var monitors: [String: String]
-    var activeRows: [String: Int]
     /// The layouts that `wm.workspace` gave when the state was saved. A layout that the config changes since then wins
     /// over the saved one.
     var configLayouts: [String: LayoutKind]
+    /// When the Mac started. A state from another start has window ids that mean nothing. Missing in a state that an older
+    /// wm saved: it counts as the same start.
+    var bootTime: Double?
+    /// Display id to the name of the display, to find a display again after a reboot (its id can change).
+    var monitorNames: [String: String]?
 }
 
 enum StateStore {
@@ -55,6 +69,22 @@ enum StateStore {
             fputs("wmd: ignoring \(url.path): \(error)\n", stderr)
             return nil
         }
+    }
+
+    /// The time of the last start of the Mac, in seconds.
+    static func bootTime() -> Double? {
+        var mib = [CTL_KERN, KERN_BOOTTIME]
+        var value = timeval()
+        var size = MemoryLayout<timeval>.stride
+        guard sysctl(&mib, 2, &value, &size, nil, 0) == 0 else { return nil }
+        return Double(value.tv_sec)
+    }
+
+    /// Whether the window ids of a state are still the ones of the running system.
+    static func isSameBoot(_ saved: Double?) -> Bool {
+        guard let saved, let now = bootTime() else { return true }
+        // The clock can be adjusted by a few seconds without a reboot.
+        return abs(saved - now) < 30
     }
 
     static func encode(_ state: SavedState) throws -> Data {

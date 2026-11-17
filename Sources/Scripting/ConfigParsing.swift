@@ -54,6 +54,19 @@ struct Fields {
         return text
     }
 
+    /// A whole number (at least `min`) or a string, as text: a monitor or a workspace can be named by either.
+    func numberOrString(_ key: String, min: Int) throws -> String? {
+        if case .number? = values[key] { return String(try integer(key, min: min)!) }
+        return try string(key)
+    }
+
+    /// A list of numbers in `range` that has at least one item.
+    func nonEmptyNumbers(_ key: String, in range: ClosedRange<Double>) throws -> [Double]? {
+        guard let list = try numbers(key, in: range) else { return nil }
+        guard !list.isEmpty else { throw ConfigError(message: "\(owner): '\(dotted(key))' must not be empty") }
+        return list
+    }
+
     /// One of `options`, or a name in `aliases` (which gives the option that it stands for).
     func choice(_ key: String, _ options: [String], aliases: [String: String] = [:]) throws -> String? {
         guard let given = try string(key) else { return nil }
@@ -126,7 +139,8 @@ private func color(_ fields: Fields, _ key: String) throws -> Color? {
 /// The keys of `wm.config`. `types/wm.lua` must describe every one of them (a test checks it).
 let topLevelConfigKeys = [
     "layout", "workspaces", "gaps", "animations", "border", "focus_follows_mouse", "mouse_follows_focus",
-    "start_at_login", "wrap_focus", "tiling", "scrolling", "switcher", "prefix", "url", "tab_indicator", "binds",
+    "start_at_login", "wrap_focus", "mouse", "trackpad", "workspace_back_and_forth", "tiling", "scrolling", "switcher", "prefix", "url",
+    "tab_indicator", "binds", "zen", "master",
 ]
 
 /// Applies the keys that are present; keys that are absent keep their value, so two `wm.config` calls merge.
@@ -135,11 +149,37 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
     let top = try Fields(value, owner: owner, allowed: topLevelConfigKeys)
 
     if let name = try top.choice("layout", LayoutKind.allCases.map(\.rawValue)) { settings.layout = LayoutKind(rawValue: name)! }
-    if let name = try top.choice("workspaces", ["emulated", "native"]) { settings.workspaces = WorkspaceMode(rawValue: name)! }
-    if let flag = try top.bool("focus_follows_mouse") { settings.focusFollowsMouse = flag }
+    // `workspaces = "native"` (the macOS desktops) was removed. "emulated" is the only mode and stays valid.
+    _ = try top.choice("workspaces", ["emulated"])
+    switch top.values["focus_follows_mouse"] {
+    case nil: break
+    case .table?:
+        // The table form: `enabled` keeps its value when it is missing.
+        let fields = try top.table("focus_follows_mouse", allowed: ["enabled", "only_fully_visible"])!
+        if let flag = try fields.bool("enabled") { settings.focusFollowsMouse.enabled = flag }
+        if let flag = try fields.bool("only_fully_visible") { settings.focusFollowsMouse.onlyFullyVisible = flag }
+    default:
+        if let flag = try top.bool("focus_follows_mouse") { settings.focusFollowsMouse.enabled = flag }
+    }
     if let flag = try top.bool("mouse_follows_focus") { settings.mouseFollowsFocus = flag }
     if let flag = try top.bool("start_at_login") { settings.startAtLogin = flag }
     if let flag = try top.bool("wrap_focus") { settings.wrapFocus = flag }
+    if let trackpad = try top.table("trackpad", allowed: ["enabled", "scroll_fingers", "speed"]) {
+        if let flag = try trackpad.bool("enabled") { settings.trackpad.enabled = flag }
+        if let count = try trackpad.integer("scroll_fingers", min: 0) {
+            guard [0, 3, 4].contains(count) else { throw ConfigError(message: "wm.config: 'trackpad.scroll_fingers' must be 3, 4 or 0 (off)") }
+            settings.trackpad.scrollFingers = count
+        }
+        if let speed = try trackpad.number("speed", min: 0.1, max: 10) { settings.trackpad.speed = speed }
+    }
+    if let mouse = try top.table("mouse", allowed: ["move_modifier", "resize_modifier"]) {
+        for (key, assign) in [("move_modifier", \MouseSettings.moveModifier), ("resize_modifier", \MouseSettings.resizeModifier)] {
+            guard let text = try mouse.string(key) else { continue }
+            do { _ = try parseModifiers(text) } catch { throw ConfigError(message: "wm.config: 'mouse.\(key)' \(error)") }
+            settings.mouse[keyPath: assign] = text
+        }
+    }
+    if let flag = try top.bool("workspace_back_and_forth") { settings.workspaceBackAndForth = flag }
 
     if let gaps = try top.table("gaps", allowed: ["inner", "outer"]) {
         if let inner = try gaps.number("inner", min: 0) { settings.gaps.inner = CGFloat(inner) }
@@ -186,28 +226,32 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
         if let inactive = try color(tabs, "inactive") { settings.tabIndicator.inactive = inactive }
     }
 
-    if let tiling = try top.table("tiling", allowed: ["split_ratio", "preserve_split", "force_split", "split_width_multiplier", "templates"]) {
+    if let tiling = try top.table("tiling", allowed: ["split_ratio", "preserve_split", "force_split", "split_width_multiplier", "templates", "smart_split", "split_under_pointer"]) {
         if let list = try templates(tiling) { settings.tiling.templates = list }
         if let name = try tiling.choice("force_split", NewWindowSide.allCases.map(\.rawValue)) { settings.tiling.forceSplit = NewWindowSide(rawValue: name)! }
         if let factor = try tiling.number("split_width_multiplier", min: 0.1, max: 3) { settings.tiling.splitWidthMultiplier = factor }
         if let ratio = try tiling.number("split_ratio", min: 0.1, max: 0.9) { settings.tiling.splitRatio = ratio }
         if let flag = try tiling.bool("preserve_split") { settings.tiling.preserveSplit = flag }
+        if let flag = try tiling.bool("smart_split") { settings.tiling.smartSplit = flag }
+        if let flag = try tiling.bool("split_under_pointer") { settings.tiling.splitUnderPointer = flag }
     }
 
     if let scrolling = try top.table("scrolling", allowed: [
         "presets", "default_width", "center", "sliver_width", "sliver_height", "vertical",
         "always_center_single_column", "default_column_display", "preset_heights", "templates",
+        "single_window_fit", "visible_columns", "orientation",
     ]) {
         if let list = try templates(scrolling) { settings.scrolling.templates = list }
-        if let presets = try scrolling.numbers("presets", in: 0.05...1) {
-            guard !presets.isEmpty else { throw ConfigError(message: "\(owner): 'scrolling.presets' must not be empty") }
-            settings.scrolling.presets = presets
-        }
-        if let heights = try scrolling.numbers("preset_heights", in: 0.1...0.9) {
-            guard !heights.isEmpty else { throw ConfigError(message: "\(owner): 'scrolling.preset_heights' must not be empty") }
-            settings.scrolling.presetHeights = heights
-        }
+        if let presets = try scrolling.nonEmptyNumbers("presets", in: 0.05...1) { settings.scrolling.presets = presets }
+        if let heights = try scrolling.nonEmptyNumbers("preset_heights", in: 0.1...0.9) { settings.scrolling.presetHeights = heights }
         if let flag = try scrolling.bool("always_center_single_column") { settings.scrolling.alwaysCenterSingleColumn = flag }
+        if let name = try scrolling.choice("single_window_fit", SingleWindowFit.allCases.map(\.rawValue)) {
+            settings.scrolling.singleWindowFit = SingleWindowFit(rawValue: name)!
+        }
+        if let name = try scrolling.choice("orientation", ScrollOrientation.allCases.map(\.rawValue)) {
+            settings.scrolling.orientation = ScrollOrientation(rawValue: name)!
+        }
+        if let count = try scrolling.integer("visible_columns", min: 0) { settings.scrolling.visibleColumns = count }
         if let name = try scrolling.choice("default_column_display", ColumnDisplay.allCases.map(\.rawValue)) {
             settings.scrolling.defaultColumnDisplay = ColumnDisplay(rawValue: name)!
         }
@@ -252,8 +296,20 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
         }
     }
 
-    if let binds = try top.table("binds", allowed: ["long_press_timeout"]) {
+    if let binds = try top.table("binds", allowed: ["long_press_timeout", "disable_system_cmd_tab"]) {
         if let seconds = try binds.number("long_press_timeout", min: 0.1, max: 3) { settings.binds.longPressTimeout = seconds }
+        if let flag = try binds.bool("disable_system_cmd_tab") { settings.binds.disableSystemCmdTab = flag }
+    }
+
+    if let master = try top.table("master", allowed: ["ratio", "count", "orientation", "new_window"]) {
+        if let ratio = try master.number("ratio", min: MasterSettings.minRatio, max: MasterSettings.maxRatio) { settings.master.ratio = ratio }
+        if let count = try master.integer("count", min: 1) { settings.master.count = count }
+        if let name = try master.choice("orientation", MasterOrientation.allCases.map(\.rawValue)) { settings.master.orientation = MasterOrientation(rawValue: name)! }
+        if let name = try master.choice("new_window", MasterSettings.NewWindow.allCases.map(\.rawValue)) { settings.master.newWindow = MasterSettings.NewWindow(rawValue: name)! }
+    }
+
+    if let zen = try top.table("zen", allowed: ["width"]) {
+        if let width = try zen.number("width", min: ZenSettings.minWidth, max: 1) { settings.zen.width = width }
     }
 
     if let url = try top.table("url", allowed: ["allow"]), let allow = try url.strings("allow") {
@@ -262,7 +318,7 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
 }
 
 /// The `templates` list of the `tiling` or `scrolling` table: the patterns that the picker and the menu list.
-/// A template is `{ name, key?, title?, cells }`; `wm.templates` has the built-in ones in this shape.
+/// A template is `{ name, key?, title?, cells, area? }`; `wm.templates` has the built-in ones in this shape.
 private func templates(_ group: Fields) throws -> [SplitTemplate]? {
     guard let items = try group.list("templates") else { return nil }
     let list = (group.path + ["templates"]).joined(separator: ".")
@@ -271,7 +327,7 @@ private func templates(_ group: Fields) throws -> [SplitTemplate]? {
     var result: [SplitTemplate] = []
     for (index, item) in items.enumerated() {
         let at = "\(list)[\(index + 1)]"
-        let fields = try Fields(item, owner: group.owner, path: group.path + ["templates[\(index + 1)]"], allowed: ["name", "key", "title", "cells"])
+        let fields = try Fields(item, owner: group.owner, path: group.path + ["templates[\(index + 1)]"], allowed: ["name", "key", "title", "cells", "area"])
         guard let name = try fields.string("name"), !name.isEmpty else { throw fail(at + ".name", "is required, for example name = \"70/30\"") }
         guard !name.contains(where: \.isWhitespace), name != "chain" else {
             throw fail(at + ".name", "must have no spaces and must not be \"chain\"")
@@ -281,29 +337,35 @@ private func templates(_ group: Fields) throws -> [SplitTemplate]? {
             throw fail(at + ".key", "must be one of a-z or 0-9, and not \"c\" (the chain)")
         }
         guard let rows = try fields.list("cells") else { throw fail(at + ".cells", "is required, a list of { x, y, width, height }") }
-        let cells = try rows.enumerated().map { cellIndex, row -> CGRect in
-            guard case .array(let values) = row else { throw fail("\(at).cells[\(cellIndex + 1)]", "must be { x, y, width, height }") }
+        func rect(_ row: LuaValue, _ path: String) throws -> CGRect {
+            guard case .array(let values) = row else { throw fail(path, "must be { x, y, width, height }") }
             let numbers = values.compactMap { value -> Double? in
                 if case .number(let number) = value { number } else { nil }
             }
-            guard numbers.count == 4, values.count == 4 else {
-                throw fail("\(at).cells[\(cellIndex + 1)]", "must be { x, y, width, height }, four numbers")
-            }
+            guard numbers.count == 4, values.count == 4 else { throw fail(path, "must be { x, y, width, height }, four numbers") }
             return CGRect(x: numbers[0], y: numbers[1], width: numbers[2], height: numbers[3])
         }
-        if let problem = SplitTemplate.shapeError(cells) { throw fail(at + ".cells", "is not valid: " + problem) }
+        let cells = try rows.enumerated().map { cellIndex, row in try rect(row, "\(at).cells[\(cellIndex + 1)]") }
+        // The area is optional: the part of the screen that the cells fill (the middle two thirds, for example).
+        var area = SplitTemplate.unit
+        if let value = fields.values["area"], value != .nil { area = try rect(value, at + ".area") }
+        if let problem = SplitTemplate.shapeError(cells, area: area) {
+            throw fail(area == SplitTemplate.unit ? at + ".cells" : at + ".area", "is not valid: " + problem)
+        }
         if result.contains(where: { $0.name == name }) { throw fail(at + ".name", "\"\(name)\" is already in this list") }
         if let key, result.contains(where: { $0.key == key }) { throw fail(at + ".key", "\"\(key)\" is already in this list") }
-        result.append(SplitTemplate(name: name, key: key, title: try fields.string("title"), cells: cells))
+        result.append(SplitTemplate(name: name, key: key, title: try fields.string("title"), cells: cells, area: area))
     }
     return result
 }
 
 /// The options of `layout_options` in a workspace rule: the ones of `tiling` and of `scrolling` in `wm.config`, flat.
-private let tilingOptionKeys: Set<String> = ["split_ratio", "preserve_split", "force_split", "split_width_multiplier"]
+private let tilingOptionKeys: Set<String> = ["split_ratio", "preserve_split", "force_split", "split_width_multiplier", "smart_split", "split_under_pointer"]
+/// The options of the `master` table, in `layout_options` with a `master_` in front (`orientation` is also a scrolling option).
+private let masterOptionKeys: Set<String> = ["master_ratio", "master_count", "master_orientation", "master_new_window"]
 private let scrollingOptionKeys: Set<String> = [
     "presets", "default_width", "center", "sliver_width", "sliver_height", "vertical",
-    "always_center_single_column", "default_column_display", "preset_heights",
+    "always_center_single_column", "default_column_display", "preset_heights", "single_window_fit", "visible_columns", "orientation",
 ]
 
 /// Applies the overrides of a workspace rule (a table shaped like `wm.config`: `gaps`, `border`, `tiling`, `scrolling`)
@@ -317,10 +379,7 @@ func parseWorkspaceRule(name: String, _ value: LuaValue) throws -> WorkspaceRule
     guard !fields.values.isEmpty else { throw ConfigError(message: "wm.workspace: '\(name)' needs at least one option") }
     var rule = WorkspaceRule()
     if let layout = try fields.choice("layout", LayoutKind.allCases.map(\.rawValue)) { rule.layout = LayoutKind(rawValue: layout) }
-    switch fields.values["monitor"] {
-    case .number?: rule.monitor = String(try fields.integer("monitor", min: 1)!)
-    default: rule.monitor = try fields.string("monitor")
-    }
+    rule.monitor = try fields.numberOrString("monitor", min: 1)
     rule.isDefault = try fields.bool("default") ?? false
     if rule.isDefault, rule.monitor == nil {
         throw ConfigError(message: "wm.workspace: '\(name)' has 'default' and needs a 'monitor' too")
@@ -329,13 +388,20 @@ func parseWorkspaceRule(name: String, _ value: LuaValue) throws -> WorkspaceRule
     var overrides: [String: LuaValue] = [:]
     if let gaps = fields.values["gaps"] { overrides["gaps"] = gaps }
     if let border = try fields.bool("border") { overrides["border"] = .table(["enabled": .bool(border)]) }
-    if let options = try fields.table("layout_options", allowed: Array(tilingOptionKeys.union(scrollingOptionKeys))) {
-        var tiling: [String: LuaValue] = [:], scrolling: [String: LuaValue] = [:]
+    if let options = try fields.table("layout_options", allowed: Array(tilingOptionKeys.union(scrollingOptionKeys).union(masterOptionKeys))) {
+        var tiling: [String: LuaValue] = [:], scrolling: [String: LuaValue] = [:], master: [String: LuaValue] = [:]
         for (key, option) in options.values {
-            if tilingOptionKeys.contains(key) { tiling[key] = option } else { scrolling[key] = option }
+            if tilingOptionKeys.contains(key) {
+                tiling[key] = option
+            } else if masterOptionKeys.contains(key) {
+                master[String(key.dropFirst("master_".count))] = option
+            } else {
+                scrolling[key] = option
+            }
         }
         if !tiling.isEmpty { overrides["tiling"] = .table(tiling) }
         if !scrolling.isEmpty { overrides["scrolling"] = .table(scrolling) }
+        if !master.isEmpty { overrides["master"] = .table(master) }
     }
     if !overrides.isEmpty {
         // Check the values now, so a mistake is a config error and not a surprise later.
@@ -363,10 +429,7 @@ func parseRule(_ value: LuaValue) throws -> WindowRule {
         throw ConfigError(message: "wm.rule: 'title' is not a valid regular expression: \(title)")
     }
     rule.float = try fields.bool("float")
-    switch fields.values["workspace"] {
-    case .number?: rule.workspace = String(try fields.integer("workspace", min: 0)!)
-    default: rule.workspace = try fields.string("workspace")
-    }
+    rule.workspace = try fields.numberOrString("workspace", min: 0)
     if let name = try fields.choice("layout", LayoutKind.allCases.map(\.rawValue)) { rule.layout = LayoutKind(rawValue: name) }
     if let size = try fields.numbers("size", in: 0.000001...100_000) {
         guard size.count == 2 else { throw ConfigError(message: "wm.rule: 'size' must be { width, height }") }
@@ -376,10 +439,7 @@ func parseRule(_ value: LuaValue) throws -> WindowRule {
     rule.maximize = try fields.bool("maximize")
     rule.width = try fields.number("width", min: 0.05, max: 1)
     rule.focus = try fields.bool("focus")
-    switch fields.values["monitor"] {
-    case .number?: rule.monitor = String(try fields.integer("monitor", min: 1)!)
-    default: rule.monitor = try fields.string("monitor")
-    }
+    rule.monitor = try fields.numberOrString("monitor", min: 1)
     switch fields.values["run"] {
     case .string(let command)?: rule.commands = [command]
     case .some: rule.commands = try fields.strings("run") ?? []

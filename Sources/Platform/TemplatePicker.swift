@@ -17,9 +17,14 @@ public enum TemplateGlyph {
 
     /// Draws the picture in `rect` of a flipped (top-left origin) view.
     static func draw(_ template: SplitTemplate?, in rect: CGRect, color: NSColor) {
-        let cells: [CGRect]
+        var cells: [CGRect]
         if let template {
-            cells = template.cells
+            // The cells sit inside the area of the template (the middle two thirds, for `center`).
+            cells = template.cells.map {
+                CGRect(
+                    x: template.area.minX + $0.minX * template.area.width, y: template.area.minY + $0.minY * template.area.height,
+                    width: $0.width * template.area.width, height: $0.height * template.area.height)
+            }
         } else {
             // The chain: a row of tall columns, the way the strip looks.
             cells = (0..<4).map { CGRect(x: Double($0) / 4, y: 0, width: 0.25, height: 1) }

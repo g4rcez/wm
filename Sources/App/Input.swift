@@ -14,6 +14,8 @@ final class InputRouter {
     /// mode `*` (`universalMode`) holds the binds that work in every mode.
     var releaseBinds: [String: [Chord: BindAction]] = [:]
     var longPressBinds: [String: [Chord: BindAction]] = [:]
+    /// Binds that run for each repeat of a held key (`repeating = true`).
+    var holdBinds: [String: [Chord: BindAction]] = [:]
     var noRepeat: [String: Set<Chord>] = [:]
     /// Swipes with a modifier (`wm.gesture`).
     var gestures: [Gesture] = []
@@ -27,6 +29,9 @@ final class InputRouter {
     private var pendingMode = "main"
     /// Set by the app: the switcher takes over the keys while it is open.
     var switcher: SwitcherController?
+    /// While the palette is open its text field gets every key, so no bind runs. The `--cmdtab` palette takes Tab and the arrow
+    /// keys itself, so that macOS does not see its Cmd+Tab.
+    var palette: PaletteController?
     /// Set by the app: the template picker takes over the keys while it is open.
     var picker: TemplatePicker?
     /// The modifiers of the key press being handled (empty outside a key press), for commands that depend on them.
@@ -51,13 +56,21 @@ final class InputRouter {
         }
         tap.onScroll = { [unowned self] dx, dy, flags, phase in handleScroll(dx, dy, flags, phase) }
         tap.onPointer = { [unowned self] location in manager.pointerMoved(to: location) }
-        tap.onFlags = { [unowned self] flags in switcher?.flagsChanged(flags) }
+        tap.onFlags = { [unowned self] flags in
+            switcher?.flagsChanged(flags)
+            palette?.flagsChanged(flags)
+        }
         tap.onButton = { [unowned self] isDown in manager.mouseButton(isDown: isDown) }
+        tap.onMouse = { [unowned self] event in
+            if event.kind == .down { switcher?.pointerPressed(at: event.location) }
+            return manager.handleMouse(event)
+        }
         return tap.start()
     }
 
     private func handleKey(_ code: Int, _ flags: CGEventFlags, isRepeat: Bool) -> Bool {
         guard let key = KeyCodes.name(for: code) else { return false }
+        if let palette, palette.isOpen { return palette.handleKey(key, flags: flags) }
         if let switcher, switcher.isOpen { return switcher.handleKey(key, flags: flags) }
         if let picker, picker.isOpen { return picker.handleKey(key) }
         let chord = Chord(modifiers: Self.modifiers(of: flags), key: key)
@@ -87,6 +100,7 @@ final class InputRouter {
             press: binds[mode]?[chord] ?? binds[universalMode]?[chord],
             release: releaseBinds[mode]?[chord] ?? releaseBinds[universalMode]?[chord],
             longPress: longPressBinds[mode]?[chord] ?? longPressBinds[universalMode]?[chord],
+            hold: holdBinds[mode]?[chord] ?? holdBinds[universalMode]?[chord],
             noRepeat: (noRepeat[mode]?.contains(chord) ?? false) || (noRepeat[universalMode]?.contains(chord) ?? false))
     }
 
@@ -128,6 +142,57 @@ final class InputRouter {
         }
     }
 
+    // MARK: Trackpad swipes with 3 or 4 fingers
+
+    /// A swipe moves the strip by this many points per width of the pad (times `trackpad.speed`).
+    private static let pointsPerPad = 1500.0
+
+    private var fingerGestures = GestureTracker()
+    private var swipeFingers: Int?
+    /// A `wm.gesture` took the swipe: the strip does not scroll.
+    private var swipeClaimed = false
+
+    /// The events of `FingerTracker`. A gesture for the number of fingers claims the swipe on its axis; the rest of the
+    /// swipes scroll the strip when their number is `trackpad.scroll_fingers`, with momentum at the end.
+    func handleFinger(_ events: [FingerTracker.Event]) {
+        let settings = manager.settings.trackpad
+        let modifiers = Self.modifiers(of: EventTap.currentFlags())
+        let time = ProcessInfo.processInfo.systemUptime
+        for event in events {
+            switch event {
+            case .began(let fingers):
+                swipeFingers = fingers
+                swipeClaimed = false
+                _ = fingerGestures.scroll(dx: 0, dy: 0, modifiers: modifiers, phase: .began, time: time, gestures: gestures, fingers: fingers)
+            case .moved(let dx, let dy):
+                guard let fingers = swipeFingers else { continue }
+                let x = dx * Self.pointsPerPad * settings.speed, y = dy * Self.pointsPerPad * settings.speed
+                switch fingerGestures.scroll(dx: x, dy: y, modifiers: modifiers, phase: .changed, time: time, gestures: gestures, fingers: fingers) {
+                case .consumed: swipeClaimed = true
+                case .fire(let action):
+                    swipeClaimed = true
+                    perform(action, flags: EventTap.currentFlags())
+                case .ignored:
+                    if !swipeClaimed, fingers == settings.scrollFingers, manager.focusedWorkspace?.kind == .scrolling {
+                        scrollStrip(x, y)
+                    }
+                }
+            case .ended(let vx, let vy):
+                defer { swipeFingers = nil }
+                guard let fingers = swipeFingers, !swipeClaimed, fingers == settings.scrollFingers,
+                      manager.focusedWorkspace?.kind == .scrolling else { continue }
+                // The swipe goes on a little after the fingers lift, then the strip settles on a column.
+                scrollStrip(vx * Self.pointsPerPad * settings.speed * 0.12, vy * Self.pointsPerPad * settings.speed * 0.12)
+                manager.settleScroll()
+            }
+        }
+    }
+
+    private func scrollStrip(_ x: Double, _ y: Double) {
+        let delta = manager.focusedStrip == .vertical ? y : x
+        if delta != 0 { manager.scrollBy(-delta) }
+    }
+
     // MARK: Key sequences
 
     private func hasSequence(in mode: String, startingWith steps: [Chord]) -> Bool {
@@ -155,6 +220,9 @@ final class InputRouter {
         } else if hasSequence(in: pendingMode, startingWith: steps) {
             pending = steps
             updatePending()
+        } else if chord.isScreenshotShortcut {
+            // A screenshot of the key hints: macOS takes the keys, and the hints and the prefix stay as they are.
+            return false
         } else {
             cancelSequence()
         }
@@ -172,8 +240,8 @@ final class InputRouter {
     }
 
     /// Option + two-finger swipe scrolls a scrolling workspace; the strip settles on a column when the fingers lift.
-    /// The focused window's strip decides the axis: sideways swipes move the horizontal strip, up and down swipes the
-    /// vertical strip.
+    /// The focused window's strip decides the axis: sideways swipes move a strip that runs sideways, up and down swipes a
+    /// strip that runs down the screen.
     private func handleScroll(_ dx: CGFloat, _ dy: CGFloat, _ flags: CGEventFlags, _ phase: ScrollPhase) -> Bool {
         // A swipe that a gesture claims is the gesture's. The rest goes on to the scrolling of the strip.
         if !gestures.isEmpty {
@@ -206,15 +274,23 @@ final class InputRouter {
 }
 
 extension WindowManager {
-    /// The strip of the focused window on a scrolling workspace.
+    /// The screen axis along which the strip of the focused window scrolls: sideways on a normal screen, up and down for a
+    /// strip that runs down a portrait monitor, and the other way round for the side strip.
     var focusedStrip: Orientation? {
         guard let id = focused, let workspace = focusedWorkspace, let scrolling = workspace.engine as? ScrollingEngine else { return nil }
-        return scrolling.strip(of: id)
+        return scrolling.screenAxis(of: id, in: layoutContext(forWorkspace: workspace.name))
     }
 
     func pointerMoved(to location: CGPoint) {
-        guard settings.focusFollowsMouse, let id = window(at: location), id != focused else { return }
+        guard settings.focusFollowsMouse.enabled, let id = window(at: location), id != focused else { return }
+        if settings.focusFollowsMouse.onlyFullyVisible, !isFullyOnScreen(id) { return }
         focus(id, warpMouse: false)
+    }
+
+    /// Whether the window lies inside the work area of the monitor that shows its workspace (1 point of slack).
+    private func isFullyOnScreen(_ id: WindowID) -> Bool {
+        guard let managed = windows[id], let monitor = monitor(showing: managed.workspace), let frame = currentFrame(of: id) else { return false }
+        return monitor.workArea.insetBy(dx: -1, dy: -1).contains(frame)
     }
 
     func scrollBy(_ delta: CGFloat) {

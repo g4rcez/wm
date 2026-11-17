@@ -50,28 +50,61 @@ public enum MonitorGeometry {
         return CGPoint(x: right - 1, y: bottom - 1)
     }
 
+    /// `frame` moved the shortest way into `area`. A frame that is larger than the area lines up with its top-left corner.
+    public static func clamped(_ frame: CGRect, in area: CGRect) -> CGRect {
+        CGRect(
+            x: min(max(frame.minX, area.minX), max(area.minX, area.maxX - frame.width)),
+            y: min(max(frame.minY, area.minY), max(area.minY, area.maxY - frame.height)),
+            width: frame.width, height: frame.height)
+    }
+
+    /// The edges of `frame` that a drag starting at `point` takes hold of: the side of the centre that the point is on.
+    public static func nearestEdges(of frame: CGRect, to point: CGPoint) -> (horizontal: Direction, vertical: Direction) {
+        (point.x < frame.midX ? .left : .right, point.y < frame.midY ? .up : .down)
+    }
+
+    /// `frame` with its two edges moved by `delta` (the pointer's movement). The size never goes below `minimum`; the
+    /// edge that is not dragged stays where it is.
+    public static func resized(_ frame: CGRect, edges: (horizontal: Direction, vertical: Direction), by delta: CGPoint, minimum: CGSize) -> CGRect {
+        var result = frame
+        if edges.horizontal == .right {
+            result.size.width = max(frame.width + delta.x, minimum.width)
+        } else {
+            let width = max(frame.width - delta.x, minimum.width)
+            result.origin.x = frame.maxX - width
+            result.size.width = width
+        }
+        if edges.vertical == .down {
+            result.size.height = max(frame.height + delta.y, minimum.height)
+        } else {
+            let height = max(frame.height - delta.y, minimum.height)
+            result.origin.y = frame.maxY - height
+            result.size.height = height
+        }
+        return result
+    }
+
+    /// A window moves with its workspace to another monitor: it keeps its size (cut down to the new area) and its relative
+    /// place, so a window in the middle of one area stays in the middle of the other.
+    public static func translated(_ frame: CGRect, from old: CGRect, to new: CGRect) -> CGRect {
+        guard old.width > 0, old.height > 0 else { return clamped(frame, in: new) }
+        let size = CGSize(width: min(frame.width, new.width), height: min(frame.height, new.height))
+        let origin = CGPoint(
+            x: new.minX + (frame.minX - old.minX) / old.width * new.width,
+            y: new.minY + (frame.minY - old.minY) / old.height * new.height)
+        return clamped(CGRect(origin: origin, size: size), in: new)
+    }
+
+    /// Where a floating window that is mostly outside `area` should go: cut down to the size of the area when it is larger,
+    /// then moved inside. `nil` when at least half of the window is inside already.
+    public static func rescued(_ frame: CGRect, in area: CGRect) -> CGRect? {
+        let visible = frame.intersection(area)
+        if !visible.isNull, visible.width * visible.height * 2 >= frame.width * frame.height { return nil }
+        let fitted = CGRect(origin: frame.origin, size: CGSize(width: min(frame.width, area.width), height: min(frame.height, area.height)))
+        return clamped(fitted, in: area)
+    }
+
     private static func distance(_ monitor: MonitorFrame, _ point: CGPoint) -> CGFloat {
         hypot(monitor.frame.midX - point.x, monitor.frame.midY - point.y)
-    }
-}
-
-/// Workspace names in native mode. A desktop is "2" (or "2.3" on the second display); its virtual rows after the
-/// first are "2/2", "2/3", ...
-public enum NativeWorkspaceName {
-    public static func desktops(displayNumber: Int, displayCount: Int, desktopCount: Int) -> [String] {
-        let prefix = displayCount > 1 ? "\(displayNumber)." : ""
-        return (1...max(desktopCount, 1)).prefix(desktopCount).map { prefix + String($0) }
-    }
-
-    public static func row(of desktop: String, _ row: Int) -> String {
-        row <= 1 ? desktop : "\(desktop)/\(row)"
-    }
-
-    public static func desktop(of workspace: String) -> String {
-        String(workspace.split(separator: "/", maxSplits: 1).first ?? "")
-    }
-
-    public static func rowNumber(of workspace: String) -> Int {
-        workspace.split(separator: "/", maxSplits: 1).dropFirst().first.flatMap { Int($0) } ?? 1
     }
 }

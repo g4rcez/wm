@@ -84,4 +84,18 @@ public enum Miniature {
         }
         return (combined, rows)
     }
+
+    /// The windows as equal tiles in rows of `columns`, in the order given (a Cmd-Tab style list). There are no on-screen
+    /// parts to outline, so `viewports` is empty.
+    public static func grid(_ ids: [WindowID], tile: CGSize, columns: Int, spacing: CGFloat = 0) -> LayoutOverview {
+        let columns = max(columns, 1)
+        var frames: [WindowID: CGRect] = [:]
+        for (index, id) in ids.enumerated() {
+            let column = index % columns, row = index / columns
+            frames[id] = CGRect(
+                x: CGFloat(column) * (tile.width + spacing), y: CGFloat(row) * (tile.height + spacing),
+                width: tile.width, height: tile.height)
+        }
+        return LayoutOverview(frames: frames, viewports: [])
+    }
 }

@@ -15,6 +15,7 @@ final class AppController: HostBridge, @unchecked Sendable {
     private let broadcaster = Broadcaster()
     private(set) var input: InputRouter!
     private(set) var switcher: SwitcherController!
+    @MainActor private(set) var palette: PaletteController!
     /// The window that `tile` with no argument (the picker) applies the chosen pattern to.
     @MainActor private var pickerTarget: WindowID?
     @MainActor private lazy var picker: TemplatePicker = {
@@ -24,6 +25,9 @@ final class AppController: HostBridge, @unchecked Sendable {
         }
         return picker
     }()
+    @MainActor private lazy var trackpad = TrackpadInput { [unowned self] events in input.handleFinger(events) }
+    private let menuReader = MenuReader()
+    @MainActor private lazy var menuPopup = MenuPopup()
     private lazy var host = LuaHost(bridge: self)
     private var server: SocketServer?
     /// Called on the main actor when a config error appears or clears.
@@ -46,6 +50,12 @@ final class AppController: HostBridge, @unchecked Sendable {
         )
         switcher = SwitcherController(manager: manager)
         input.switcher = switcher
+        palette = PaletteController(
+            manager: manager, reader: menuReader,
+            cachedImage: { [unowned switcher = switcher!] id in switcher.cachedImage(id) },
+            run: { [unowned self] words in run(words) },
+            notify: { [unowned self] text in onNotify(text, 3) })
+        input.palette = palette
         input.picker = picker
         switcher.chordFlags = { [unowned input = input!] in input.currentFlags }
         manager.runRuleCommand = { [unowned self] command, window in _ = run(command, target: window) }
@@ -91,6 +101,39 @@ final class AppController: HostBridge, @unchecked Sendable {
         return answer
     }
 
+    /// `menu`: the menus of the app of the window (the focused app without one), as a pop-up at the pointer. The read goes on
+    /// in the background, so the command returns at once.
+    @MainActor private func showMenu(of target: WindowID?) -> ServerAnswer {
+        let pid: pid_t
+        if let id = target ?? manager.focused, let managed = manager.windows[id] {
+            pid = managed.info.pid
+        } else if let front = NSWorkspace.shared.frontmostApplication {
+            pid = front.processIdentifier
+        } else {
+            return fail("there is no app to show the menus of")
+        }
+        let reader = menuReader
+        Task { @MainActor in
+            guard let tree = await reader.read(pid: pid) else {
+                onNotify("This app has no menus that wm can read", 2)
+                return
+            }
+            menuPopup.show(tree) { token in
+                NSRunningApplication(processIdentifier: pid)?.activate()
+                // The app needs a moment to become active before it takes the press.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { reader.press(token: token) }
+            }
+        }
+        return ok()
+    }
+
+    /// Starts or stops the reading of the trackpad. A reload starts it again, to find a trackpad that was connected later.
+    @MainActor private func updateTrackpad(_ settings: TrackpadSettings) {
+        trackpad.stop()
+        guard settings.enabled else { return }
+        if !trackpad.start() { onNotify("wm: trackpad gestures need MultitouchSupport and a trackpad", 3) }
+    }
+
     @MainActor private func stateLine() -> String {
         let workspace = manager.focusedWorkspace
         var parts = ["workspace \(workspace?.name ?? "-") (\(workspace?.kind.rawValue ?? "-"))"]
@@ -109,6 +152,10 @@ final class AppController: HostBridge, @unchecked Sendable {
             }
         case "overview":
             return onMain { switcher.overview().map { fail($0) } ?? ok() }
+        case "menu":
+            return onMain { showMenu(of: target) }
+        case "palette":
+            return onMain { palette.command(Array(args.dropFirst())).map { fail($0, 2, usage: "palette") } ?? ok() }
         case "layout" where args == ["layout", "tile"]:
             return onMain {
                 guard let monitor = manager.focusedMonitor else { return fail("there is no monitor") }
@@ -247,7 +294,8 @@ final class AppController: HostBridge, @unchecked Sendable {
             return fail("\(error)")
         }
         manager.apply(settings: next, rules: manager.rules, workspaceLayouts: manager.workspaceLayouts, workspaceRules: manager.workspaceRules)
-        input.tap.setPointerTracking(next.focusFollowsMouse)
+        input.tap.setPointerTracking(next.focusFollowsMouse.enabled)
+        updateTrackpad(next.trackpad)
         return ok()
     }
 
@@ -351,6 +399,20 @@ final class AppController: HostBridge, @unchecked Sendable {
         }
     }
 
+    /// `binds.disable_system_cmd_tab`: macOS's own Cmd+Tab is off while the config asks for it. Only a change calls macOS.
+    private var systemCmdTabDisabled = false
+
+    @MainActor private func setSystemCmdTab(disabled: Bool) {
+        guard disabled != systemCmdTabDisabled else { return }
+        systemCmdTabDisabled = disabled
+        SystemShortcuts.setCommandTab(enabled: !disabled)
+    }
+
+    /// Gives macOS its Cmd+Tab back. Runs when the daemon quits.
+    @MainActor func restoreSystemShortcuts() {
+        setSystemCmdTab(disabled: false)
+    }
+
     @MainActor private func apply(_ loaded: LoadedConfig) {
         manager.modeNames = Set(loaded.binds.keys).subtracting([universalMode]).union(["main"])
         _ = manager.setMode("main")
@@ -359,13 +421,16 @@ final class AppController: HostBridge, @unchecked Sendable {
         input.sequences = loaded.sequences
         input.releaseBinds = loaded.releaseBinds
         input.longPressBinds = loaded.longPressBinds
+        input.holdBinds = loaded.holdBinds
+        setSystemCmdTab(disabled: loaded.settings.binds.disableSystemCmdTab)
         input.noRepeat = loaded.noRepeat
         input.gestures = loaded.gestures
         bindRecords = loaded.bindRecords
         manager.apply(
             settings: loaded.settings, rules: loaded.rules, workspaceLayouts: loaded.workspaceLayouts,
             workspaceRules: loaded.workspaceRules)
-        input.tap.setPointerTracking(loaded.settings.focusFollowsMouse)
+        input.tap.setPointerTracking(loaded.settings.focusFollowsMouse.enabled)
+        updateTrackpad(loaded.settings.trackpad)
         updateStartAtLogin(loaded.settings.startAtLogin)
         manager.events.emit("config_reloaded")
     }

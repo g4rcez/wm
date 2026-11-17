@@ -1,9 +1,11 @@
 import CoreGraphics
 import Core
 import Foundation
+import PrivateApi
 @preconcurrency import ScreenCaptureKit
 
-/// Takes pictures of single windows with ScreenCaptureKit for the window switcher.
+/// Takes pictures of single windows with ScreenCaptureKit for the window switcher, the overview and the palette. A window
+/// that ScreenCaptureKit cannot give (one that wm parked off screen) comes from SkyLight instead.
 /// It never calls ScreenCaptureKit without the Screen Recording permission, because that would show the system prompt.
 public actor ThumbnailService {
     private struct Image: @unchecked Sendable { let value: CGImage }
@@ -30,7 +32,7 @@ public actor ThumbnailService {
     /// Windows that fail or give a blank picture are left out, so the caller keeps the image it has.
     public func capture(_ ids: [WindowID], maxPixel: Int = 480) async -> [WindowID: CGImage] {
         guard Self.hasPermission, !ids.isEmpty, maxPixel > 0 else { return [:] }
-        guard let windows = await resolve(ids) else { return [:] }
+        let windows = await resolve(ids) ?? []
 
         var result: [WindowID: CGImage] = [:]
         await withTaskGroup(of: (WindowID, Image?).self) { group in
@@ -45,7 +47,36 @@ public actor ThumbnailService {
                 addNext()
             }
         }
+        let missing = ids.filter { result[$0] == nil }
+        if !missing.isEmpty {
+            await withTaskGroup(of: (WindowID, Image?).self) { group in
+                for id in missing { group.addTask { (id, Self.shootOffScreen(id, maxPixel: maxPixel)) } }
+                for await (id, image) in group { if let image { result[id] = image.value } }
+            }
+        }
         return result
+    }
+
+    /// The picture of a window that is not on screen. Blank pictures are left out, like in `shoot`.
+    private static func shootOffScreen(_ id: WindowID, maxPixel: Int) -> Image? {
+        guard let image = wm_capture_window(id), let scaled = scaled(image, maxPixel: maxPixel), !isBlank(scaled) else { return nil }
+        return Image(value: scaled)
+    }
+
+    /// The image with its longest side at most `maxPixel`.
+    private static func scaled(_ image: CGImage, maxPixel: Int) -> CGImage? {
+        let longest = max(image.width, image.height)
+        guard longest > 0 else { return nil }
+        guard longest > maxPixel else { return image }
+        let factor = CGFloat(maxPixel) / CGFloat(longest)
+        let width = max(1, Int((CGFloat(image.width) * factor).rounded())), height = max(1, Int((CGFloat(image.height) * factor).rounded()))
+        guard let context = CGContext(
+            data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
+        ) else { return nil }
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return context.makeImage()
     }
 
     /// Finds the `SCWindow` of each id. The cached list is refreshed once when an id is missing.

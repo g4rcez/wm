@@ -24,6 +24,9 @@ extension ScrollingEngine {
         var template: SplitTemplate?
         /// Relative size of each window along the cross axis. Missing means 1.
         var shares: [WindowID: Double] = [:]
+        /// The size was set by a command or a resize. A lone lane that has one keeps it, and does not fill the zone
+        /// (`single_window_fit = "fill"`). Optional, so that a saved state without it still loads.
+        var userSized: Bool?
 
         /// Cross-axis fraction of every window, in lane order. They add up to 1.
         func crossFractions() -> [Double] {
@@ -59,6 +62,10 @@ extension ScrollingEngine {
         var hold: Hold?
         /// A strip with one lane centres it, even when it is shorter than the zone. Set from the settings.
         var centersSingleLane = false
+        /// A lone lane fills the zone (`single_window_fit = "fill"`). Set from the settings.
+        var fillsSingleLane = false
+        /// With 2 or more lanes but fewer than this number, the lanes grow in proportion to fill the zone. 0 is off.
+        var visibleLanes = 0
 
         init(axis: Orientation) { self.axis = axis }
 
@@ -128,9 +135,17 @@ extension ScrollingEngine {
 
         mutating func setSize(of lane: Int, to fraction: Double) -> Bool {
             let value = Self.clampedSize(fraction)
-            guard abs(value - lanes[lane].size) > 1e-9 else { return false }
+            // A lone lane that filled the zone now shows the size that was chosen, even when it is the stored one.
+            let wasFilling = fillsLone(lane)
+            lanes[lane].userSized = true
+            guard abs(value - lanes[lane].size) > 1e-9 else { return wasFilling }
             lanes[lane].size = value
             return true
+        }
+
+        /// The lane is alone and the zone shows it at full size because of `single_window_fit = "fill"`.
+        func fillsLone(_ lane: Int) -> Bool {
+            lanes.count == 1 && fillsSingleLane && lanes[lane].userSized != true
         }
 
         /// Moves `delta` (a fraction of the cross length) from the neighbour after the window, or before it for the
@@ -158,14 +173,20 @@ extension ScrollingEngine {
         mutating func fit() -> Bool {
             let before = lanes
             let size = Self.clampedSize(1 / Double(lanes.count))
-            for index in lanes.indices { lanes[index].size = size }
+            for index in lanes.indices {
+                lanes[index].size = size
+                lanes[index].userSized = true
+            }
             return lanes != before
         }
 
         mutating func matchSize(of lane: Int) -> Bool {
             let before = lanes
             let size = lanes[lane].size
-            for index in lanes.indices { lanes[index].size = size }
+            for index in lanes.indices {
+                lanes[index].size = size
+                lanes[index].userSized = true
+            }
             return lanes != before
         }
 
@@ -182,22 +203,31 @@ extension ScrollingEngine {
         }
 
         /// Joins the window to the lane before its own (the column on the left, the row above).
-        mutating func stack(_ window: WindowID, at: Location) -> Bool {
-            guard at.lane > 0, lanes[at.lane].template == nil, lanes[at.lane - 1].template == nil else { return false }
+        mutating func stack(_ window: WindowID, at: Location, toward direction: Direction = .left) -> Bool {
+            let target = at.lane + Self.step(direction)
+            guard lanes.indices.contains(target), lanes[at.lane].template == nil, lanes[target].template == nil else { return false }
             lanes[at.lane].windows.remove(at: at.index)
             lanes[at.lane].shares = [:]
-            lanes[at.lane - 1].windows.append(window)
-            lanes[at.lane - 1].shares = [:]
+            lanes[target].windows.append(window)
+            lanes[target].shares = [:]
             if lanes[at.lane].windows.isEmpty { lanes.remove(at: at.lane) }
             return true
         }
 
-        /// Pulls the window out into its own lane after its lane.
-        mutating func unstack(_ window: WindowID, at: Location, size: Double, tabbed: Bool = false) -> Bool {
+        /// Pulls the window out into its own lane before or after its lane, as `direction` says.
+        mutating func unstack(_ window: WindowID, at: Location, size: Double, tabbed: Bool = false, toward direction: Direction = .right) -> Bool {
             guard lanes[at.lane].windows.count > 1, lanes[at.lane].template == nil else { return false }
             lanes[at.lane].windows.remove(at: at.index)
             lanes[at.lane].shares = [:]
-            lanes.insert(Lane(windows: [window], size: size, tabbed: tabbed), at: at.lane + 1)
+            let position = Self.step(direction) < 0 ? at.lane : at.lane + 1
+            lanes.insert(Lane(windows: [window], size: size, tabbed: tabbed), at: position)
+            return true
+        }
+
+        /// Moves a lane to another place in the strip. A lane of a template moves like any other.
+        mutating func moveLane(_ from: Int, to index: LaneIndex) -> Bool {
+            guard let target = index.resolve(count: lanes.count), target != from else { return false }
+            lanes.insert(lanes.remove(at: from), at: target)
             return true
         }
 
@@ -248,13 +278,45 @@ extension ScrollingEngine {
 
         // MARK: Scrolling
 
+        /// How much the stored sizes grow to fill the zone: more than 1 only with `visibleLanes` and fewer lanes than that.
+        /// The stored sizes stay as they are, so the chosen widths come back when enough lanes exist.
+        var fillScale: Double {
+            guard visibleLanes > 0, lanes.count >= 2, lanes.count < visibleLanes else { return 1 }
+            let total = lanes.reduce(0) { $0 + $1.size }
+            return total > 1e-9 && total < 1 - 1e-9 ? 1 / total : 1
+        }
+
+        /// The size of every lane as the zone shows it.
+        func displaySizes() -> [Double] {
+            if fillsLone(0) { return [Self.maxSize] }
+            let scale = fillScale
+            return lanes.map { $0.size * scale }
+        }
+
         func span(of lane: Int, length: CGFloat) -> (start: CGFloat, size: CGFloat) {
-            let start = lanes[..<lane].reduce(0) { $0 + CGFloat($1.size) * length }
-            return (start, CGFloat(lanes[lane].size) * length)
+            let sizes = displaySizes()
+            let start = sizes[..<lane].reduce(0) { $0 + CGFloat($1) * length }
+            return (start, CGFloat(sizes[lane]) * length)
         }
 
         func totalLength(_ length: CGFloat) -> CGFloat {
-            lanes.reduce(0) { $0 + CGFloat($1.size) * length }
+            displaySizes().reduce(0) { $0 + CGFloat($1) * length }
+        }
+
+        /// The lane grows to take the room that the other lanes on screen leave free. `false` when it would not grow.
+        mutating func expand(lane: Int, length: CGFloat) -> Bool {
+            guard lanes[lane].template == nil else { return false }
+            let sizes = displaySizes()
+            var others = 0.0
+            for index in lanes.indices where index != lane {
+                let span = span(of: index, length: length)
+                if span.start >= scrollOffset - Self.tolerance, span.start + span.size <= scrollOffset + length + Self.tolerance {
+                    others += sizes[index]
+                }
+            }
+            let target = Self.clampedSize(1 - others)
+            guard target > sizes[lane] + 1e-9 else { return false }
+            return setSize(of: lane, to: target / fillScale)
         }
 
         /// Keeps the strip from showing empty space at either end. A strip shorter than the zone sits at the start,

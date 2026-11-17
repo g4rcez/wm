@@ -16,11 +16,14 @@ public final class SwitcherOverlay {
         public var isFloating: Bool
         /// The keys that focus this window (the overview of all workspaces).
         public var hint: String?
+        /// The workspace of the window. The header shows it for the selected tile.
+        public var workspace: String
 
         public init(
             id: WindowID, frame: CGRect, title: String, appName: String,
-            icon: NSImage? = nil, image: CGImage? = nil, isFloating: Bool = false, hint: String? = nil
+            icon: NSImage? = nil, image: CGImage? = nil, isFloating: Bool = false, hint: String? = nil, workspace: String = ""
         ) {
+            self.workspace = workspace
             self.id = id
             self.frame = frame
             self.title = title
@@ -51,8 +54,10 @@ public final class SwitcherOverlay {
     public var isShown: Bool { panel.isVisible }
 
     private static let padding: CGFloat = 20
-    private static let titleHeight: CGFloat = 30
+    private static let titleHeight: CGFloat = 52
     private static let cornerRadius: CGFloat = 18
+    /// What the panel adds around the miniature, so the caller can leave room: padding at both sides, and the header.
+    public static let chromeSize = CGSize(width: 2 * padding, height: 2 * padding + titleHeight)
 
     private let panel = SwitcherPanel()
     private let clickView = ClickView()
@@ -60,6 +65,10 @@ public final class SwitcherOverlay {
     private let host = NSView()
     private let tint = CALayer()
     private let titleLayer = CATextLayer()
+    /// The workspace of the selected window: a rounded chip at the left of the header.
+    private let workspaceChip = CALayer()
+    private let workspaceText = CATextLayer()
+    private var headerWidth: CGFloat = 0
     private var tileLayers: [WindowID: TileLayer] = [:]
     private var labelLayers: [CATextLayer] = []
     private let dropHighlight = CAShapeLayer()
@@ -90,12 +99,20 @@ public final class SwitcherOverlay {
         host.layer?.addSublayer(dropHighlight)
         tint.cornerRadius = Self.cornerRadius
         tint.masksToBounds = true
-        titleLayer.fontSize = 13
+        titleLayer.fontSize = 20
+        titleLayer.font = NSFont.systemFont(ofSize: 20, weight: .semibold)
         titleLayer.alignmentMode = .center
         titleLayer.truncationMode = .end
-        titleLayer.foregroundColor = CGColor(gray: 1, alpha: 0.9)
+        titleLayer.foregroundColor = CGColor(gray: 1, alpha: 0.95)
         titleLayer.allowsFontSubpixelQuantization = true
         host.layer?.addSublayer(titleLayer)
+        workspaceChip.cornerRadius = 9
+        workspaceText.fontSize = 16
+        workspaceText.font = NSFont.systemFont(ofSize: 16, weight: .medium)
+        workspaceText.alignmentMode = .center
+        workspaceText.foregroundColor = CGColor(gray: 1, alpha: 1)
+        workspaceChip.addSublayer(workspaceText)
+        host.layer?.addSublayer(workspaceChip)
         effect.addSubview(host)
     }
 
@@ -131,7 +148,8 @@ public final class SwitcherOverlay {
         tint.frame = host.bounds
         tint.backgroundColor = Self.cgColor(settings.background)
         titleLayer.contentsScale = scale
-        titleLayer.frame = CGRect(x: pad, y: (Self.titleHeight - 16) / 2, width: size.width - 2 * pad, height: 18)
+        workspaceText.contentsScale = scale
+        headerWidth = size.width
         selectedColor = Self.cgColor(settings.selected)
 
         /// Miniature space has its origin top-left; the layers use Cocoa's bottom-left.
@@ -157,17 +175,17 @@ public final class SwitcherOverlay {
         // A row is the drop target of its workspace: the band from its name down to the bottom of its picture.
         rowFrames = labels.map { label in
             let row = place(label.frame)
-            return CGRect(x: 0, y: row.minY - 2, width: size.width, height: row.height + 22)
+            return CGRect(x: 0, y: row.minY - 2, width: size.width, height: row.height + 26)
         }
         for label in labels {
             let text = CATextLayer()
             let row = place(label.frame)
             text.string = label.text
-            text.fontSize = 11
-            text.foregroundColor = CGColor(gray: 1, alpha: 0.7)
+            text.fontSize = 14
+            text.foregroundColor = CGColor(gray: 1, alpha: 0.8)
             text.truncationMode = .end
             text.contentsScale = scale
-            text.frame = CGRect(x: row.minX, y: row.maxY + 3, width: row.width, height: 14)
+            text.frame = CGRect(x: row.minX, y: row.maxY + 3, width: row.width, height: 18)
             host.layer?.addSublayer(text)
             labelLayers.append(text)
         }
@@ -287,8 +305,31 @@ public final class SwitcherOverlay {
             if tileID == id { layer.zPosition = 1 } else { layer.zPosition = 0 }
         }
         let tile = id.flatMap { tileLayers[$0]?.tile }
-        titleLayer.string = tile.map { [$0.appName, $0.title].filter { !$0.isEmpty }.joined(separator: " - ") } ?? ""
+        layoutHeader(title: tile.map { [$0.appName, $0.title].filter { !$0.isEmpty }.joined(separator: " - ") } ?? "", workspace: tile?.workspace ?? "")
         CATransaction.commit()
+    }
+
+    /// The text of the header: the chip with the workspace, and the app and title of the selected window in the middle. The
+    /// title keeps the same room at both sides, so it stays centered.
+    private func layoutHeader(title: String, workspace: String) {
+        let height = Self.titleHeight
+        let pad = Self.padding
+        var side = pad
+        if workspace.isEmpty {
+            workspaceChip.isHidden = true
+        } else {
+            let text = workspace.allSatisfy(\.isNumber) ? "Workspace " + workspace : workspace
+            let font = NSFont.systemFont(ofSize: 16, weight: .medium)
+            let width = ceil((text as NSString).size(withAttributes: [.font: font]).width) + 24
+            workspaceChip.isHidden = false
+            workspaceChip.backgroundColor = selectedColor.copy(alpha: 0.3)
+            workspaceChip.frame = CGRect(x: pad, y: (height - 30) / 2, width: width, height: 30)
+            workspaceText.string = text
+            workspaceText.frame = CGRect(x: 0, y: 5, width: width, height: 20)
+            side = pad + width + 14
+        }
+        titleLayer.string = title
+        titleLayer.frame = CGRect(x: side, y: (height - 26) / 2, width: max(0, headerWidth - 2 * side), height: 26)
     }
 
     private static func cgColor(_ color: Color) -> CGColor {
@@ -400,13 +441,15 @@ private final class TileLayer: CALayer {
             layer.contentsScale = scale
             addSublayer(layer)
         }
-        thumb.contentsGravity = .resizeAspect
+        // The picture fills the whole tile; what does not fit is cropped, so no empty bands show.
+        thumb.contentsGravity = .resizeAspectFill
         thumb.cornerRadius = 5
         thumb.masksToBounds = true
         badge.contentsGravity = .resizeAspect
         icon.contentsGravity = .resizeAspect
         label.contentsScale = scale
-        label.fontSize = 11
+        label.fontSize = 14
+        label.font = NSFont.systemFont(ofSize: 14, weight: .medium)
         label.alignmentMode = .center
         label.truncationMode = .end
         label.foregroundColor = CGColor(gray: 1, alpha: 1)
@@ -417,8 +460,8 @@ private final class TileLayer: CALayer {
         dash.lineDashPattern = [5, 3]
         addSublayer(dash)
         hint.contentsScale = scale
-        hint.fontSize = 12
-        hint.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .bold)
+        hint.fontSize = 15
+        hint.font = NSFont.monospacedSystemFont(ofSize: 15, weight: .bold)
         hint.alignmentMode = .center
         hint.foregroundColor = CGColor(gray: 1, alpha: 1)
         hint.backgroundColor = CGColor(gray: 0, alpha: 0.75)
@@ -439,7 +482,7 @@ private final class TileLayer: CALayer {
     /// Lays out the sublayers for the current `tile` data. The caller disables implicit animations.
     func relayout() {
         let size = bounds.size
-        let inset: CGFloat = 4
+        let inset: CGFloat = 3
         let iconImage = tile.icon?.cgImage(forProposedRect: nil, context: nil, hints: nil)
         if let image = tile.image {
             thumb.isHidden = false
@@ -447,16 +490,16 @@ private final class TileLayer: CALayer {
             thumb.frame = bounds.insetBy(dx: inset, dy: inset)
             icon.isHidden = true
             label.isHidden = true
-            let side = min(24, min(size.width, size.height) * 0.3)
+            let side = min(36, min(size.width, size.height) * 0.3)
             badge.isHidden = iconImage == nil
             badge.contents = iconImage
-            badge.frame = CGRect(x: inset + 2, y: inset + 2, width: side, height: side)
+            badge.frame = CGRect(x: inset + 6, y: inset + 6, width: side, height: side)
         } else {
             thumb.isHidden = true
             thumb.contents = nil
             badge.isHidden = true
-            let labelHeight: CGFloat = 16
-            let side = max(0, min(64, min(size.width - 2 * inset, size.height - labelHeight - 3 * inset)))
+            let labelHeight: CGFloat = 20
+            let side = max(0, min(72, min(size.width - 2 * inset, size.height - labelHeight - 3 * inset)))
             icon.isHidden = iconImage == nil
             icon.contents = iconImage
             icon.frame = CGRect(
@@ -469,8 +512,8 @@ private final class TileLayer: CALayer {
         }
         hint.isHidden = tile.hint == nil
         hint.string = tile.hint
-        let hintWidth = CGFloat(tile.hint?.count ?? 0) * 8 + 10
-        hint.frame = CGRect(x: size.width - hintWidth - inset, y: size.height - 18 - inset, width: hintWidth, height: 16)
+        let hintWidth = CGFloat(tile.hint?.count ?? 0) * 10 + 12
+        hint.frame = CGRect(x: size.width - hintWidth - inset, y: size.height - 22 - inset, width: hintWidth, height: 20)
         dash.isHidden = !tile.isFloating
         dash.frame = bounds
         dash.path = CGPath(

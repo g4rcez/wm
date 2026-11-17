@@ -1,6 +1,7 @@
 import AppKit
 import Common
 import Core
+import Platform
 import Scripting
 
 extension WindowManager {
@@ -37,6 +38,15 @@ extension WindowManager {
         case "pointer":
             if let bad = unknownOption(flags, allowed: [], usage: "pointer") { return bad }
             return moveMouse(words.first, target: id)
+        case "zen":
+            if let bad = unknownOption(flags, allowed: [], usage: "zen") { return bad }
+            switch words.first {
+            case nil: _ = setZen(nil)
+            case "on": _ = setZen(true)
+            case "off": _ = setZen(false)
+            default: return fail("zen takes on or off", 2, usage: "zen")
+            }
+            return ok()
         default:
             return fail("unknown command '\(command)'", 2, hint: unknownCommandHint(command) ?? "run `wm help` to see the commands")
         }
@@ -51,8 +61,39 @@ extension WindowManager {
             focusDirection(direction, wrap: flags.contains("--wrap") || settings.wrapFocus)
             return ok()
         }
-        if let bad = unknownOption(flags, allowed: [], usage: "focus") { return bad }
+        let isStep = first == "next" || first == "prev"
+        if let bad = unknownOption(flags, allowed: isStep ? ["--wrap"] : first == "app" ? ["--launch"] : [], usage: first == "app" ? "focus app" : "focus") { return bad }
         switch first {
+        case "app":
+            // Run or raise: the app's window gets the focus (the next one when the focus is on the app already); an app
+            // without a window starts with --launch.
+            let name = words.dropFirst().joined(separator: " ")
+            guard !name.isEmpty else { return fail("focus app needs the name of an app", 2, usage: "focus app") }
+            let ofApp = windows.filter {
+                !$0.value.minimized && ($0.value.info.bundleID.caseInsensitiveCompare(name) == .orderedSame
+                    || $0.value.info.appName.caseInsensitiveCompare(name) == .orderedSame)
+            }.map(\.key)
+            if let id = windowToRaise(ofApp: ofApp, focused: focused, recent: recent) {
+                focus(id)
+                return ok()
+            }
+            guard flags.contains("--launch") else {
+                return fail("no window of \(name)", 1, hint: "`wm focus app \(name) --launch` starts the app")
+            }
+            guard AppLauncher.launch(name) else { return fail("cannot find the app \(name)", 1, hint: "use its name as in /Applications, or its bundle id") }
+            return ok()
+        case "column", "stack":
+            guard let index = words.dropFirst().first.flatMap(LaneIndex.init(parsing:)) else {
+                return fail("focus \(first) needs first, last or a number", 2, usage: "focus \(first)")
+            }
+            return focusLane(index, inStack: first == "stack")
+        case "mark":
+            guard let name = words.dropFirst().first else { return fail("focus mark needs a name", 2, usage: "focus mark") }
+            guard let marked = marks[name], windows[marked] != nil else { return fail("no window has the mark '\(name)'", 1, hint: "see `wm list windows`") }
+            focus(marked)
+            return ok()
+        case "next", "prev":
+            return focusStep(first == "next" ? 1 : -1, wrap: flags.contains("--wrap") || settings.wrapFocus)
         case "back":
             guard let workspace = focusedWorkspace,
                   let previous = workspace.history.dropFirst().first(where: { windows[$0] != nil }) else { return fail("there is no previous window") }
@@ -80,6 +121,79 @@ extension WindowManager {
         }
     }
 
+    /// `window sticky`: the window shows on every workspace that its monitor shows. A tiled window floats first. Again to end it;
+    /// the window then stays floating on the workspace that it is on.
+    private func toggleSticky(_ id: WindowID) -> ServerAnswer {
+        guard let managed = windows[id], !managed.isOutOfLayout else {
+            return fail("this window is not in the layout (minimized or in native fullscreen)")
+        }
+        if !managed.sticky, !managed.floating { setFloating(id, true) }
+        setSticky(id, !managed.sticky)
+        relayout()
+        return ok()
+    }
+
+    /// `window snap <place>`: the window floats into that part of the work area (inside the outer gaps). The same place again goes
+    /// on to the next size (half, a third, two thirds). A tiled window floats first.
+    private func snap(_ id: WindowID, _ place: SnapPlace) -> ServerAnswer {
+        guard let managed = windows[id], !managed.isOutOfLayout else {
+            return fail("this window is not in the layout (minimized or in native fullscreen)")
+        }
+        let context = layoutContext(forWorkspace: managed.workspace)
+        let area = context.gaps.outerArea(context.viewport)
+        guard area.width > 0, area.height > 0 else { return fail("there is no monitor") }
+        var step = 0
+        if managed.floating {
+            step = nextSnapStep(current: managed.floatFrame ?? currentFrame(of: id) ?? .zero, place: place, in: area)
+        } else {
+            setFloating(id, true)
+        }
+        setFloatFrame(id, snapFrame(place, step: step, in: area))
+        relayout()
+        return ok()
+    }
+
+    /// `focus column <n>`: the most recently focused window of that column (else its top window). `focus stack <n>`: that
+    /// window of the focused column. Both need the scrolling layout.
+    private func focusLane(_ index: LaneIndex, inStack: Bool) -> ServerAnswer {
+        let name = inStack ? "focus stack" : "focus column"
+        guard let workspace = focusedWorkspace, let engine = workspace.engine as? ScrollingEngine else {
+            return fail("\(name) needs the scrolling layout", 1, hint: "switch with `wm layout set scrolling`")
+        }
+        let strip = focused.flatMap { engine.strip(of: $0) } ?? .horizontal
+        let lanes = engine.lanes(of: strip)
+        let target: WindowID?
+        if inStack {
+            guard let id = focused, let lane = lanes.first(where: { $0.contains(id) }) else { return fail("there is no focused window") }
+            target = index.resolve(count: lane.count).map { lane[$0] }
+        } else {
+            let lane = index.resolve(count: lanes.count).map { lanes[$0] }
+            target = lane.flatMap { lane in workspace.history.first(where: lane.contains) ?? lane.first }
+        }
+        guard let target else { return fail("there is no such \(inStack ? "window" : "column")") }
+        focus(target)
+        return ok()
+    }
+
+    /// `focus next` and `focus prev`: the tiled windows in layout order, then the floating ones by id.
+    private func focusStep(_ step: Int, wrap: Bool) -> ServerAnswer {
+        guard let workspace = focusedWorkspace else { return fail("there is no workspace") }
+        let floating = windows.filter { $0.value.workspace == workspace.name && $0.value.floating && !$0.value.isOutOfLayout }.keys.sorted()
+        let order = workspace.engine.windows.filter { windows[$0] != nil } + floating
+        guard !order.isEmpty else { return fail("there is no window on this workspace") }
+        guard let current = focused.flatMap({ order.firstIndex(of: $0) }) else {
+            focus(order[0])
+            return ok()
+        }
+        var next = current + step
+        if !order.indices.contains(next) {
+            guard wrap else { return fail("there is no \(step > 0 ? "next" : "previous") window", 1, hint: "use --wrap to go around") }
+            next = (next + order.count) % order.count
+        }
+        focus(order[next])
+        return ok()
+    }
+
     /// `focus layer`: the focus goes to the most recent floating window of the workspace, or back to the most recent
     /// tiled one. Without a layer it switches from the one the focused window is in.
     private func focusLayer(floating wanted: Bool?) -> ServerAnswer {
@@ -87,7 +201,7 @@ extension WindowManager {
         let inFloating = focused.flatMap { windows[$0] }.map { $0.workspace == workspace.name && $0.floating } ?? false
         let floating = wanted ?? !inFloating
         func candidates(_ ids: [WindowID]) -> WindowID? {
-            ids.first { id in windows[id].map { $0.workspace == workspace.name && $0.floating == floating && !$0.minimized } ?? false }
+            ids.first { id in windows[id].map { $0.workspace == workspace.name && $0.floating == floating && !$0.isOutOfLayout } ?? false }
         }
         guard let next = candidates(workspace.history) ?? candidates(windows.keys.sorted()) else {
             return fail("there is no \(floating ? "floating" : "tiling") window on this workspace")
@@ -99,28 +213,32 @@ extension WindowManager {
     private func workspaceCommand(_ words: [String], _ flags: Set<String>, target: WindowID?) -> ServerAnswer {
         if let bad = unknownOption(flags, allowed: [], usage: "workspace") { return bad }
         switch words.first {
+        case "move":
+            guard words.dropFirst().first == "monitor", let spec = words.dropFirst(2).first else {
+                return fail("workspace move needs `monitor <monitor>`", 2, usage: "workspace move monitor")
+            }
+            guard let monitor = monitorArgument(spec) else { return fail("no such monitor", 1, usage: "workspace move monitor") }
+            if let reason = moveWorkspace(to: monitor) { return fail(reason) }
+            return ok()
         case "special":
-            if isNative { return fail("special workspaces need workspaces = \"emulated\" in the config") }
             guard let name = SpecialWorkspace.name(words.dropFirst().first) else { return fail("bad special workspace name", 2, usage: "workspace special") }
             toggleSpecial(name)
             return ok()
-        case "row":
-            guard isNative else { return fail("rows need workspaces = \"native\" in the config") }
-            guard let row = rowNumber(for: words.dropFirst().first), let desktop = focusedDesktop else { return fail("workspace row needs up, down or a number", 2, usage: "workspace row") }
-            return setRow(row, desktop: desktop) ? ok() : fail("cannot show row \(row)")
         default:
             // `wm workspace <name>`, or `wm --window <id> workspace` for the workspace of that window.
             if target != nil, !words.isEmpty { return fail("workspace takes a name or --window, not both", 2, usage: "workspace") }
             guard let name = words.first ?? target.flatMap({ windows[$0]?.workspace }) else { return fail("workspace needs a name", 2, usage: "workspace") }
-            let resolved = name == "back" ? (previousWorkspace ?? name) : resolveWorkspaceName(name)
+            var resolved = name == "back" ? (previousWorkspace ?? name) : resolveWorkspaceName(name)
+            // With `workspace_back_and_forth`, asking for the workspace that is shown goes back to the previous one.
+            if settings.workspaceBackAndForth, target == nil, name != "back", resolved == focusedMonitor?.workspace,
+               let previousWorkspace {
+                resolved = previousWorkspace
+            }
             if SpecialWorkspace.isSpecial(resolved) {
                 // `wm --window <id> workspace` for a window of a special workspace shows it; a name does not.
                 guard let target else { return fail("special workspaces are shown with `wm workspace special <name>`") }
                 focus(target)
                 return ok()
-            }
-            if isNative {
-                return switchSpace(to: resolved) ? ok() : fail("no desktop '\(resolved)' on this display", 1, hint: "macOS shortcuts reach desktops 1-10; enable \"Switch to Desktop N\" in Keyboard Shortcuts")
             }
             showWorkspace(resolved, on: focusedMonitorID)
             if let target { focus(target) }
@@ -131,9 +249,26 @@ extension WindowManager {
     private func windowCommand(_ words: [String], _ flags: Set<String>, _ id: WindowID?) -> ServerAnswer {
         guard let sub = words.first else { return fail("window needs a command", 2, usage: "window") }
         if sub == "send" { return sendCommand(Array(words.dropFirst()), flags, id) }
-        if let bad = unknownOption(flags, allowed: [], usage: "window " + sub) { return bad }
+        if let bad = unknownOption(flags, allowed: sub == "remember" || sub == "forget" ? ["--title"] : [], usage: "window " + sub) { return bad }
         guard let id, let managed = windows[id] else { return fail("there is no focused window") }
         switch sub {
+        case "sticky":
+            return toggleSticky(id)
+        case "snap":
+            guard let place = words.dropFirst().first.flatMap(SnapPlace.init(rawValue:)) else {
+                return fail("window snap needs a place", 2, usage: "window snap", hint: "one of " + SnapPlace.allCases.map(\.rawValue).joined(separator: ", "))
+            }
+            return snap(id, place)
+        case "remember":
+            guard let entry = rememberWindow(id, withTitle: flags.contains("--title")) else {
+                return fail("this window is not in the layout (minimized or in native fullscreen)")
+            }
+            return ok("remembered " + entry.summary + "\n")
+        case "forget":
+            guard forgetWindow(id, withTitle: flags.contains("--title")) else {
+                return fail("nothing is remembered for this window", 1, hint: flags.contains("--title") ? "without --title, `wm window forget` removes the entry of the app" : "see `wm list memory`")
+            }
+            return ok("forgot \(managed.info.appName)\n")
         case "close":
             watcher(for: managed.info.pid)?.close(id)
             return ok()
@@ -149,6 +284,24 @@ extension WindowManager {
             return ok()
         case "maximize":
             return toggleMaximize(target: id)
+        case "mark":
+            guard let name = words.dropFirst().first else { return fail("window mark needs a name", 2, usage: "window mark") }
+            setMark(name, on: id)
+            return ok()
+        case "unmark":
+            removeMarks(named: words.dropFirst().first, of: id)
+            return ok()
+        case "raise-floating": return raiseFloating()
+        case "rescue": return rescueFloating()
+        case "native-fullscreen":
+            guard let watcher = watcher(for: managed.info.pid) else { return fail("cannot reach the app of this window") }
+            watcher.setFullscreen(id, !managed.nativeFullscreen)
+            // The app reports the change a moment later.
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 700_000_000)
+                scheduleRefresh()
+            }
+            return ok()
         case "pseudo":
             let workspace = workspace(managed.workspace)
             guard workspace.kind == .tiling, !managed.floating else {
@@ -171,18 +324,21 @@ extension WindowManager {
         guard let kind = words.first else { return fail("window send needs a destination", 2, usage: "window send") }
         let value = words.dropFirst().first
         let usage = "window send " + kind
-        let stay = flags.contains("--stay"), tile = flags.contains("--tile")
+        let stay = flags.contains("--stay"), tile = flags.contains("--tile"), wholeColumn = flags.contains("--column")
         switch kind {
         case "workspace":
-            if let bad = unknownOption(flags, allowed: ["--stay", "--tile"], usage: usage) { return bad }
+            if let bad = unknownOption(flags, allowed: ["--stay", "--tile", "--column"], usage: usage) { return bad }
             guard let given = value else { return fail("window send workspace needs a workspace name", 2, usage: usage) }
             let name = resolveWorkspaceName(given)
             guard let id else { return fail("there is no focused window") }
-            if isNative { return fail("moving a window to another desktop needs SIP off", 1, hint: "drag the window in Mission Control instead") }
             if SpecialWorkspace.isSpecial(name), SpecialWorkspace.name(name) == nil { return fail("bad special workspace name", 2, usage: usage) }
             let source = windows[id]?.workspace
-            moveWindow(id, to: name)
-            arrive(id, tile: tile)
+            if wholeColumn {
+                moveColumn(of: id, to: name)
+            } else {
+                moveWindow(id, to: name)
+                arrive(id, tile: tile)
+            }
             if stay {
                 if let source, let next = workspace(source).history.first(where: { windows[$0] != nil }) { focus(next) } else { relayout() }
             } else {
@@ -192,28 +348,17 @@ extension WindowManager {
             }
             return ok()
         case "monitor":
-            if let bad = unknownOption(flags, allowed: ["--tile"], usage: usage) { return bad }
+            if let bad = unknownOption(flags, allowed: ["--tile", "--column"], usage: usage) { return bad }
             guard let id else { return fail("there is no focused window") }
             guard let monitor = monitorArgument(value) else { return fail("no such monitor", 1, usage: usage) }
-            moveWindow(id, to: monitor.workspace)
-            arrive(id, tile: tile)
+            if wholeColumn {
+                moveColumn(of: id, to: monitor.workspace)
+            } else {
+                moveWindow(id, to: monitor.workspace)
+                arrive(id, tile: tile)
+            }
             focusMonitor(monitor.id)
             focus(id)
-            return ok()
-        case "row":
-            if let bad = unknownOption(flags, allowed: ["--stay", "--tile"], usage: usage) { return bad }
-            guard isNative else { return fail("rows need workspaces = \"native\" in the config") }
-            guard let row = rowNumber(for: value), let desktop = focusedDesktop else { return fail("window send row needs up, down or a number", 2, usage: usage) }
-            guard let id else { return fail("there is no focused window") }
-            let source = windows[id]?.workspace
-            moveWindow(id, to: NativeWorkspaceName.row(of: desktop, row))
-            arrive(id, tile: tile)
-            if stay {
-                if let source, let next = workspace(source).history.first(where: { windows[$0] != nil }) { focus(next) } else { relayout() }
-            } else {
-                setRow(row, desktop: desktop, focusWindow: false)
-                focus(id)
-            }
             return ok()
         case "strip":
             if let bad = unknownOption(flags, allowed: [], usage: usage) { return bad }
@@ -224,12 +369,100 @@ extension WindowManager {
         }
     }
 
+    /// `window raise-floating`: every floating window of the shown workspace comes to the front, the most recent last.
+    private func raiseFloating() -> ServerAnswer {
+        guard let workspace = focusedWorkspace else { return fail("there is no workspace") }
+        let floating = windows.filter { $0.value.workspace == workspace.name && $0.value.floating && !$0.value.isOutOfLayout }.keys
+        guard !floating.isEmpty else { return fail("there is no floating window on this workspace") }
+        let recent = workspace.history
+        // The least recently used window first, so the most recent one ends on top.
+        let ordered = floating.sorted { (recent.firstIndex(of: $0) ?? Int.max, $0) > (recent.firstIndex(of: $1) ?? Int.max, $1) }
+        for id in ordered.dropLast() { windows[id].flatMap { watcher(for: $0.info.pid) }?.raise(id) }
+        if let top = ordered.last { focus(top) }
+        return ok()
+    }
+
+    /// `window rescue`: a floating window that is mostly outside its monitor comes back inside the work area.
+    private func rescueFloating() -> ServerAnswer {
+        var moved = 0
+        for (id, managed) in windows where managed.floating && !managed.isOutOfLayout {
+            guard let monitor = monitor(showing: managed.workspace), let frame = currentFrame(of: id),
+                  let better = MonitorGeometry.rescued(frame, in: monitor.workArea) else { continue }
+            setFloatFrame(id, better)
+            moved += 1
+        }
+        guard moved > 0 else { return ok() }
+        relayout(snapAll: true)
+        return ok()
+    }
+
+    /// `--column`: the whole column of the window goes to the workspace, keeps its stack, its width and its tabs, and joins
+    /// the layout there like `--tile` (no maximize, no balance). Without the scrolling layout it is the window alone.
+    private func moveColumn(of id: WindowID, to name: String) {
+        guard let managed = windows[id] else { return }
+        let source = workspace(managed.workspace)
+        let engine = source.engine as? ScrollingEngine
+        let strip = engine?.strip(of: id) ?? .horizontal
+        let column = engine?.lanes(of: strip).first { $0.contains(id) } ?? [id]
+        let width = engine?.columnSize(of: id)
+        let tabbed = engine?.tabs(of: id) != nil
+        guard let head = column.first else { return }
+
+        var anchor: WindowID?
+        for member in column {
+            moveWindow(member, to: name, after: anchor)
+            anchor = member
+        }
+        let destination = workspace(name)
+        let context = layoutContext(forWorkspace: name)
+        // Each window opened in a column of its own, beside the one before it; they stack into the first one.
+        for member in column.dropFirst() { _ = destination.engine.perform(.stack(.left), focused: member, in: context) }
+        guard destination.kind == .scrolling else { return }
+        if let width { _ = destination.engine.perform(.columnWidth(.fraction(width)), focused: head, in: context) }
+        let isTabbed = (destination.engine as? ScrollingEngine)?.tabs(of: head) != nil
+        if column.count > 1, isTabbed != tabbed { _ = destination.engine.perform(.toggleTabs, focused: head, in: context) }
+    }
+
     /// A layout command that only the tiling layout has.
     private func tilingCommand(_ command: LayoutCommand, _ id: WindowID?, _ name: String) -> ServerAnswer {
         guard focusedWorkspace?.kind == .tiling else {
             return fail("\(name) needs the tiling layout", 1, hint: "switch with `wm layout set tiling`")
         }
         return layoutCommand(command, target: id)
+    }
+
+    private func masterCommand(_ command: LayoutCommand, _ id: WindowID?, _ name: String) -> ServerAnswer {
+        guard focusedWorkspace?.kind == .master else {
+            return fail("\(name) needs the master layout", 1, hint: "switch with `wm layout set master`")
+        }
+        return layoutCommand(command, target: id)
+    }
+
+    /// `layout master <promote|count|ratio|orientation>`.
+    private func masterGroup(_ words: [String], _ id: WindowID?) -> ServerAnswer {
+        let amount = words.dropFirst(2).first
+        let relative = amount.map { $0.hasPrefix("+") || $0.hasPrefix("-") } ?? false
+        switch words.dropFirst().first {
+        case "promote": return masterCommand(.promote, id, "layout master promote")
+        case "count":
+            guard let amount, let number = Int(amount) else {
+                return fail("layout master count needs a number, or +n or -n", 2, usage: "layout master count")
+            }
+            return masterCommand(.masterCount(number, relative: relative), id, "layout master count")
+        case "ratio":
+            guard let amount, let number = Double(amount) else {
+                return fail("layout master ratio needs a number, or +n or -n", 2, usage: "layout master ratio")
+            }
+            return masterCommand(.masterRatio(number, relative: relative), id, "layout master ratio")
+        case "orientation":
+            if amount == nil || amount == "next" { return masterCommand(.masterOrientation(nil), id, "layout master orientation") }
+            guard let place = amount.flatMap(MasterOrientation.init(rawValue:)) else {
+                return fail("layout master orientation takes left, right, top, bottom, center or next", 2, usage: "layout master orientation")
+            }
+            return masterCommand(.masterOrientation(place), id, "layout master orientation")
+        default:
+            return fail("layout master takes promote, count, ratio or orientation", 2, usage: "layout master")
+        }
     }
 
     private func layoutGroup(_ words: [String], _ flags: Set<String>, _ id: WindowID?) -> ServerAnswer {
@@ -239,6 +472,7 @@ extension WindowManager {
         switch sub {
         case "set": return setLayout(value)
         case "balance": return layoutCommand(.balance, target: id)
+        case "master": return masterGroup(words, id)
         case "flip": return rotateLayout()
         case "tile": return tile(value, target: id)
         case "rotate":
@@ -267,14 +501,26 @@ extension WindowManager {
                 guard let fraction = amount.flatMap(Double.init) else { return fail("layout column width needs a fraction or cycle", 2, usage: "layout column width") }
                 return layoutCommand(.columnWidth(.fraction(fraction)), target: id)
             case "match": return layoutCommand(.matchWidth, target: id)
+            case "expand": return layoutCommand(.expandColumn, target: id)
             case "center": return layoutCommand(.center, target: id)
             case "center-visible": return layoutCommand(.centerVisible, target: id)
+            case "move":
+                guard let index = words.dropFirst(2).first.flatMap(LaneIndex.init(parsing:)) else {
+                    return fail("layout column move needs first, last or a number", 2, usage: "layout column move")
+                }
+                return layoutCommand(.moveColumn(index), target: id)
             default: return fail("unknown column command", 2, usage: "layout column")
             }
         case "stack":
             switch value {
-            case "join": return layoutCommand(.stack, target: id)
-            case "leave": return layoutCommand(.unstack, target: id)
+            case "join", "leave":
+                // The window joins the column on its left, or leaves to a column on its right, unless a side is given.
+                let side = words.dropFirst(2).first
+                guard side == nil || Direction(rawValue: side!) != nil else {
+                    return fail("layout stack \(value!) takes left or right", 2, usage: "layout stack")
+                }
+                let direction = side.flatMap(Direction.init(rawValue:)) ?? (value == "join" ? .left : .right)
+                return layoutCommand(value == "join" ? .stack(direction) : .unstack(direction), target: id)
             case "tabs": return layoutCommand(.toggleTabs, target: id)
             case "equalize": return layoutCommand(.equalizeStack, target: id)
             case "height":
@@ -301,7 +547,7 @@ extension WindowManager {
         var next: WindowID?
         if managed.floating {
             var frames: [WindowID: CGRect] = [:]
-            for (other, window) in windows where window.workspace == workspace.name && !window.minimized {
+            for (other, window) in windows where window.workspace == workspace.name && !window.isOutOfLayout {
                 frames[other] = currentFrame(of: other)
             }
             // A floating window covers the windows beside it, so their centres decide the direction.
@@ -355,8 +601,10 @@ extension WindowManager {
     private func monitorArgument(_ text: String?) -> Monitor? {
         guard let text else { return nil }
         if let direction = Direction(rawValue: text) { return adjacentMonitor(direction) }
+        if text == "last" { return previousMonitorID.flatMap { id in monitors.first { $0.id == id } } }
         let step = text == "next" ? 1 : text == "prev" ? -1 : 0
-        guard step != 0 else { return nil }
+        // Not a movement: a role, a number or part of the name, as in a rule.
+        guard step != 0 else { return monitor(matching: text) }
         return MonitorGeometry.cycle(from: focusedMonitorID, step: step, in: monitorFrames)
             .flatMap { id in monitors.first { $0.id == id } }
     }
@@ -410,7 +658,7 @@ extension WindowManager {
     /// state when focus moves on.
     private func toggleMaximize(target id: WindowID?) -> ServerAnswer {
         guard let id, let managed = windows[id] else { return fail("there is no focused window") }
-        guard !managed.floating, !managed.minimized else { return fail("only a tiled window can be maximized", 1, hint: "tile it first with `wm window float`") }
+        guard !managed.floating, !managed.isOutOfLayout else { return fail("only a tiled window can be maximized", 1, hint: "tile it first with `wm window float`") }
         let workspace = workspace(managed.workspace)
         if workspace.maximized.contains(id) {
             workspace.maximized.remove(id)
@@ -459,7 +707,7 @@ extension WindowManager {
 
     private func setLayout(_ name: String?) -> ServerAnswer {
         guard let kind = name.flatMap(LayoutKind.init(rawValue:)), let workspace = focusedWorkspace else {
-            return fail("layout set needs scrolling or tiling", 2, usage: "layout set")
+            return fail("layout set needs scrolling, tiling or master", 2, usage: "layout set")
         }
         workspace.maximized = []
         rebuild(workspace, as: kind)
@@ -493,10 +741,12 @@ extension WindowManager {
             if let target { return ok(json ? (windowValue(target)?.json ?? "null") + "\n" : overviewText(only: target)) }
             return ok(json ? overviewValue().json + "\n" : overviewText())
         }
-        guard ["windows", "workspaces", "monitors"].contains(kind) else {
-            return fail("unknown list '\(kind)'", 2, usage: "list", hint: kind == "focused" ? "use `wm list windows --focused`" : "choose windows, workspaces, monitors or binds")
+        guard ["windows", "workspaces", "monitors", "memory"].contains(kind) else {
+            return fail("unknown list '\(kind)'", 2, usage: "list", hint: kind == "focused" ? "use `wm list windows --focused`" : "choose windows, workspaces, monitors, memory or binds")
         }
-        if flags.contains("--focused"), kind != "windows" { return fail("--focused applies to `wm list windows`", 2, usage: "list") }
+        if flags.contains("--focused"), kind != "windows", kind != "monitors" {
+            return fail("--focused applies to `wm list windows` and `wm list monitors`", 2, usage: "list")
+        }
         if kind == "windows" {
             let ids = target.map { [$0] } ?? (flags.contains("--focused") ? focused.map { [$0] } ?? [] : windows.keys.sorted())
             if json { return ok(LuaValue.array(ids.compactMap { windowValue($0) }).json + "\n") }
@@ -504,19 +754,34 @@ extension WindowManager {
                 guard let managed = windows[id] else { return nil }
                 var state: [String] = []
                 if managed.floating { state.append("floating") }
+                if managed.sticky { state.append("sticky") }
                 if isMaximized(id) { state.append("maximized") }
                 if managed.minimized { state.append("minimized") }
+                if managed.nativeFullscreen { state.append("fullscreen") }
+                for name in marks(of: id) { state.append("mark:" + name) }
                 if (workspace(managed.workspace).engine as? ScrollingEngine)?.strip(of: id) == .vertical { state.append("vertical strip") }
                 if workspace(managed.workspace).pseudo[id] != nil { state.append("pseudo") }
                 return [id == focused ? "*" : "", String(id), managed.info.appName, truncated(managed.info.title, to: 48), managed.workspace, state.joined(separator: ", ")]
             }))
         }
-        if json { return ok((query(kind) ?? .nil).json + "\n") }
+        let onlyFocusedMonitor = kind == "monitors" && flags.contains("--focused")
+        if json {
+            // With --focused, `list monitors` is a list of the one focused monitor, like `list windows --focused`.
+            return ok((onlyFocusedMonitor ? .array([query("monitor") ?? .nil].filter { $0 != .nil }) : query(kind) ?? .nil).json + "\n")
+        }
         if kind == "monitors" {
-            return ok(renderTable(["", "id", "name", "workspace", "size"], monitors.map { monitor in
-                [monitor.id == focusedMonitorID ? "*" : "", String(monitor.id), monitor.name,
-                 specials[monitor.id].map { "\(monitor.workspace) (special: \($0))" } ?? monitor.workspace,
-                 "\(Int(monitor.frame.width))x\(Int(monitor.frame.height))"]
+            let mainIndex = monitors.firstIndex(where: \.isMain) ?? 0
+            return ok(renderTable(["", "id", "name", "workspace", "size", "role"], monitors.enumerated().compactMap { offset, monitor in
+                guard !onlyFocusedMonitor || monitor.id == focusedMonitorID else { return nil }
+                return [monitor.id == focusedMonitorID ? "*" : "", String(monitor.id), monitor.name,
+                        specials[monitor.id].map { "\(monitor.workspace) (special: \($0))" } ?? monitor.workspace,
+                        "\(Int(monitor.frame.width))x\(Int(monitor.frame.height))",
+                        MonitorSelector.roleName(index: offset, mainIndex: mainIndex) ?? "-"]
+            }))
+        }
+        if kind == "memory" {
+            return ok(renderTable(["app", "title", "workspace", "monitor", "mode", "frame"], memory.windows.map {
+                [$0.appName, $0.title.map { truncated($0, to: 32) } ?? "-", $0.workspace, $0.monitor ?? "-", $0.mode, $0.frameText]
             }))
         }
         let names = workspaces.keys.sorted { $0.compare($1, options: .numeric) == .orderedAscending }
@@ -525,6 +790,25 @@ extension WindowManager {
             guard isVisible(name) || count > 0 else { return nil }
             return [name == focusedWorkspace?.name ? "*" : "", name, workspaces[name]!.kind.rawValue, monitor(showing: name).map { String($0.id) } ?? "-", String(count)]
         }))
+    }
+
+    /// One monitor as `wm list monitors --json` and `wm.query` show it. `index` counts from 1, from the left (the number that
+    /// a monitor selector takes); `role` is `main`, `secondary` or `tertiary`.
+    func monitorValue(at offset: Int) -> LuaValue {
+        let monitor = monitors[offset]
+        let mainIndex = monitors.firstIndex(where: \.isMain) ?? 0
+        return .table([
+            "id": .number(Double(monitor.id)),
+            "name": .string(monitor.name),
+            "index": .number(Double(offset + 1)),
+            "role": MonitorSelector.roleName(index: offset, mainIndex: mainIndex).map { .string($0) } ?? .nil,
+            "main": .bool(monitor.isMain),
+            "workspace": .string(monitor.workspace),
+            "special": specials[monitor.id].map { .string($0) } ?? .nil,
+            "focused": .bool(monitor.id == focusedMonitorID),
+            "frame": rectValue(monitor.frame),
+            "work_area": rectValue(monitor.workArea),
+        ])
     }
 
     func query(_ kind: String) -> LuaValue? {
@@ -551,17 +835,26 @@ extension WindowManager {
                 ])
             })
         case "monitors":
-            return .array(monitors.map { monitor in
-                .table([
-                    "id": .number(Double(monitor.id)),
-                    "name": .string(monitor.name),
-                    "workspace": .string(monitor.workspace),
-                    "special": specials[monitor.id].map { .string($0) } ?? .nil,
-                    "focused": .bool(monitor.id == focusedMonitorID),
-                    "frame": rectValue(monitor.frame),
-                    "work_area": rectValue(monitor.workArea),
-                ])
+            return .array(monitors.indices.map { monitorValue(at: $0) })
+        case "memory":
+            return .array(memory.windows.map { entry in
+                var fields: [String: LuaValue] = [
+                    "app": .string(entry.app), "name": .string(entry.appName), "workspace": .string(entry.workspace),
+                    "mode": .string(entry.mode), "floating": .bool(entry.floating), "maximized": .bool(entry.maximized),
+                    "marks": .array(entry.marks.map { .string($0) }),
+                ]
+                if let title = entry.title { fields["title"] = .string(title) }
+                if let monitor = entry.monitor { fields["monitor"] = .string(monitor) }
+                if let frame = entry.frame {
+                    fields["frame"] = .table(["x": .number(frame.x), "y": .number(frame.y), "width": .number(frame.width), "height": .number(frame.height)])
+                }
+                if let width = entry.columnWidth { fields["column_width"] = .number(width) }
+                if let strip = entry.strip { fields["strip"] = .string(strip.rawValue) }
+                return .table(fields)
             })
+        case "monitor":
+            // The focused monitor, or nil when there is none.
+            return monitors.firstIndex { $0.id == focusedMonitorID }.map { monitorValue(at: $0) } ?? .nil
         default:
             return nil
         }
@@ -617,8 +910,10 @@ extension WindowManager {
             "title": .string(managed.info.title),
             "workspace": .string(managed.workspace),
             "floating": .bool(managed.floating),
+            "sticky": .bool(managed.sticky),
             "maximized": .bool(isMaximized(id)),
             "focused": .bool(id == focused),
+            "marks": .array(marks(of: id).map { .string($0) }),
             "frame": rectValue(currentFrame(of: id) ?? managed.info.frame),
         ])
     }

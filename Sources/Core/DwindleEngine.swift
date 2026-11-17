@@ -1,8 +1,24 @@
 import CoreGraphics
 
+/// The side of `frame` that `point` is nearest to, measured along the diagonals of the frame (Hyprland's `smart_split`).
+public func smartSplitSide(of frame: CGRect, at point: CGPoint) -> Direction {
+    let dx = (point.x - frame.midX) / max(frame.width / 2, 1)
+    let dy = (point.y - frame.midY) / max(frame.height / 2, 1)
+    if abs(dx) > abs(dy) { return dx < 0 ? .left : .right }
+    return dy < 0 ? .up : .down
+}
+
+/// The window whose frame contains `point`. Frames that share an edge both contain it; the lowest id wins, so the answer
+/// does not depend on the order of a dictionary.
+public func windowUnder(_ point: CGPoint, in frames: [WindowID: CGRect]) -> WindowID? {
+    frames.filter { $0.value.contains(point) }.keys.min()
+}
+
 /// The `tiling` layout. Hyprland-style dwindle: a binary tree whose leaves are windows.
 public struct DwindleEngine: LayoutEngine {
     private var root: Node?
+    /// The part of the tiling area that the windows fill, as fractions (`layout tile center`). `nil`: the whole area.
+    private var frame: CGRect?
     private let splitRatio: Double
     private let preserveSplit: Bool
     private let newWindowFirst: Bool
@@ -20,21 +36,38 @@ public struct DwindleEngine: LayoutEngine {
     /// The split tree, for saving. Settings are not part of it: they come from the config.
     public struct State: Codable, Sendable {
         fileprivate var root: Node?
+        /// The frame of `layout tile center`; missing in a state that an older version saved.
+        fileprivate var area: CGRect?
     }
 
     public init(settings: Settings, state: State) {
         self.init(settings: settings)
         root = state.root
+        frame = state.area
     }
 
-    public var state: LayoutState { .tiling(State(root: root)) }
+    public var state: LayoutState { .tiling(State(root: root, area: frame)) }
+
+    /// The area that the tree fills: the tiling area, or the part of it that the frame names.
+    private func region(in context: LayoutContext) -> CGRect {
+        let whole = context.gaps.tilingArea(context.viewport)
+        guard let frame else { return whole }
+        return CGRect(
+            x: whole.minX + frame.minX * whole.width, y: whole.minY + frame.minY * whole.height,
+            width: frame.width * whole.width, height: frame.height * whole.height)
+    }
 
     public func templateError(_ template: SplitTemplate, focused: WindowID?) -> String? {
+        // A frame keeps the windows as they are, so any number of them is fine.
+        if template.isFrame { return nil }
         let count = windows.count
         return count == template.count ? nil : "tile needs exactly \(template.count) windows in this layout (the workspace has \(count))"
     }
 
     public var windows: [WindowID] { root?.windows ?? [] }
+
+    /// The side that the next new window takes, when `preselect` set one.
+    public var preselection: Direction? { preselected }
 
     public mutating func insert(_ window: WindowID, after anchor: WindowID?) {
         guard let current = root else {
@@ -60,7 +93,8 @@ public struct DwindleEngine: LayoutEngine {
 
     public mutating func frames(in context: LayoutContext, focused: WindowID?) -> [WindowID: CGRect] {
         var cells: [WindowID: CGRect] = [:]
-        root?.layout(in: context.gaps.tilingArea(context.viewport), preserve: preserveSplit, widthMultiplier: widthMultiplier, into: &cells)
+        let area = region(in: context)
+        root?.layout(in: area, preserve: preserveSplit, widthMultiplier: widthMultiplier, into: &cells)
         return cells.mapValues { context.gaps.tile($0) }
     }
 
@@ -71,15 +105,24 @@ public struct DwindleEngine: LayoutEngine {
     public mutating func perform(_ command: LayoutCommand, focused: WindowID?, in context: LayoutContext) -> Bool {
         if command == .balance { return root?.balance() ?? false }
         if case .applyTemplate(let template) = command {
+            // A template also sets the frame, so a grid after `center` fills the whole area again.
+            let area: CGRect? = template.area == SplitTemplate.unit ? nil : template.area
+            if template.isFrame {
+                frame = area
+                return true
+            }
             let order = windows
             guard templateError(template, focused: focused) == nil,
                   let tree = Node.partition(Array(zip(template.cells, order)), in: CGRect(x: 0, y: 0, width: 1, height: 1)) else { return false }
             root = tree
+            frame = area
             return true
         }
         if command == .releaseTemplate {
+            let hadFrame = frame != nil
+            frame = nil
             let order = windows
-            guard order.count > 1 else { return false }
+            guard order.count > 1 else { return hadFrame }
             root = nil
             var previous: WindowID?
             for window in order {
@@ -137,14 +180,14 @@ public struct DwindleEngine: LayoutEngine {
             case .height: { $0 == .vertical }
             case .smart: { _ in true }
             }
-            let area = context.gaps.tilingArea(context.viewport)
+            let area = region(in: context)
             return root?.resize(focused, in: area, accept: accept, points: points) ?? false
 
         case .resizeEdge(let direction, let points):
             guard points != 0 else { return false }
             // Orientations must be resolved before the ancestors can be matched by axis.
             _ = frames(in: context, focused: focused)
-            let area = context.gaps.tilingArea(context.viewport)
+            let area = region(in: context)
             return root?.resizeEdge(focused, in: area, direction: direction, points: points) ?? false
 
         case .toggleSplit:
@@ -302,21 +345,20 @@ private indirect enum Node: Sendable, Codable {
     }
 
     func swapping(_ a: WindowID, _ b: WindowID) -> Node {
-        switch self {
-        case .leaf(let window): return .leaf(window == a ? b : window == b ? a : window)
-        case .split(var split):
-            split.first = split.first.swapping(a, b)
-            split.second = split.second.swapping(a, b)
-            return .split(split)
-        }
+        mappingLeaves { $0 == a ? b : $0 == b ? a : $0 }
     }
 
     func relabeling(_ mapping: [WindowID: WindowID]) -> Node {
+        mappingLeaves { mapping[$0] ?? $0 }
+    }
+
+    /// The same tree with every window replaced by `transform(window)`.
+    private func mappingLeaves(_ transform: (WindowID) -> WindowID) -> Node {
         switch self {
-        case .leaf(let window): return .leaf(mapping[window] ?? window)
+        case .leaf(let window): return .leaf(transform(window))
         case .split(var split):
-            split.first = split.first.relabeling(mapping)
-            split.second = split.second.relabeling(mapping)
+            split.first = split.first.mappingLeaves(transform)
+            split.second = split.second.mappingLeaves(transform)
             return .split(split)
         }
     }
@@ -370,38 +412,30 @@ private indirect enum Node: Sendable, Codable {
     /// Changes the ratio of the nearest ancestor of `window` that `accept` allows. `points` is the growth of
     /// the window; the ratio changes by `points` divided by the ancestor cell size.
     mutating func resize(_ window: WindowID, in cell: CGRect, accept: (Orientation) -> Bool, points: CGFloat) -> Bool? {
-        guard case .split(var split) = self, contains(window) else { return nil }
-        let (firstCell, secondCell) = split.cells(in: cell)
-        let inSecond = split.second.contains(window)
-        var result = inSecond
-            ? split.second.resize(window, in: secondCell, accept: accept, points: points)
-            : split.first.resize(window, in: firstCell, accept: accept, points: points)
-        if result == nil, let orientation = split.orientation, accept(orientation) {
-            let size = orientation == .horizontal ? cell.width : cell.height
-            if size > 0 {
-                let share = Double(points / size)
-                let ratio = min(max(split.ratio + (inSecond ? -share : share), 0.1), 0.9)
-                result = ratio != split.ratio
-                split.ratio = ratio
-            }
-        }
-        self = .split(split)
-        return result
+        moveDivider(of: window, in: cell, points: points) { orientation, _ in accept(orientation) }
     }
 
     /// Moves the divider on the `direction` side of `window`: the nearest ancestor split on that axis where the window
     /// lies on the matching side (first child for right/down, second child for left/up). Returns `nil` when there
     /// is no such divider.
     mutating func resizeEdge(_ window: WindowID, in cell: CGRect, direction: Direction, points: CGFloat) -> Bool? {
+        moveDivider(of: window, in: cell, points: points) { orientation, inSecond in
+            (orientation == .horizontal) == direction.isHorizontal && inSecond == (direction == .left || direction == .up)
+        }
+    }
+
+    /// Moves the divider of the nearest ancestor split of `window` that `accepts` (given its orientation and whether
+    /// `window` lies in its second child). `nil` when no ancestor does; else whether the ratio changed.
+    private mutating func moveDivider(
+        of window: WindowID, in cell: CGRect, points: CGFloat, accepts: (Orientation, _ inSecond: Bool) -> Bool
+    ) -> Bool? {
         guard case .split(var split) = self, contains(window) else { return nil }
         let (firstCell, secondCell) = split.cells(in: cell)
         let inSecond = split.second.contains(window)
         var result = inSecond
-            ? split.second.resizeEdge(window, in: secondCell, direction: direction, points: points)
-            : split.first.resizeEdge(window, in: firstCell, direction: direction, points: points)
-        if result == nil, let orientation = split.orientation,
-           (orientation == .horizontal) == direction.isHorizontal,
-           inSecond == (direction == .left || direction == .up) {
+            ? split.second.moveDivider(of: window, in: secondCell, points: points, accepts: accepts)
+            : split.first.moveDivider(of: window, in: firstCell, points: points, accepts: accepts)
+        if result == nil, let orientation = split.orientation, accepts(orientation, inSecond) {
             let size = orientation == .horizontal ? cell.width : cell.height
             if size > 0 {
                 let share = Double(points / size)

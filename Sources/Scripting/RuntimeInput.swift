@@ -45,7 +45,7 @@ public func parseExecRule(_ text: String) throws -> (rule: WindowRule?, command:
                 guard parts.count == 2, parts.allSatisfy({ $0 > 0 }) else { throw ConfigError(message: "exec: --size needs <width>,<height>, for example 0.5,0.5") }
                 rule.size = RuleSize(width: parts[0], height: parts[1])
             default:
-                guard let layout = LayoutKind(rawValue: raw) else { throw ConfigError(message: "exec: --layout must be scrolling or tiling") }
+                guard let layout = LayoutKind(rawValue: raw) else { throw ConfigError(message: "exec: --layout must be scrolling, tiling or master") }
                 rule.layout = layout
             }
             seen = true

@@ -5,12 +5,7 @@ import Foundation
 public enum WhichKey {
     /// A chord as it is drawn on its chip: modifiers as symbols, a letter in capitals (`⌥H`), other names as they are.
     public static func display(_ chord: Chord) -> String {
-        var text = ""
-        if chord.modifiers.contains(.control) { text += "⌃" }
-        if chord.modifiers.contains(.option) { text += "⌥" }
-        if chord.modifiers.contains(.shift) { text += "⇧" }
-        if chord.modifiers.contains(.command) { text += "⌘" }
-        return text + (chord.key.count == 1 ? chord.key.uppercased() : chord.key)
+        chord.modifiers.symbols + (chord.key.count == 1 ? chord.key.uppercased() : chord.key)
     }
 
     /// The keys of `mode` (and the universal ones) that can be pressed after the `pending` steps of a sequence (none at
@@ -19,8 +14,11 @@ public enum WhichKey {
     /// chords with modifiers, then other keys, then `esc`.
     public static func entries(mode: String, pending: [Chord], records: [BindRecord]) -> [LabelEntry] {
         var found: [Chord: (text: String, grouped: Bool)] = [:]
+        // A hold bind (`repeating = true`) shows when its keys have no plain bind; with one, the plain bind shows.
+        let plain = Set(records.filter { $0.trigger == .press }.map { "\($0.mode)\u{0}\($0.keys)" })
         for record in records
-        where (record.mode == mode || record.mode == universalMode) && record.trigger == .press
+        where (record.mode == mode || record.mode == universalMode)
+            && (record.trigger == .press || (record.trigger == .hold && !plain.contains("\(record.mode)\u{0}\(record.keys)")))
             && !record.options.hidden && record.action != "noop" {
             guard let chords = try? parseChordSequence(record.keys), chords.count > pending.count,
                   Array(chords.prefix(pending.count)) == pending else { continue }

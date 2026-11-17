@@ -15,10 +15,12 @@ public enum BindAction: Sendable, Equatable {
     case function(Int)
 }
 
-/// When a bind runs: when the key goes down (the default), when it comes up, or when it is held for a while.
+/// When a bind runs: when the key goes down (the default), when it comes up, when it is held for a while, or for each
+/// repeat of a held key (`repeating = true`; the name in `wm list binds` is `repeat`).
 public enum BindTrigger: String, Sendable, Equatable {
     case press, release
     case longPress = "long_press"
+    case hold = "repeat"
 }
 
 /// The options of one bind, from the third argument of `wm.bind`.
@@ -167,6 +169,9 @@ public struct LoadedConfig: Sendable {
     /// `long_press`). Only single chords, by mode name.
     public var releaseBinds: [String: [Chord: BindAction]]
     public var longPressBinds: [String: [Chord: BindAction]]
+    /// Binds with `repeating = true`: they run for each repeat of a held key. The chord is also in `binds` (the same action,
+    /// or the plain bind that was made for it), which runs when the key goes down.
+    public var holdBinds: [String: [Chord: BindAction]]
     /// The press binds that must not repeat while the key is held, by mode name.
     public var noRepeat: [String: Set<Chord>]
     /// Every bind, in the order they were made.
@@ -188,6 +193,7 @@ public struct LoadedConfig: Sendable {
         sequences: [String: [[Chord]: BindAction]] = [:],
         releaseBinds: [String: [Chord: BindAction]] = [:],
         longPressBinds: [String: [Chord: BindAction]] = [:],
+        holdBinds: [String: [Chord: BindAction]] = [:],
         noRepeat: [String: Set<Chord>] = [:],
         bindRecords: [BindRecord] = [],
         gestures: [Gesture] = []
@@ -200,6 +206,7 @@ public struct LoadedConfig: Sendable {
         self.sequences = sequences
         self.releaseBinds = releaseBinds
         self.longPressBinds = longPressBinds
+        self.holdBinds = holdBinds
         self.noRepeat = noRepeat
         self.bindRecords = bindRecords
         self.gestures = gestures

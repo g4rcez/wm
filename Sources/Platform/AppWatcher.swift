@@ -67,8 +67,9 @@ public final class AppWatcher: @unchecked Sendable {
         }
     }
 
-    /// All windows of the app with their current attributes.
-    public func snapshot() async -> [WindowInfo] {
+    /// All windows of the app with their current attributes. `nil` when the app cannot be read now (busy, just woken):
+    /// that says nothing about its windows.
+    public func snapshot() async -> [WindowInfo]? {
         await thread.run { [self] in readWindows() }
     }
 
@@ -129,6 +130,14 @@ public final class AppWatcher: @unchecked Sendable {
         }
     }
 
+    /// Enters or leaves macOS fullscreen (the window gets a Space of its own).
+    public func setFullscreen(_ id: WindowID, _ on: Bool) {
+        thread.async { [self] in
+            guard let window = elements[id] else { return }
+            AXUIElementSetAttributeValue(window, "AXFullScreen" as CFString, on ? kCFBooleanTrue : kCFBooleanFalse)
+        }
+    }
+
     public func close(_ id: WindowID) {
         thread.async { [self] in
             guard let window = elements[id],
@@ -139,8 +148,8 @@ public final class AppWatcher: @unchecked Sendable {
 
     // MARK: - AX helpers (watcher thread only)
 
-    private func readWindows() -> [WindowInfo] {
-        guard let app, let list: [AXUIElement] = attribute(app, kAXWindowsAttribute) else { return [] }
+    private func readWindows() -> [WindowInfo]? {
+        guard let app, let list: [AXUIElement] = attribute(app, kAXWindowsAttribute) else { return nil }
         var infos: [WindowInfo] = []
         var alive: Set<WindowID> = []
         for window in list {

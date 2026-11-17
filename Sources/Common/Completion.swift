@@ -40,11 +40,12 @@ public struct CompletionSource {
     public var windows: () -> [LiveWindow] = { [] }
     public var workspaces: () -> [String] = { [] }
     public var modes: () -> [String] = { [] }
+    public var marks: () -> [String] = { [] }
 
     public init() {}
 }
 
-private enum LiveArgument { case window, workspace, special, mode }
+private enum LiveArgument { case window, workspace, special, mode, mark }
 
 /// The commands whose first argument is a name or an id that the daemon knows.
 private let liveArguments: [String: LiveArgument] = [
@@ -53,6 +54,8 @@ private let liveArguments: [String: LiveArgument] = [
     "window send workspace": .workspace,
     "workspace special": .special,
     "mode": .mode,
+    "focus mark": .mark,
+    "window unmark": .mark,
 ]
 
 /// What a shell completes after the words of one command: the next words, the values of the first argument, the options.
@@ -62,12 +65,19 @@ private struct CompletionNode {
     var flags: [String] = []
 }
 
+private let monitorWords = ["left", "right", "up", "down", "next", "prev", "last", "main", "secondary", "tertiary"]
+
 /// Arguments that `CommandSpec.args` cannot list: the text of the spec names a placeholder, or describes them in `details`.
 private let extraValues: [String: [String]] = [
-    "list": ["windows", "workspaces", "monitors", "binds"],
+    "list": ["windows", "workspaces", "monitors", "memory", "binds"],
+    "zen": ["on", "off"],
+    "window snap": ["left", "right", "top", "bottom", "top-left", "top-right", "bottom-left", "bottom-right", "center"],
     "workspace": ["next", "prev", "empty"],
     "window send workspace": ["next", "prev", "empty"],
-    "layout tile": ["2", "3", "4", "5", "6", "2+1", "1+2", "2/3", "3/4", "1/4"],
+    "focus monitor": monitorWords,
+    "window send monitor": monitorWords,
+    "workspace move monitor": monitorWords,
+    "layout tile": ["2", "3", "4", "5", "6", "2+1", "1+2", "2/3", "3/4", "1/4", "center"],
 ]
 
 private let extraFlags: [String: [String]] = [
@@ -75,7 +85,7 @@ private let extraFlags: [String: [String]] = [
 ]
 
 private let directionNames = ["left", "right", "up", "down"]
-private let placeholders: Set<String> = ["name", "pattern", "fraction"]
+private let placeholders: Set<String> = ["name", "pattern", "fraction", "n"]
 private let globalFlags = ["--window", "--json", "--verbose", "--help"]
 private let windowSelectors = ["focused", "app:", "title:", "pid:"]
 
@@ -168,6 +178,7 @@ public func complete(_ words: [String], source: CompletionSource = CompletionSou
     case .workspace?: found += source.workspaces().filter { !$0.hasPrefix("special") }.map { CompletionCandidate($0) }
     case .special?: found += source.workspaces().filter { $0.hasPrefix("special:") }.map { CompletionCandidate(String($0.dropFirst("special:".count))) }
     case .mode?: found += source.modes().map { CompletionCandidate($0) }
+    case .mark?: found += source.marks().map { CompletionCandidate($0) }
     case nil: break
     }
     var seen = Set<String>()
@@ -208,6 +219,11 @@ public func parseLiveWindows(_ json: Data) -> [LiveWindow] {
 /// The `wm list workspaces --json` document.
 public func parseLiveWorkspaces(_ json: Data) -> [String] {
     jsonArray(json).compactMap { $0["name"] as? String }
+}
+
+/// The `wm list windows --json` document: every mark of every window.
+public func parseLiveMarks(_ json: Data) -> [String] {
+    Array(Set(jsonArray(json).flatMap { $0["marks"] as? [String] ?? [] })).sorted()
 }
 
 /// The `wm list binds --json` document: every mode that has a bind.

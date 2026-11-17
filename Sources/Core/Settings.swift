@@ -2,11 +2,41 @@ import CoreGraphics
 import Foundation
 
 public enum LayoutKind: String, Sendable, CaseIterable, Codable {
-    case tiling, scrolling
+    case tiling, scrolling, master
 }
 
-public enum WorkspaceMode: String, Sendable {
-    case emulated, native
+/// Where the master area of the `master` layout is.
+public enum MasterOrientation: String, Sendable, CaseIterable, Codable {
+    case left, right, top, bottom
+    /// The master is in the middle and the stack is on both sides of it.
+    case center
+
+    /// The next one in the order left, right, top, bottom, center.
+    public var next: MasterOrientation {
+        let all = Self.allCases
+        return all[(all.firstIndex(of: self)! + 1) % all.count]
+    }
+}
+
+/// The `master` layout: one or more master windows in a big area, the other windows in a stack beside it.
+public struct MasterSettings: Sendable, Equatable {
+    public enum NewWindow: String, Sendable, CaseIterable {
+        /// A new window goes to the top of the stack.
+        case stack
+        /// A new window becomes the master; the old master goes to the top of the stack.
+        case master
+    }
+
+    public static let minRatio = 0.1
+    public static let maxRatio = 0.9
+
+    /// The share of the screen that the master area takes along the axis of the split.
+    public var ratio: Double = 0.55
+    /// How many windows are masters.
+    public var count: Int = 1
+    public var orientation: MasterOrientation = .left
+    public var newWindow: NewWindow = .stack
+    public init() {}
 }
 
 public enum CenterMode: String, Sendable {
@@ -45,8 +75,13 @@ public struct TilingSettings: Sendable, Equatable {
     public var splitRatio: Double = 0.5
     /// Keep a split's orientation when its sibling is closed or the window is re-inserted.
     public var preserveSplit: Bool = true
+    /// A new window splits the tile on the side that the mouse pointer is nearest to (Hyprland's `smart_split`).
+    public var smartSplit: Bool = false
+    /// A new window splits the tile that the mouse pointer is over, not the focused one, on the side that the pointer is
+    /// nearest to. Without a tile under the pointer it falls back to the focused tile.
+    public var splitUnderPointer: Bool = false
     /// The patterns that the picker and the menu bar list for this layout (`layout tile`).
-    public var templates: [SplitTemplate] = SplitTemplate.allCases
+    public var templates: [SplitTemplate] = SplitTemplate.tilingCases
     public init() {}
 }
 
@@ -66,6 +101,25 @@ public enum ColumnDisplay: String, Sendable, CaseIterable {
     case normal, tabbed
 }
 
+/// The way the main strip of the scrolling layout runs on the screen.
+public enum ScrollOrientation: String, Sendable, CaseIterable {
+    /// Columns side by side, scrolling sideways.
+    case horizontal
+    /// Rows one under the other, scrolling up and down.
+    case vertical
+    /// `vertical` on a screen that is taller than it is wide, else `horizontal`.
+    case auto
+}
+
+/// What a lone column of the scrolling layout does with the screen. `fill` is the default: a window that is alone on its
+/// workspace is maximized, as it is in the tiling layout.
+public enum SingleWindowFit: String, Sendable, CaseIterable {
+    /// It keeps its own width.
+    case keep
+    /// It fills the whole width.
+    case fill
+}
+
 public struct ScrollingSettings: Sendable, Equatable {
     /// Column widths as fractions of the viewport width; `columnWidth(.cycle)` walks this list.
     public var presets: [Double] = [0.33, 0.5, 0.66, 1.0]
@@ -74,6 +128,10 @@ public struct ScrollingSettings: Sendable, Equatable {
     public var center: CenterMode = .onOverflow
     /// A lone column is centred on the screen even when `center` is `never`.
     public var alwaysCenterSingleColumn = false
+    public var orientation: ScrollOrientation = .horizontal
+    public var singleWindowFit: SingleWindowFit = .fill
+    /// With 2 or more columns, but fewer than this number, the columns grow in proportion to fill the screen. 0 is off.
+    public var visibleColumns = 0
     /// What a new column shows: `.tabbed` makes every new column a tab stack.
     public var defaultColumnDisplay: ColumnDisplay = .normal
     /// Window heights as fractions of the column height; `windowHeight(.cycle)` walks this list.
@@ -169,9 +227,19 @@ public struct PrefixSettings: Sendable, Equatable {
     public init() {}
 }
 
+/// The zen mode (`wm zen`): the focused window alone, centered, and the others hidden.
+public struct ZenSettings: Sendable, Equatable {
+    public static let minWidth = 0.3
+    /// Width of the window as a fraction of the work area, `minWidth`...1.
+    public var width: Double = 0.7
+    public init() {}
+}
+
 public struct BindSettings: Sendable, Equatable {
     /// Seconds a key is held before a `long_press` bind runs.
     public var longPressTimeout: Double = 0.4
+    /// Turn off the Cmd+Tab and Cmd+Shift+Tab of macOS while wm runs, so a wm bind on them is the only switcher.
+    public var disableSystemCmdTab = false
     public init() {}
 }
 
@@ -187,23 +255,63 @@ public struct SwitcherSettings: Sendable, Equatable {
     public init() {}
 }
 
+public struct FocusFollowsMouse: Sendable, Equatable {
+    public var enabled = false
+    /// The pointer focuses only windows that are fully on screen, so it does not scroll a column into view by accident.
+    public var onlyFullyVisible = false
+    public init(enabled: Bool = false, onlyFullyVisible: Bool = false) {
+        self.enabled = enabled
+        self.onlyFullyVisible = onlyFullyVisible
+    }
+}
+
+/// Swipes with 3 or 4 fingers, read from the private MultitouchSupport framework.
+public struct TrackpadSettings: Sendable, Equatable {
+    public var enabled = false
+    /// The number of fingers (3 or 4) whose swipe scrolls the scrolling strip. 0: none.
+    public var scrollFingers = 3
+    /// Strip points per pad width are multiplied by this.
+    public var speed = 1.0
+    public init(enabled: Bool = false, scrollFingers: Int = 3, speed: Double = 1) {
+        self.enabled = enabled
+        self.scrollFingers = scrollFingers
+        self.speed = speed
+    }
+}
+
+/// Hold the modifier and drag anywhere in a window to move it (left button) or resize it (right button). `nil` is off.
+/// The modifiers are chord text such as `alt` or `alt+shift`.
+public struct MouseSettings: Sendable, Equatable {
+    public var moveModifier: String?
+    public var resizeModifier: String?
+    public init(moveModifier: String? = nil, resizeModifier: String? = nil) {
+        self.moveModifier = moveModifier
+        self.resizeModifier = resizeModifier
+    }
+}
+
 public struct Settings: Sendable, Equatable {
     public var layout: LayoutKind = .tiling
-    public var workspaces: WorkspaceMode = .emulated
     public var gaps = Gaps(inner: 8, outer: 8)
     public var animations = AnimationSettings()
     public var border = BorderSettings()
     public var tabIndicator = TabIndicatorSettings()
-    public var focusFollowsMouse = false
+    public var focusFollowsMouse = FocusFollowsMouse()
     public var mouseFollowsFocus = false
     public var startAtLogin = false
     /// `focus <dir>` wraps around at the edge of the workspace.
     public var wrapFocus = false
+    public var mouse = MouseSettings()
+    public var trackpad = TrackpadSettings()
+    /// `workspace N` while N is shown goes back to the previous workspace.
+    public var workspaceBackAndForth = false
     public var tiling = TilingSettings()
     public var scrolling = ScrollingSettings()
     public var switcher = SwitcherSettings()
     public var prefix = PrefixSettings()
     public var binds = BindSettings()
+    public var zen = ZenSettings()
+    public var master = MasterSettings()
     /// Commands a `wm://` URL may run besides the always-allowed ones. `exec` and `reload` are denied by default.
     public var urlAllow: [String] = []
     public init() {}
@@ -213,6 +321,7 @@ public struct Settings: Sendable, Equatable {
         switch layout {
         case .tiling: tiling.templates
         case .scrolling: scrolling.templates
+        case .master: []
         }
     }
 }

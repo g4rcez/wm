@@ -136,6 +136,10 @@ final class LuaState {
     fileprivate var sequences: [String: [[Chord]: BindAction]] = [:]
     fileprivate var releaseBinds: [String: [Chord: BindAction]] = [:]
     fileprivate var longPressBinds: [String: [Chord: BindAction]] = [:]
+    fileprivate var holdBinds: [String: [Chord: BindAction]] = [:]
+    /// Chords whose entry in `binds` is the action of a `repeating = true` bind, made because no plain bind exists. A plain
+    /// bind, in any order, takes its place.
+    fileprivate var pressFromHold: [String: Set<Chord>] = [:]
     fileprivate var noRepeat: [String: Set<Chord>] = [:]
     fileprivate var bindRecords: [BindRecord] = []
     fileprivate var gestures: [Gesture] = []
@@ -171,7 +175,7 @@ final class LuaState {
         return LoadedConfig(
             settings: settings, binds: binds, rules: rules, workspaceLayouts: workspaceLayouts, workspaceRules: workspaceRules,
             sequences: sequences,
-            releaseBinds: releaseBinds, longPressBinds: longPressBinds, noRepeat: noRepeat, bindRecords: bindRecords,
+            releaseBinds: releaseBinds, longPressBinds: longPressBinds, holdBinds: holdBinds, noRepeat: noRepeat, bindRecords: bindRecords,
             gestures: gestures)
     }
 
@@ -264,6 +268,7 @@ private let builtInTemplates: LuaValue = {
         ("two", .two), ("three", .three), ("four", .four), ("five", .five), ("six", .six),
         ("stack_left", .stackLeft), ("stack_right", .stackRight),
         ("two_thirds", .twoThirds), ("three_quarters", .threeQuarters), ("one_quarter", .oneQuarter),
+        ("centered", .centered),
     ]
     return .table(Dictionary(uniqueKeysWithValues: templates.map { id, template in
         var fields: [String: LuaValue] = [
@@ -271,6 +276,10 @@ private let builtInTemplates: LuaValue = {
             "cells": .array(template.cells.map { .array([.number($0.minX), .number($0.minY), .number($0.width), .number($0.height)]) }),
         ]
         if let key = template.key { fields["key"] = .string(key) }
+        if template.area != SplitTemplate.unit {
+            let area = template.area
+            fields["area"] = .array([.number(area.minX), .number(area.minY), .number(area.width), .number(area.height)])
+        }
         return (id, .table(fields))
     }))
 }()
@@ -306,6 +315,22 @@ private func nativeConfig(_ L: OpaquePointer?) -> Int32 {
     }
 }
 
+/// The Lua function at stack `index` as a bind action. It stays in the registry, so it can be called later.
+private func functionAction(_ L: OpaquePointer?, at index: Int32, _ state: LuaState) -> BindAction {
+    lua_pushvalue(L, index)
+    return .function(state.functionID(ref: luaL_ref(L, registryIndex)))
+}
+
+private extension BindAction {
+    /// What `wm list binds` shows: the command, or `function`.
+    var recordText: String {
+        switch self {
+        case .command(let command): command
+        case .function: "function"
+        }
+    }
+}
+
 private func nativeBind(_ L: OpaquePointer?) -> Int32 {
     reply(L, loadingOnly: "wm.bind") { state in
         guard let mode = readString(L, 1), lua_type(L, 1) == LUA_TSTRING else { throw ConfigError(message: "wm.bind: the mode name must be a string") }
@@ -320,10 +345,11 @@ private func nativeBind(_ L: OpaquePointer?) -> Int32 {
         case LUA_TNIL, LUA_TNONE:
             break
         case LUA_TTABLE:
-            let fields = try Fields(readValue(L, 4), owner: "wm.bind", allowed: ["description", "repeating", "release", "long_press", "universal", "hidden"])
+            let fields = try Fields(readValue(L, 4), owner: "wm.bind", allowed: ["description", "repeating", "release", "long_press", "universal", "submap_universal", "hidden"])
             options.description = try fields.string("description")
             options.repeating = try fields.bool("repeating")
-            options.universal = try fields.bool("universal") ?? false
+            // `submap_universal` is the name that Hyprland uses.
+            options.universal = try fields.bool("universal") ?? fields.bool("submap_universal") ?? false
             options.hidden = try fields.bool("hidden") ?? false
             let release = try fields.bool("release") ?? false, longPress = try fields.bool("long_press") ?? false
             if release && longPress { throw ConfigError(message: "mode '\(mode)': '\(text)' cannot be both 'release' and 'long_press'") }
@@ -334,11 +360,14 @@ private func nativeBind(_ L: OpaquePointer?) -> Int32 {
             if trigger != .press, options.repeating != nil {
                 throw ConfigError(message: "mode '\(mode)': 'repeating' applies to binds that run when the key goes down, not to '\(text)'")
             }
+            // `repeating = true` on a single chord is a hold bind: it runs for each repeat of the held key. On a sequence it
+            // stays as it always was (the option has no effect there).
+            if trigger == .press, options.repeating == true, chords.count == 1 { trigger = .hold }
         default:
             throw ConfigError(message: "mode '\(mode)': the options for '\(text)' must be a table")
         }
         let target = options.universal ? universalMode : mode
-        if trigger == .press { try state.checkConflicts(mode: target, chords: chords) }
+        if trigger == .press || trigger == .hold { try state.checkConflicts(mode: target, chords: chords) }
 
         let action: BindAction
         switch lua_type(L, 3) {
@@ -346,8 +375,7 @@ private func nativeBind(_ L: OpaquePointer?) -> Int32 {
             let command = readString(L, 3) ?? ""
             action = .command(command.trimmingCharacters(in: .whitespaces).isEmpty ? "noop" : command)
         case LUA_TFUNCTION:
-            lua_pushvalue(L, 3)
-            action = .function(state.functionID(ref: luaL_ref(L, registryIndex)))
+            action = functionAction(L, at: 3, state)
         default:
             throw ConfigError(message: "mode '\(mode)': the action for chord '\(text)' must be a command string or a function")
         }
@@ -355,6 +383,7 @@ private func nativeBind(_ L: OpaquePointer?) -> Int32 {
         case .press:
             if chords.count == 1 {
                 state.binds[target, default: [:]][chords[0]] = action
+                state.pressFromHold[target]?.remove(chords[0])
                 if options.repeating == false {
                     state.noRepeat[target, default: []].insert(chords[0])
                 } else {
@@ -363,6 +392,13 @@ private func nativeBind(_ L: OpaquePointer?) -> Int32 {
             } else {
                 state.sequences[target, default: [:]][chords] = action
             }
+        case .hold:
+            state.holdBinds[target, default: [:]][chords[0]] = action
+            // Without a plain bind, the same action runs when the key goes down.
+            if state.binds[target]?[chords[0]] == nil || state.pressFromHold[target]?.contains(chords[0]) == true {
+                state.binds[target, default: [:]][chords[0]] = action
+                state.pressFromHold[target, default: []].insert(chords[0])
+            }
         case .release:
             state.releaseBinds[target, default: [:]][chords[0]] = action
         case .longPress:
@@ -370,22 +406,24 @@ private func nativeBind(_ L: OpaquePointer?) -> Int32 {
         }
         // The canonical text, so the label can read the chords back: `alt-h`, `ctrl-p>h`.
         let keys = chords.map(\.description).joined(separator: ">")
-        let described: String
-        switch action {
-        case .command(let command): described = command
-        case .function: described = "function"
-        }
         state.bindRecords.removeAll { $0.mode == target && $0.keys == keys && $0.trigger == trigger }
-        state.bindRecords.append(BindRecord(mode: target, keys: keys, trigger: trigger, action: described, options: options))
+        state.bindRecords.append(BindRecord(mode: target, keys: keys, trigger: trigger, action: action.recordText, options: options))
     }
 }
 
 private func nativeGesture(_ L: OpaquePointer?) -> Int32 {
     reply(L, loadingOnly: "wm.gesture") { state in
-        let fields = try Fields(readValue(L, 1), owner: "wm.gesture", allowed: ["mods", "direction", "threshold", "description"])
-        guard let mods = try fields.string("mods") else { throw ConfigError(message: "wm.gesture: needs 'mods', for example mods = \"alt\"") }
-        let modifiers: Modifiers
-        do { modifiers = try parseModifiers(mods) } catch { throw ConfigError(message: "wm.gesture: 'mods' \(error)") }
+        let fields = try Fields(readValue(L, 1), owner: "wm.gesture", allowed: ["mods", "fingers", "direction", "threshold", "description"])
+        let fingers = try fields.integer("fingers", min: 3)
+        if let fingers, fingers > 4 { throw ConfigError(message: "wm.gesture: 'fingers' must be 3 or 4") }
+        let mods = try fields.string("mods")
+        guard mods != nil || fingers != nil else {
+            throw ConfigError(message: "wm.gesture: needs 'mods', for example mods = \"alt\", or 'fingers' (3 or 4)")
+        }
+        var modifiers: Modifiers = []
+        if let mods {
+            do { modifiers = try parseModifiers(mods) } catch { throw ConfigError(message: "wm.gesture: 'mods' \(error)") }
+        }
         guard let name = try fields.choice("direction", GestureDirection.allCases.map(\.rawValue)), let direction = GestureDirection(rawValue: name) else {
             throw ConfigError(message: "wm.gesture: needs a 'direction' (left, right, up or down)")
         }
@@ -397,29 +435,17 @@ private func nativeGesture(_ L: OpaquePointer?) -> Int32 {
             guard !command.trimmingCharacters(in: .whitespaces).isEmpty else { throw ConfigError(message: "wm.gesture: 'command' must not be empty") }
             action = .command(command)
         case LUA_TFUNCTION:
-            lua_pushvalue(L, 2)
-            action = .function(state.functionID(ref: luaL_ref(L, registryIndex)))
+            action = functionAction(L, at: 2, state)
         default:
             throw ConfigError(message: "wm.gesture: needs a 'command', a command string or a function")
         }
         let description = try fields.string("description")
-        state.gestures.removeAll { $0.modifiers == modifiers && $0.direction == direction }
-        state.gestures.append(Gesture(modifiers: modifiers, direction: direction, action: action, threshold: threshold, description: description))
+        state.gestures.removeAll { $0.modifiers == modifiers && $0.fingers == fingers && $0.direction == direction }
+        state.gestures.append(Gesture(modifiers: modifiers, fingers: fingers, direction: direction, action: action, threshold: threshold, description: description))
         // `wm list binds` shows it next to the keys.
-        var keys: [String] = []
-        if modifiers.contains(.control) { keys.append("ctrl") }
-        if modifiers.contains(.option) { keys.append("alt") }
-        if modifiers.contains(.shift) { keys.append("shift") }
-        if modifiers.contains(.command) { keys.append("cmd") }
-        keys.append("scroll")
-        let shown = keys.joined(separator: "-") + " " + direction.rawValue
-        let text: String
-        switch action {
-        case .command(let command): text = command
-        case .function: text = "function"
-        }
+        let shown = (modifiers.names + [fingers.map { "\($0)-finger" } ?? "scroll"]).joined(separator: "-") + " " + direction.rawValue
         state.bindRecords.removeAll { $0.mode == "gesture" && $0.keys == shown }
-        state.bindRecords.append(BindRecord(mode: "gesture", keys: shown, trigger: .press, action: text, options: BindOptions(description: description)))
+        state.bindRecords.append(BindRecord(mode: "gesture", keys: shown, trigger: .press, action: action.recordText, options: BindOptions(description: description)))
     }
 }
 
@@ -431,6 +457,8 @@ private func nativeResetMode(_ L: OpaquePointer?) -> Int32 {
         state.sequences[mode] = nil
         state.releaseBinds[mode] = nil
         state.longPressBinds[mode] = nil
+        state.holdBinds[mode] = nil
+        state.pressFromHold[mode] = nil
         state.noRepeat[mode] = nil
         state.bindRecords.removeAll { $0.mode == mode }
     }

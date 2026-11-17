@@ -34,6 +34,8 @@ public struct ScrollingEngine: LayoutEngine {
     /// The strips take the settings that they cannot keep in their saved state.
     private mutating func applyStripSettings() {
         horizontal.centersSingleLane = settings.scrolling.alwaysCenterSingleColumn
+        horizontal.fillsSingleLane = settings.scrolling.singleWindowFit == .fill
+        horizontal.visibleLanes = settings.scrolling.visibleColumns
         vertical.centersSingleLane = settings.scrolling.alwaysCenterSingleColumn
     }
 
@@ -73,6 +75,19 @@ public struct ScrollingEngine: LayoutEngine {
     /// The strip that holds the window.
     public func strip(of window: WindowID) -> Orientation? { locate(window)?.strip }
 
+    /// The windows of every lane of a strip, in order: the columns of the horizontal strip, the rows of the vertical one.
+    public func lanes(of orientation: Orientation) -> [[WindowID]] {
+        self[strip: orientation].lanes.map(\.windows)
+    }
+
+    /// The size of the window's column as a fraction of its zone. A maximized column reports the size it will go back to.
+    public func columnSize(of window: WindowID) -> Double? {
+        locate(window).map { at in
+            let lane = self[strip: at.strip].lanes[at.lane]
+            return lane.zoom?.size ?? lane.size
+        }
+    }
+
     /// The template of the block that holds the window, if any.
     public func template(of window: WindowID) -> SplitTemplate? {
         locate(window).flatMap { self[strip: $0.strip].lanes[$0.lane].template }
@@ -85,6 +100,7 @@ public struct ScrollingEngine: LayoutEngine {
 
     /// Why `template` cannot be applied around `focused`, or `nil` when it can.
     public func templateError(_ template: SplitTemplate, focused: WindowID?) -> String? {
+        guard !template.isFrame else { return "this template is for the tiling layout" }
         guard let focused, locate(focused)?.strip == .horizontal else {
             return "tile works on a window of the horizontal strip"
         }
@@ -175,7 +191,29 @@ public struct ScrollingEngine: LayoutEngine {
 
     // MARK: Commands
 
+    /// The strip runs down the screen: the engine then works in a space with x and y swapped, and swaps the results back.
+    /// Only the entry points know about this; everything below them thinks in columns.
+    /// Whether the main strip runs down this screen (see `scrolling.orientation`).
+    public func runsVertically(in context: LayoutContext) -> Bool {
+        switch settings.scrolling.orientation {
+        case .horizontal: false
+        case .vertical: true
+        case .auto: context.viewport.height > context.viewport.width
+        }
+    }
+
+    /// The screen axis along which the strip of the window scrolls: sideways for a column strip on a normal screen, up
+    /// and down for the same strip on a portrait monitor. `nil` when the window is not in the layout.
+    public func screenAxis(of window: WindowID, in context: LayoutContext) -> Orientation? {
+        strip(of: window).map { runsVertically(in: context) ? $0.transposed : $0 }
+    }
+
     public mutating func perform(_ command: LayoutCommand, focused: WindowID?, in context: LayoutContext) -> Bool {
+        guard runsVertically(in: context) else { return run(command, focused: focused, in: context) }
+        return run(command.transposed, focused: focused, in: context.transposed)
+    }
+
+    private mutating func run(_ command: LayoutCommand, focused: WindowID?, in context: LayoutContext) -> Bool {
         switch command {
         case .toggleSplit, .swapSplit:
             return false
@@ -253,6 +291,9 @@ public struct ScrollingEngine: LayoutEngine {
         case .balance:
             return self[strip: strip].fit()
 
+        case .expandColumn:
+            return self[strip: strip].expand(lane: here.lane, length: length)
+
         case .matchWidth:
             return self[strip: strip].matchSize(of: here.lane)
 
@@ -265,11 +306,14 @@ public struct ScrollingEngine: LayoutEngine {
         case .columnWidth(.cycle):
             return self[strip: strip].cycleSize(of: here.lane, presets: settings.scrolling.presets)
 
-        case .stack:
-            return self[strip: strip].stack(focused, at: here)
+        case .stack(let direction):
+            return self[strip: strip].stack(focused, at: here, toward: direction)
 
-        case .unstack:
-            return self[strip: strip].unstack(focused, at: here, size: defaultSize(of: strip), tabbed: newLaneTabbed)
+        case .unstack(let direction):
+            return self[strip: strip].unstack(focused, at: here, size: defaultSize(of: strip), tabbed: newLaneTabbed, toward: direction)
+
+        case .moveColumn(let index):
+            return self[strip: strip].moveLane(here.lane, to: index)
 
         case .toggleTabs:
             guard self[strip: strip].lanes[here.lane].template == nil else { return false }
@@ -313,7 +357,15 @@ public struct ScrollingEngine: LayoutEngine {
     }
 
     private mutating func resizeLane(_ lane: Int, of strip: Orientation, by delta: CGFloat, length: CGFloat) -> Bool {
-        self[strip: strip].setSize(of: lane, to: self[strip: strip].lanes[lane].size + Double(delta / length))
+        let current = self[strip: strip]
+        // A lone lane that fills the zone starts from its shown size, not from the stored one.
+        let stored = current.fillsLone(lane) ? Strip.maxSize : current.lanes[lane].size
+        guard current.fillScale != 1 else { return self[strip: strip].setSize(of: lane, to: stored + Double(delta / length)) }
+        // With `visible_columns` a lane is shown larger than it is stored. Find the stored size that shows the lane
+        // `delta` larger, so the edge follows the mouse: shown = stored / (stored + others).
+        let others = current.lanes.enumerated().reduce(0.0) { $1.offset == lane ? $0 : $0 + $1.element.size }
+        let shown = min(max(stored * current.fillScale + Double(delta / length), 0.05), 0.95)
+        return self[strip: strip].setSize(of: lane, to: shown * others / (1 - shown))
     }
 
     /// Changes the width of the vertical zone. Needs a horizontal zone to trade width with.
@@ -342,6 +394,7 @@ public struct ScrollingEngine: LayoutEngine {
     /// Ends a manual scroll. Returns the first window of the lane nearest the centre of its zone, so the caller can
     /// focus it. The strip is moved to show that lane. Returns `nil` when no manual scroll is active.
     public mutating func settle(in context: LayoutContext) -> WindowID? {
+        let context = runsVertically(in: context) ? context.transposed : context
         var result: WindowID?
         for orientation in [Orientation.horizontal, .vertical] {
             let length = zoneRect(of: orientation, in: context).length(along: orientation)
@@ -378,8 +431,9 @@ public struct ScrollingEngine: LayoutEngine {
 
         var result: [Placement] = []
         var position: CGFloat = 0
+        let sizes = strip.displaySizes()
         for (index, lane) in strip.lanes.enumerated() {
-            let size = CGFloat(lane.size) * mainLength
+            let size = CGFloat(sizes[index]) * mainLength
             let main = mainStart + position - offset
             position += size
             let before = main + size <= mainStart + tolerance
@@ -409,6 +463,11 @@ public struct ScrollingEngine: LayoutEngine {
     }
 
     public mutating func frames(in context: LayoutContext, focused: WindowID?) -> [WindowID: CGRect] {
+        guard runsVertically(in: context) else { return layout(in: context, focused: focused) }
+        return layout(in: context.transposed, focused: focused).mapValues(\.transposed)
+    }
+
+    private mutating func layout(in context: LayoutContext, focused: WindowID?) -> [WindowID: CGRect] {
         let center = settings.scrolling.center
         var result: [WindowID: CGRect] = [:]
         for orientation in [Orientation.horizontal, .vertical] {
@@ -434,7 +493,7 @@ public struct ScrollingEngine: LayoutEngine {
         let side: Direction = strip == .horizontal ? (before ? .left : .right) : (before ? .up : .down)
         let nextToOtherZone = strip == .horizontal && boundary(of: .horizontal) == side
         var frame = frame
-        guard !nextToOtherZone, side != .up, context.sliverEdges.contains(side) else {
+        guard !nextToOtherZone, context.sliverEdges.contains(side) else {
             frame.origin = context.hiddenCorner ?? CGPoint(x: context.viewport.maxX - 1, y: context.viewport.maxY - 1)
             return frame
         }
@@ -469,6 +528,12 @@ public struct ScrollingEngine: LayoutEngine {
     // MARK: Overview
 
     public func overview(in context: LayoutContext, focused: WindowID?) -> LayoutOverview {
+        guard runsVertically(in: context) else { return miniature(in: context, focused: focused) }
+        let result = miniature(in: context.transposed, focused: focused)
+        return LayoutOverview(frames: result.frames.mapValues(\.transposed), viewports: result.viewports.map(\.transposed))
+    }
+
+    private func miniature(in context: LayoutContext, focused: WindowID?) -> LayoutOverview {
         guard !horizontal.lanes.isEmpty || !vertical.lanes.isEmpty else {
             return LayoutOverview(frames: [:], viewports: [context.viewport])
         }
@@ -497,6 +562,11 @@ public struct ScrollingEngine: LayoutEngine {
     // MARK: Focus
 
     public mutating func neighbor(of window: WindowID, _ direction: Direction, wrap: Bool, in context: LayoutContext) -> WindowID? {
+        guard runsVertically(in: context) else { return step(from: window, direction, wrap: wrap, in: context) }
+        return step(from: window, direction.transposed, wrap: wrap, in: context.transposed)
+    }
+
+    private mutating func step(from window: WindowID, _ direction: Direction, wrap: Bool, in context: LayoutContext) -> WindowID? {
         guard let at = locate(window) else { return nil }
         let strip = self[strip: at.strip]
         let step = Strip.step(direction)

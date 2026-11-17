@@ -36,6 +36,7 @@ if arguments.first == "__complete" {
     source.windows = { parseLiveWindows(live(["list", "windows", "--json"])) }
     source.workspaces = { parseLiveWorkspaces(live(["list", "workspaces", "--json"])) }
     source.modes = { parseLiveModes(live(["list", "binds", "--json"])) }
+    source.marks = { parseLiveMarks(live(["list", "windows", "--json"])) }
     write(renderCompletion(complete(Array(arguments.dropFirst()), source: source)), to: .standardOutput)
     exit(0)
 }
@@ -48,7 +49,7 @@ do {
     windowSelector = parsed.selector
     arguments = parsed.rest
 } catch let error as WindowFlagError {
-    die(error.message, hint: "see `wm list windows`; selectors: focused, app:<name>, title:<regex>, pid:<n>", code: 2)
+    die(error.message, hint: "see `wm list windows`; selectors: focused, app:<name>, title:<regex>, mark:<name>, pid:<n>", code: 2)
 }
 // `-v` and `-h` are the short forms of --verbose and --help. Everything after `exec` belongs to the shell command.
 if arguments.first != "exec" {

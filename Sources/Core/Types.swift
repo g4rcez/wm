@@ -17,6 +17,21 @@ public enum Direction: String, Sendable, CaseIterable {
     }
 
     public var isHorizontal: Bool { self == .left || self == .right }
+
+    /// The direction with the screen's x and y swapped: left and up, right and down.
+    public var transposed: Direction {
+        switch self {
+        case .left: .up
+        case .up: .left
+        case .right: .down
+        case .down: .right
+        }
+    }
+}
+
+extension CGRect {
+    /// The rectangle with x and y swapped.
+    var transposed: CGRect { CGRect(x: minY, y: minX, width: height, height: width) }
 }
 
 public enum Orientation: String, Sendable, Codable {
@@ -92,6 +107,17 @@ public struct LayoutContext: Sendable, Equatable {
     }
 }
 
+extension LayoutContext {
+    /// The same screen with x and y swapped, so an engine that works along x can lay out a strip that runs down the screen.
+    var transposed: LayoutContext {
+        LayoutContext(
+            viewport: viewport.transposed,
+            gaps: Gaps(inner: gaps.inner, top: gaps.left, right: gaps.bottom, bottom: gaps.right, left: gaps.top),
+            hiddenCorner: hiddenCorner.map { CGPoint(x: $0.y, y: $0.x) },
+            sliverEdges: Set(sliverEdges.map(\.transposed)))
+    }
+}
+
 /// The layout drawn as a miniature, for the window switcher.
 public struct LayoutOverview: Sendable, Equatable {
     /// Every window at its un-parked position, in the engine's own coordinate space (a scrolling strip may extend
@@ -117,6 +143,34 @@ public enum ColumnWidth: Sendable, Equatable {
     case fraction(Double)
     /// Next preset after the current one; wraps around.
     case cycle
+}
+
+/// A place in a list of columns or of the windows of a column.
+public enum LaneIndex: Sendable, Equatable {
+    case first, last
+    /// Counts from 1. A number that is too large means the last one.
+    case number(Int)
+
+    /// `first`, `last` or a whole number from 1 (the words of the commands). Anything else is `nil`.
+    public init?(parsing text: String) {
+        switch text {
+        case "first": self = .first
+        case "last": self = .last
+        default:
+            guard let n = Int(text), n >= 1 else { return nil }
+            self = .number(n)
+        }
+    }
+
+    /// The 0-based position in a list of `count` items, or `nil` when the list is empty or the number is below 1.
+    public func resolve(count: Int) -> Int? {
+        guard count > 0 else { return nil }
+        switch self {
+        case .first: return 0
+        case .last: return count - 1
+        case .number(let n): return n >= 1 ? min(n, count) - 1 : nil
+        }
+    }
 }
 
 /// Layout commands. An engine ignores (returns `false` for) the commands that do not apply to it.
@@ -146,6 +200,8 @@ public enum LayoutCommand: Sendable, Equatable {
     case balance
     /// scrolling: every column gets the width of the focused column.
     case matchWidth
+    /// scrolling: the focused column grows to take the room that the other columns on screen leave free.
+    case expandColumn
     /// scrolling: the windows of the focused column's stack get equal heights.
     case equalizeStack
     /// tiling: flip the split orientation of the focused window's parent.
@@ -160,10 +216,13 @@ public enum LayoutCommand: Sendable, Equatable {
     case moveToRoot
     /// scrolling: set or cycle the width of the focused column.
     case columnWidth(ColumnWidth)
-    /// scrolling: join the focused window into the column to its left (a stack).
-    case stack
-    /// scrolling: pull the focused window out of its stack into its own column to the right.
-    case unstack
+    /// scrolling: join the focused window into the column on that side (a stack), at the bottom. In the vertical strip
+    /// `.left` and `.up` mean the row before, `.right` and `.down` the row after.
+    case stack(Direction)
+    /// scrolling: pull the focused window out of its stack into its own column on that side of the stack.
+    case unstack(Direction)
+    /// scrolling: move the focused window's column to this place in its strip.
+    case moveColumn(LaneIndex)
     /// scrolling: toggle tabbed display of the focused column's stack.
     case toggleTabs
     /// scrolling: the focused window keeps its place in the strip and grows to the whole zone (the column gets the full
@@ -177,6 +236,31 @@ public enum LayoutCommand: Sendable, Equatable {
     case windowHeight(ColumnWidth)
     /// scrolling: scroll the strip by this many points (positive moves the view to the right).
     case scroll(CGFloat)
+    /// master: the focused window and the master change places. When the focused window is the master, the first window of the
+    /// stack takes its place.
+    case promote
+    /// master: how many windows are masters: exact, or a change.
+    case masterCount(Int, relative: Bool)
+    /// master: the share of the master area: exact (0.1...0.9) or a change.
+    case masterRatio(Double, relative: Bool)
+    /// master: where the master area is. `nil` goes to the next one.
+    case masterOrientation(MasterOrientation?)
+}
+
+extension LayoutCommand {
+    /// The command in a space with x and y swapped (see `LayoutContext.transposed`).
+    var transposed: LayoutCommand {
+        switch self {
+        case .move(let direction): .move(direction.transposed)
+        case .resize(let dimension, let delta):
+            .resize(dimension == .width ? .height : dimension == .height ? .width : .smart, delta)
+        case .resizeEdge(let direction, let delta): .resizeEdge(direction.transposed, delta)
+        case .stack(let direction): .stack(direction.transposed)
+        case .unstack(let direction): .unstack(direction.transposed)
+        case .preselect(let direction): .preselect(direction.transposed)
+        default: self
+        }
+    }
 }
 
 public protocol LayoutEngine: Sendable {

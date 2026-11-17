@@ -8,8 +8,16 @@ struct ManagedWindow {
     var workspace: String
     var floating: Bool
     var minimized = false
+    /// The window is in macOS fullscreen, in a Space of its own: wm leaves it alone until it comes back.
+    var nativeFullscreen = false
+    /// Minimized and fullscreen windows have no place in the layout.
+    var isOutOfLayout: Bool { minimized || nativeFullscreen }
     /// Where a floating window lives; restored when its workspace is shown again.
     var floatFrame: CGRect?
+    /// The window shows on every workspace that its monitor shows (`window sticky`). Only a floating window is sticky.
+    var sticky = false
+    /// The monitor that a sticky window follows.
+    var stickyMonitor: UInt32?
 }
 
 final class Workspace {
@@ -24,6 +32,8 @@ final class Workspace {
     var maximized: Set<WindowID> = []
     /// Pseudotiled windows (tiling layout): the size each keeps, centred in its tile.
     var pseudo: [WindowID: CGSize] = [:]
+    /// The zen mode: only one window shows, centered. The layout itself is not changed. Not saved.
+    var zen = false
 
     init(name: String, kind: LayoutKind, settings: Settings) {
         self.name = name
@@ -38,6 +48,15 @@ struct Monitor {
     var frame: CGRect
     var workArea: CGRect
     var workspace: String
+    /// The display with the menu bar.
+    var isMain = false
+}
+
+/// What a restore after a reboot still waits for. The ids of the saved state are old, so every saved window stands in the
+/// layouts under a placeholder id until its app opens a window that takes its place.
+private struct RebootRestore {
+    /// The saved windows that no open window has taken, by their place in the saved list.
+    var waiting: [Int: SavedWindow]
 }
 
 /// All window state and the layout pipeline. Everything here runs on the main actor.
@@ -53,9 +72,18 @@ final class WindowManager {
     private(set) var windows: [WindowID: ManagedWindow] = [:]
     private(set) var workspaces: [String: Workspace] = [:]
     private(set) var monitors: [Monitor] = []
+    private var displayMemory = DisplayMemory()
     private(set) var focused: WindowID?
-    private(set) var focusedMonitorID: UInt32 = 0
+    private(set) var focusedMonitorID: UInt32 = 0 {
+        didSet { if oldValue != focusedMonitorID, oldValue != 0 { previousMonitorID = oldValue } }
+    }
+    /// The monitor that had the focus before the current one (`focus monitor last`).
+    private(set) var previousMonitorID: UInt32?
     private(set) var previousWorkspace: String?
+    /// Every window that had the focus, the most recent first (`switcher --all`).
+    private(set) var recent: [WindowID] = []
+    /// Window marks, by name. They are saved with the layout, and go when the window closes.
+    private(set) var marks: [String: WindowID] = [:]
     /// The special workspace shown in place of the normal workspace, per monitor id. The normal workspace stays the
     /// monitor's workspace and comes back when the special one hides.
     private(set) var specials: [UInt32: String] = [:]
@@ -71,8 +99,8 @@ final class WindowManager {
     var onModeChange: ((_ mode: String) -> Void)?
 
     private var tracker: AppTracker?
-    private let applier = FrameApplier()
-    private var animator = Animator()
+    let applier = FrameApplier()
+    var animator = Animator()
     private let border = BorderOverlay()
     private let tabIndicator = TabIndicatorOverlay()
     private var clock: Timer?
@@ -83,10 +111,6 @@ final class WindowManager {
     /// Windows of a shown workspace that a layout parked at the hidden corner (a scrolling strip does that at the
     /// boundary to the other strip). They jump to and from the corner instead of sweeping across the screen.
     private var lastParked: Set<WindowID> = []
-    /// Native mode: the desktops of each display, in order, as macOS reports them.
-    private var nativeSpaces: [UInt32: [String]] = [:]
-    /// Native mode: the virtual row (1, 2, ...) shown on each desktop.
-    private var activeRow: [String: Int] = [:]
     /// Where each window last was while its workspace was shown; used to bring parked windows back on quit.
     private var lastShownFrame: [WindowID: CGRect] = [:]
 
@@ -94,12 +118,18 @@ final class WindowManager {
     private var pendingRestore: SavedState?
     /// Windows that `detect` took from `pendingRestore`; `finishRestore` builds their layouts.
     private var adopted: Set<WindowID> = []
-    private var configApplied = false
+    /// After a reboot: the saved windows whose apps have not opened them yet (see `beginRebootRestore`).
+    private var reboot: RebootRestore?
+    private var rebootStarted = false
     private var spawnRules: [(pid: Int32, rule: WindowRule, expires: TimeInterval)] = []
     /// The window that had the focus when a window with `focus = false` opened: it gets the focus back.
     private var refocusAfterOpen: WindowID?
     private var saveTimer: Timer?
     private var lastSaved: Data?
+    /// What `wm window remember` keeps. A window that opens after the first scan gets the entry that matches it.
+    private(set) var memory = MemoryStore.load()
+    /// The windows that were open when the daemon started are not moved by the memory.
+    private var didFirstScan = false
 
     init() {
         pendingRestore = StateStore.load()
@@ -120,10 +150,8 @@ final class WindowManager {
         workspaceRules newRules: [String: WorkspaceRule] = [:]
     ) {
         let layoutChanged = new.layout != settings.layout
-        if new.workspaces != settings.workspaces { resetState() }
         settings = new
-        configApplied = true
-        if let saved = pendingRestore, saved.mode != new.workspaces.rawValue { pendingRestore = nil }
+        if let saved = pendingRestore, saved.mode != SavedState.workspaceMode { pendingRestore = nil }
         self.rules = rules
         animator.rate = new.animations.rate
         animator.enabled = new.animations.enabled
@@ -154,8 +182,6 @@ final class WindowManager {
         scheduleRefresh()
     }
 
-    var isNative: Bool { settings.workspaces == .native }
-
     /// The settings of a workspace: the global ones with the changes of its `wm.workspace` rule.
     func settings(forWorkspace name: String) -> Settings {
         guard let overrides = workspaceRules[name]?.overrides else { return settings }
@@ -168,20 +194,7 @@ final class WindowManager {
     /// The monitor that the rule of a workspace binds it to, when that monitor is connected.
     func boundMonitor(of name: String) -> Monitor? {
         guard let spec = workspaceRules[name]?.monitor else { return nil }
-        return monitors.enumerated().first { MonitorSelector.matches(spec, index: $0.offset, name: $0.element.name) }?.element
-    }
-
-    /// Switching between emulated and native workspaces starts over: every window is detected again.
-    private func resetState() {
-        windows = [:]
-        workspaces = [:]
-        monitors = []
-        specials = [:]
-        focused = nil
-        lastVisible = []
-        lastParked = []
-        nativeSpaces = [:]
-        activeRow = [:]
+        return monitor(matching: spec)
     }
 
     // MARK: - Refresh
@@ -202,12 +215,16 @@ final class WindowManager {
     }
 
     private func refresh() async {
-        guard let tracker else { return }
+        // Asleep or locked: displays and apps are not stable. Nothing is read or moved until the tracker says so.
+        guard let tracker, !tracker.isPaused else { return }
         tracker.syncWatchers()
-        let infos = await tracker.snapshot()
+        let (infos, unread) = await tracker.snapshot()
         let focusedID = await tracker.focusedWindow()
+        // The system can fall asleep while the apps are read: the answers are then not trustworthy.
+        guard !tracker.isPaused else { return }
         updateMonitors()
-        reconcile(infos)
+        beginRebootRestore()
+        reconcile(infos, unread: unread)
         finishRestore()
         if let previous = refocusAfterOpen {
             refocusAfterOpen = nil
@@ -216,60 +233,52 @@ final class WindowManager {
             didFocus(focusedID)
         }
         relayout()
+        didFirstScan = true
     }
 
     private func updateMonitors() {
         let displays = Displays.all().sorted { $0.frame.minX < $1.frame.minX }
-        if let saved = activeRestore, activeRow.isEmpty { activeRow = saved.activeRows }
-        let spaces = isNative ? SpaceReader.read() : nil
+        // No display at all (the system is waking up): keep what is known.
+        guard !displays.isEmpty else { return }
+        let mainIndex = displays.firstIndex(where: \.isMain) ?? 0
         var next: [Monitor] = []
-        var nativeNames: [UInt32: [String]] = [:]
         for (displayIndex, display) in displays.enumerated() {
             let existing = monitors.first { $0.id == display.id }
             let taken = next.map(\.workspace)
-            var workspace = existing?.workspace ?? restoredWorkspace(of: display.id, taken: taken)
-                ?? defaultWorkspace(display: displayIndex, name: display.name, taken: taken)
-                ?? unusedWorkspaceName(taken: taken, display: displayIndex, name: display.name)
-            if let info = spaces?.first(where: { $0.displayID == display.id }) {
-                let names = NativeWorkspaceName.desktops(displayNumber: displayIndex + 1, displayCount: displays.count, desktopCount: info.spaces.count)
-                nativeNames[display.id] = names
-                let desktop = info.spaces.firstIndex(of: info.current).map { names[$0] } ?? "fullscreen-\(info.current)"
-                workspace = NativeWorkspaceName.row(of: desktop, activeRow[desktop] ?? 1)
-            }
-            next.append(Monitor(id: display.id, name: display.name, frame: display.frame, workArea: display.workArea, workspace: workspace))
+            let stays = Set(taken).union(monitors.filter { old in displays.contains { $0.id == old.id } }.map(\.workspace))
+            let workspace = existing?.workspace ?? displayMemory.returning(display.id, shown: stays)
+                ?? restoredWorkspace(of: display.id, name: display.name, taken: taken)
+                ?? defaultWorkspace(display: displayIndex, name: display.name, main: mainIndex, taken: taken)
+                ?? unusedWorkspaceName(taken: taken, display: displayIndex, name: display.name, main: mainIndex)
+            next.append(Monitor(id: display.id, name: display.name, frame: display.frame, workArea: display.workArea, workspace: workspace, isMain: display.isMain))
             _ = self.workspace(workspace)
-            if isNative, let existing, existing.workspace != workspace {
-                previousWorkspace = existing.workspace
-                events.emit("workspace_changed", ["workspace": .string(workspace), "previous": .string(existing.workspace), "monitor": .number(Double(display.id))])
-            }
         }
-        // A monitor that went away takes nothing with it: its windows move to a monitor that is left.
-        if !isNative, let home = next.first(where: { $0.id == focusedMonitorID }) ?? next.first {
-            for old in monitors where !next.contains(where: { $0.id == old.id }) {
-                for (id, managed) in windows where managed.workspace == old.workspace { moveWindow(id, to: home.workspace) }
-            }
+        // A monitor that went away (lid closed, display asleep, unplugged) takes nothing with it: its workspace keeps its
+        // windows, and the display shows it again when it comes back. A window moves only when the user asks.
+        for old in monitors where !next.contains(where: { $0.id == old.id }) {
+            displayMemory.lost(old.id, workspace: old.workspace)
         }
         monitors = next
         setSpecials(specials.filter { shown in next.contains { $0.id == shown.key } })
-        nativeSpaces = nativeNames
         if !monitors.contains(where: { $0.id == focusedMonitorID }) {
             focusedMonitorID = monitors.first(where: { $0.frame.origin == .zero })?.id ?? monitors.first?.id ?? 0
         }
     }
 
     /// The workspace that a rule makes the default of this display (`default = true` with a matching `monitor`).
-    private func defaultWorkspace(display index: Int, name: String, taken: [String]) -> String? {
+    private func defaultWorkspace(display index: Int, name: String, main: Int, taken: [String]) -> String? {
         workspaceRules.sorted { $0.key < $1.key }.first { entry in
             entry.value.isDefault && !taken.contains(entry.key)
-                && entry.value.monitor.map { MonitorSelector.matches($0, index: index, name: name) } == true
+                && entry.value.monitor.map { MonitorSelector.matches($0, index: index, name: name, mainIndex: main) } == true
         }?.key
     }
 
     /// First numeric name (1, 2, ...) that no monitor shows, and that no rule binds to another monitor.
-    private func unusedWorkspaceName(taken: [String], display index: Int, name: String) -> String {
+    private func unusedWorkspaceName(taken: [String], display index: Int, name: String, main: Int) -> String {
         let used = Set(monitors.map(\.workspace)).union(taken)
         return (1...).lazy.map(String.init).first { candidate in
-            !used.contains(candidate) && (workspaceRules[candidate]?.monitor.map { MonitorSelector.matches($0, index: index, name: name) } ?? true)
+            !used.contains(candidate)
+                && (workspaceRules[candidate]?.monitor.map { MonitorSelector.matches($0, index: index, name: name, mainIndex: main) } ?? true)
         }!
     }
 
@@ -280,35 +289,29 @@ final class WindowManager {
         return created
     }
 
-    private func reconcile(_ infos: [WindowInfo]) {
+    private func reconcile(_ infos: [WindowInfo], unread: Set<pid_t>) {
         var seen: Set<WindowID> = []
         for info in infos {
             seen.insert(info.id)
             if var managed = windows[info.id] {
                 managed.info = info
-                // Native mode: a window dragged to another desktop shows up there; follow it. Only the desktop
-                // counts: virtual rows of one desktop are ours, and a snapshot can be older than a row switch.
-                if isNative, let home = monitor(containing: CGPoint(x: info.frame.midX, y: info.frame.midY)),
-                   NativeWorkspaceName.desktop(of: managed.workspace) != NativeWorkspaceName.desktop(of: home.workspace) {
-                    moveWindow(info.id, to: NativeWorkspaceName.desktop(of: home.workspace))
-                    managed = windows[info.id] ?? managed
-                    managed.info = info
-                }
                 if info.isMinimized != managed.minimized { setMinimized(info.id, info.isMinimized) }
+                if info.isFullscreen != managed.nativeFullscreen { setNativeFullscreen(info.id, info.isFullscreen) }
                 windows[info.id]?.info = managed.info
                 // A snapshot can be older than a workspace switch: never save a parked frame as the home frame.
                 let parked = info.frame.minX >= hiddenCorner().x - 1 && info.frame.minY >= hiddenCorner().y - 1
-                if managed.floating, !managed.minimized, !parked, managed.workspaceVisible(self) {
+                if managed.floating, !managed.isOutOfLayout, !parked, managed.workspaceVisible(self) {
                     windows[info.id]?.floatFrame = info.frame
                 }
                 continue
             }
             detect(info)
         }
-        // Native mode: windows of other desktops are not in the snapshot; only forget those that are gone.
-        let missing = windows.keys.filter { !seen.contains($0) }
-        let alive = isNative && !missing.isEmpty ? Self.systemWindowIDs() : []
-        for id in missing where !alive.contains(id) { forget(id) }
+        // An app that could not be read says nothing about its windows: only forget those that are gone.
+        for id in windows.keys where !seen.contains(id) {
+            if let pid = windows[id]?.info.pid, unread.contains(pid), Self.systemWindowIDs().contains(id) { continue }
+            forget(id)
+        }
     }
 
     private static func systemWindowIDs() -> Set<WindowID> {
@@ -318,6 +321,10 @@ final class WindowManager {
 
     private func detect(_ info: WindowInfo) {
         guard info.kind != .ignored, !info.isFullscreen else { return }
+        if let saved = rebootMatch(for: info) {
+            adoptAfterReboot(info, as: saved)
+            return
+        }
         if let saved = activeRestore?.windows.first(where: { $0.id == info.id && $0.bundleID == info.bundleID }) {
             adopt(info, as: saved)
             return
@@ -325,13 +332,18 @@ final class WindowManager {
         var rule = matchingRule(info)
         // A window that a `wm exec` command opened gets the options of that command on top of the rules.
         if let spawn = takeSpawnRule(for: info) { rule = rule.map { $0.merging(spawn) } ?? spawn }
+        // What `wm window remember` kept for this window wins over the rules.
+        let remembered = didFirstScan ? memory.match(app: info.bundleID, title: info.title) : nil
         let home = monitor(containing: CGPoint(x: info.frame.midX, y: info.frame.midY)) ?? focusedMonitor
         let ruleMonitor = rule?.monitor.flatMap(monitor(matching:))
-        let workspaceName = rule?.workspace ?? ruleMonitor.map(activeWorkspace(of:)) ?? home.map(activeWorkspace(of:)) ?? "1"
-        let monitor = monitor(showing: workspaceName) ?? focusedMonitor
-        var floating = info.kind == .floating || rule?.float == true
+        let workspaceName = remembered?.workspace ?? rule?.workspace ?? ruleMonitor.map(activeWorkspace(of:)) ?? home.map(activeWorkspace(of:)) ?? "1"
+        let rememberedMonitor = remembered?.monitor.flatMap(monitor(matching:))
+        let monitor = monitor(showing: workspaceName) ?? rememberedMonitor ?? focusedMonitor
+        var floating = remembered?.floating ?? (info.kind == .floating || rule?.float == true)
         var floatFrame: CGRect?
-        if let area = monitor?.workArea, rule?.size != nil || rule?.center == true {
+        if let remembered {
+            if floating, let frame = remembered.frame, let area = monitor?.workArea { floatFrame = WindowMemory.absolute(frame, in: area) }
+        } else if let area = monitor?.workArea, rule?.size != nil || rule?.center == true {
             floating = rule?.float != false
             var size = info.frame.size
             if let wanted = rule?.size {
@@ -348,28 +360,187 @@ final class WindowManager {
         let target = workspace(workspaceName)
         if let layout = rule?.layout, target.engine.windows.isEmpty { target.kind = layout; target.engine = makeEngine(layout, settings: settings(forWorkspace: workspaceName)) }
         if !floating, !info.isMinimized {
-            target.engine.insert(info.id, after: target.history.first { windows[$0]?.workspace == workspaceName && !(windows[$0]?.floating ?? true) })
-            if let width = rule?.width {
+            let anchor = target.history.first { windows[$0]?.workspace == workspaceName && !(windows[$0]?.floating ?? true) }
+            let split = presplit(target, anchor: anchor, new: info.id)
+            target.engine.insert(info.id, after: split)
+            if let width = remembered?.columnWidth ?? rule?.width {
                 _ = target.engine.perform(.columnWidth(.fraction(width)), focused: info.id, in: layoutContext(forWorkspace: workspaceName))
             }
-            if rule?.maximize == true { maximizeOnOpen(info.id, in: target) }
+            if let size = remembered?.pseudo, target.kind == .tiling { target.pseudo[info.id] = size }
+            if remembered?.maximized ?? (rule?.maximize == true) { maximizeOnOpen(info.id, in: target) }
         }
-        if rule?.focus == false, let previous = focused, previous != info.id { refocusAfterOpen = previous }
+        if remembered == nil, rule?.focus == false, let previous = focused, previous != info.id { refocusAfterOpen = previous }
         animator.seed(info.id, at: info.frame)
         events.emit("window_open", ["id": .number(Double(info.id)), "app": .string(info.bundleID), "title": .string(info.title), "workspace": .string(workspaceName)])
-        for command in rule?.commands ?? [] { runRuleCommand?(command.split(separator: " ").map(String.init), info.id) }
+        var commands = rule?.commands ?? []
+        if remembered?.strip == .vertical, !floating, target.kind == .scrolling { commands.append("window send strip vertical") }
+        for command in commands { runRuleCommand?(command.split(separator: " ").map(String.init), info.id) }
+        if let remembered {
+            if remembered.sticky == true, floating {
+                windows[info.id]?.sticky = true
+                windows[info.id]?.stickyMonitor = monitor?.id
+            }
+            for name in remembered.marks { setMark(name, on: info.id) }
+            // The window that comes back gets the focus, and its workspace is shown.
+            focus(info.id)
+        }
+    }
+
+    // MARK: - Memory
+
+    /// `window remember`: keeps how the window is now, for the next window of this app (and, with `withTitle`, this title).
+    /// `nil` when the window has no place in the layout (minimized or in native fullscreen).
+    func rememberWindow(_ id: WindowID, withTitle: Bool) -> MemorizedWindow? {
+        guard let managed = windows[id], !managed.isOutOfLayout else { return nil }
+        let space = workspace(managed.workspace)
+        let shown = monitor(showing: managed.workspace)
+        var frame: RelativeFrame?
+        if managed.floating, let area = (shown ?? focusedMonitor)?.workArea, let current = managed.floatFrame ?? currentFrame(of: id) {
+            frame = WindowMemory.relative(current, in: area)
+        }
+        let scrolling = managed.floating ? nil : space.engine as? ScrollingEngine
+        let strip = scrolling?.strip(of: id)
+        let entry = MemorizedWindow(
+            app: managed.info.bundleID, appName: managed.info.appName, title: withTitle ? managed.info.title : nil,
+            workspace: managed.workspace, monitor: shown?.name, floating: managed.floating, frame: frame, maximized: isMaximized(id),
+            pseudo: space.pseudo[id], columnWidth: strip == .horizontal ? scrolling?.columnSize(of: id) : nil, strip: strip,
+            marks: marks(of: id), sticky: managed.sticky ? true : nil)
+        memory.remember(entry)
+        saveMemory()
+        return entry
+    }
+
+    /// `window forget`: removes the entry of the window's app (or of its app and title). `false` when there was none.
+    func forgetWindow(_ id: WindowID, withTitle: Bool) -> Bool {
+        guard let info = windows[id]?.info else { return false }
+        let removed = memory.forget(app: info.bundleID, title: withTitle ? info.title : nil)
+        if removed { saveMemory() }
+        return removed
+    }
+
+    private func saveMemory() {
+        do { try MemoryStore.write(memory) } catch { fputs("wmd: cannot save \(MemoryStore.url.path): \(error)\n", stderr) }
+    }
+
+    /// `smart_split` and `split_under_pointer`: the new window opens on the side of a tile that the pointer is nearest to. With
+    /// `split_under_pointer` that tile is the one under the pointer; else it is the anchor (the focused tile), and only
+    /// when the pointer is over it. A side that `layout preselect` set wins. Returns the tile that the window splits.
+    private func presplit(_ space: Workspace, anchor: WindowID?, new id: WindowID) -> WindowID? {
+        let tiling = settings(forWorkspace: space.name).tiling
+        guard space.kind == .tiling, tiling.smartSplit || tiling.splitUnderPointer,
+              let engine = space.engine as? DwindleEngine, engine.preselection == nil,
+              let pointer = CGEvent(source: nil)?.location else { return anchor }
+        var chosen = anchor
+        if tiling.splitUnderPointer {
+            var frames: [WindowID: CGRect] = [:]
+            for other in engine.windows where other != id { frames[other] = currentFrame(of: other) }
+            chosen = windowUnder(pointer, in: frames) ?? anchor
+        }
+        guard let chosen, let frame = currentFrame(of: chosen), frame.contains(pointer) else { return anchor }
+        _ = space.engine.perform(.preselect(smartSplitSide(of: frame, at: pointer)), focused: chosen, in: layoutContext(forWorkspace: space.name))
+        return chosen
     }
 
     // MARK: - Saved state
 
-    /// The previous state, when it was saved in the mode that runs now.
+    /// The previous state, unless it comes from the removed native mode.
     private var activeRestore: SavedState? {
-        pendingRestore.flatMap { $0.mode == settings.workspaces.rawValue ? $0 : nil }
+        pendingRestore.flatMap { $0.mode == SavedState.workspaceMode ? $0 : nil }
     }
 
-    private func restoredWorkspace(of display: UInt32, taken: [String]) -> String? {
-        guard let name = activeRestore?.monitors[String(display)], !taken.contains(name) else { return nil }
-        return name
+    private func restoredWorkspace(of display: UInt32, name: String, taken: [String]) -> String? {
+        guard let saved = activeRestore else { return nil }
+        // After a reboot the ids of the displays can change, so a display that is the only one with its name is known by
+        // the name.
+        if !StateStore.isSameBoot(saved.bootTime) {
+            let named = (saved.monitorNames ?? [:]).filter { $0.value == name }
+            if named.count == 1, let key = named.keys.first, let workspace = saved.monitors[key], !taken.contains(workspace) { return workspace }
+        }
+        guard let workspace = saved.monitors[String(display)], !taken.contains(workspace) else { return nil }
+        return workspace
+    }
+
+    // MARK: - Restore after a reboot
+
+    /// After a reboot the window ids of the saved state are not the ids of the windows that open, and the apps open one by
+    /// one over the next minute. So the saved layouts come back at once, every saved window under a placeholder id
+    /// (`Placeholder`), and each window that opens takes the place of the saved window of its app with the same title
+    /// (see `bestRestoreMatch`). Windows that never come back leave their place after `rebootPatience`. Nothing is saved
+    /// until then, so the good state is not replaced by the half-empty one of a start in progress.
+    private func beginRebootRestore() {
+        guard !rebootStarted, let saved = activeRestore, !StateStore.isSameBoot(saved.bootTime) else { return }
+        rebootStarted = true
+        pendingRestore = nil
+        var mapping: [WindowID: WindowID] = [:]
+        for entry in saved.windows { mapping[entry.id] = Placeholder.id(for: entry.id) }
+        for (name, savedSpace) in saved.workspaces {
+            let space = workspace(name)
+            space.kind = savedSpace.layout.kind
+            var engine = makeEngine(restoring: savedSpace.layout, settings: settings(forWorkspace: name))
+            engine.relabel(mapping)
+            space.engine = engine
+            space.history = savedSpace.history.compactMap { mapping[$0] }
+            space.maximized = Set(savedSpace.maximized.compactMap { mapping[$0] })
+            space.fullscreen = savedSpace.fullscreen.flatMap { mapping[$0] }
+            // A layout that the config changed since the save wins over the saved one.
+            if let kind = workspaceLayouts[name], saved.configLayouts[name] != kind, kind != space.kind { rebuild(space, as: kind) }
+        }
+        reboot = RebootRestore(waiting: Dictionary(uniqueKeysWithValues: saved.windows.enumerated().map { ($0.offset, $0.element) }))
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(Self.rebootPatience * 1_000_000_000))
+            finishRebootRestore()
+        }
+    }
+
+    private static let rebootPatience: TimeInterval = 120
+
+    /// The saved window that a new window takes the place of, and the end of its wait.
+    private func rebootMatch(for info: WindowInfo) -> SavedWindow? {
+        guard let waiting = reboot?.waiting else { return nil }
+        let candidates = waiting.map {
+            RestoreCandidate(key: $0.key, bundleID: $0.value.bundleID, title: $0.value.title ?? "", order: $0.value.order ?? $0.key)
+        }
+        guard let best = bestRestoreMatch(bundleID: info.bundleID, title: info.title, among: candidates) else { return nil }
+        let saved = waiting[best.key]
+        reboot?.waiting[best.key] = nil
+        return saved
+    }
+
+    /// The window keeps the workspace, the floating state, the marks and the place in the layout of the saved window. No rule
+    /// or `window_open` hook runs for it.
+    private func adoptAfterReboot(_ info: WindowInfo, as saved: SavedWindow) {
+        let placeholder = Placeholder.id(for: saved.id)
+        windows[info.id] = ManagedWindow(
+            info: info, workspace: saved.workspace, floating: saved.floating, minimized: info.isMinimized,
+            floatFrame: saved.floatFrame ?? (saved.floating ? info.frame : nil), sticky: saved.sticky == true, stickyMonitor: saved.stickyMonitor)
+        for name in saved.marks ?? [] { marks[name] = info.id }
+        let space = workspace(saved.workspace)
+        space.engine.relabel([placeholder: info.id])
+        space.history = space.history.map { $0 == placeholder ? info.id : $0 }
+        if space.maximized.remove(placeholder) != nil { space.maximized.insert(info.id) }
+        if space.fullscreen == placeholder { space.fullscreen = info.id }
+        if saved.floating || info.isMinimized {
+            space.engine.remove(info.id)
+        } else if !space.engine.windows.contains(info.id) {
+            // The saved layout had no place for it (the layout changed): it joins like a new window.
+            space.engine.insert(info.id, after: space.history.first { $0 != info.id && windows[$0] != nil })
+        }
+        animator.seed(info.id, at: info.frame)
+        if reboot?.waiting.isEmpty == true { finishRebootRestore() }
+    }
+
+    /// The saved windows that did not come back give up their places, and saving starts again.
+    private func finishRebootRestore() {
+        guard reboot != nil else { return }
+        reboot = nil
+        for space in workspaces.values {
+            for id in space.engine.windows where Placeholder.isPlaceholder(id) { space.engine.remove(id) }
+            space.history.removeAll { Placeholder.isPlaceholder($0) }
+            space.maximized = space.maximized.filter { !Placeholder.isPlaceholder($0) }
+            if let full = space.fullscreen, Placeholder.isPlaceholder(full) { space.fullscreen = nil }
+        }
+        relayout()
+        saveState()
     }
 
     /// A window of the previous run is not new: it keeps its workspace and floating state, and no rule or `window_open`
@@ -377,7 +548,8 @@ final class WindowManager {
     private func adopt(_ info: WindowInfo, as saved: SavedWindow) {
         windows[info.id] = ManagedWindow(
             info: info, workspace: saved.workspace, floating: saved.floating, minimized: info.isMinimized,
-            floatFrame: saved.floatFrame ?? (saved.floating ? info.frame : nil))
+            floatFrame: saved.floatFrame ?? (saved.floating ? info.frame : nil), sticky: saved.sticky == true, stickyMonitor: saved.stickyMonitor)
+        for name in saved.marks ?? [] { marks[name] = info.id }
         _ = workspace(saved.workspace)
         adopted.insert(info.id)
         animator.seed(info.id, at: info.frame)
@@ -387,18 +559,15 @@ final class WindowManager {
     /// misses windows that are new: the first are removed (the engine closes the gap), the second are inserted.
     private func finishRestore() {
         guard let saved = pendingRestore else { return }
-        guard saved.mode == settings.workspaces.rawValue else {
-            // The config that comes next may change the mode; wait for it.
-            if configApplied { pendingRestore = nil }
-            return
-        }
+        // A state of the removed native mode is dropped when the config loads (`apply`).
+        guard saved.mode == SavedState.workspaceMode else { return }
         pendingRestore = nil
         for name in Set(adopted.compactMap { windows[$0]?.workspace }) {
             guard let savedSpace = saved.workspaces[name] else { continue }
             let space = workspace(name)
             space.kind = savedSpace.layout.kind
             space.engine = makeEngine(restoring: savedSpace.layout, settings: settings(forWorkspace: name))
-            let tiled = Set(windows.filter { $0.value.workspace == name && !$0.value.floating && !$0.value.minimized }.keys)
+            let tiled = Set(windows.filter { $0.value.workspace == name && !$0.value.floating && !$0.value.isOutOfLayout }.keys)
             for id in space.engine.windows where !tiled.contains(id) { space.engine.remove(id) }
             for id in tiled.subtracting(space.engine.windows).sorted() { space.engine.insert(id, after: space.engine.windows.last) }
             space.history = savedSpace.history.filter { windows[$0]?.workspace == name }
@@ -411,17 +580,27 @@ final class WindowManager {
     }
 
     func snapshot() -> SavedState {
-        SavedState(
-            mode: settings.workspaces.rawValue,
+        // The place of each window in the layout, to put it back after a reboot.
+        var order: [WindowID: Int] = [:]
+        for name in workspaces.keys.sorted() {
+            for id in workspaces[name]!.engine.windows where order[id] == nil { order[id] = order.count }
+        }
+        for id in windows.keys.sorted() where order[id] == nil { order[id] = order.count }
+        return SavedState(
+            mode: SavedState.workspaceMode,
             windows: windows.sorted { $0.key < $1.key }.map {
-                SavedWindow(id: $0.key, bundleID: $0.value.info.bundleID, workspace: $0.value.workspace, floating: $0.value.floating, floatFrame: $0.value.floatFrame)
+                SavedWindow(
+                    id: $0.key, bundleID: $0.value.info.bundleID, workspace: $0.value.workspace, floating: $0.value.floating,
+                    floatFrame: $0.value.floatFrame, marks: marks(of: $0.key), title: $0.value.info.title, order: order[$0.key],
+                    sticky: $0.value.sticky ? true : nil, stickyMonitor: $0.value.sticky ? $0.value.stickyMonitor : nil)
             },
             workspaces: workspaces.mapValues {
                 SavedWorkspace(layout: $0.engine.state, history: $0.history, maximized: $0.maximized.sorted(), fullscreen: $0.fullscreen)
             },
             monitors: Dictionary(uniqueKeysWithValues: monitors.map { (String($0.id), $0.workspace) }),
-            activeRows: activeRow,
-            configLayouts: workspaceLayouts)
+            configLayouts: workspaceLayouts,
+            bootTime: StateStore.bootTime(),
+            monitorNames: Dictionary(uniqueKeysWithValues: monitors.map { (String($0.id), $0.name) }))
     }
 
     /// Writes the state at once. Not while the previous state waits to be used, and not with no windows: both would
@@ -429,7 +608,7 @@ final class WindowManager {
     func saveState() {
         saveTimer?.invalidate()
         saveTimer = nil
-        guard pendingRestore == nil, !windows.isEmpty else { return }
+        guard pendingRestore == nil, reboot == nil, !windows.isEmpty else { return }
         do {
             let data = try StateStore.encode(snapshot())
             guard data != lastSaved else { return }
@@ -461,8 +640,40 @@ final class WindowManager {
     }
 
     /// The monitor that a rule names: its number (1 is the leftmost) or part of its name, ignoring case.
-    private func monitor(matching spec: String) -> Monitor? {
-        monitors.enumerated().first { MonitorSelector.matches(spec, index: $0.offset, name: $0.element.name) }?.element
+    /// A sticky window moves to the workspace that its monitor shows now. The workspace name really changes, so every rule for
+    /// floating windows (focus, raise, the switcher, the border, `wm list`) keeps working as it is.
+    private func followSticky() {
+        for id in windows.filter({ $0.value.sticky && !$0.value.isOutOfLayout }).keys {
+            guard let managed = windows[id],
+                  let monitor = monitors.first(where: { $0.id == managed.stickyMonitor }) ?? focusedMonitor else { continue }
+            windows[id]?.stickyMonitor = monitor.id
+            let active = activeWorkspace(of: monitor)
+            guard managed.workspace != active else { continue }
+            workspace(managed.workspace).history.removeAll { $0 == id }
+            windows[id]?.workspace = active
+        }
+    }
+
+    /// The window that the zen mode shows: the focused one of the workspace, else the most recent, else any.
+    private func zenWindow(in workspace: Workspace, focused: WindowID?) -> WindowID? {
+        func usable(_ id: WindowID) -> Bool { windows[id].map { $0.workspace == workspace.name && !$0.isOutOfLayout } ?? false }
+        if let focused, usable(focused) { return focused }
+        return workspace.history.first(where: usable) ?? workspace.engine.windows.first(where: usable)
+            ?? windows.keys.sorted().first(where: usable)
+    }
+
+    /// `zen`: turns the zen mode of the focused workspace on or off (`nil`: the other one).
+    func setZen(_ on: Bool?) -> Bool {
+        guard let space = focusedWorkspace else { return false }
+        space.zen = on ?? !space.zen
+        relayout()
+        return space.zen
+    }
+
+    /// A monitor named by a role, a number or part of its name (see `MonitorSelector`).
+    func monitor(matching spec: String) -> Monitor? {
+        let mainIndex = monitors.firstIndex(where: \.isMain) ?? 0
+        return monitors.enumerated().first { MonitorSelector.matches(spec, index: $0.offset, name: $0.element.name, mainIndex: mainIndex) }?.element
     }
 
     /// A window that a rule opens maximized: a scrolling column fills its zone, any other layout uses the overlay.
@@ -499,6 +710,8 @@ final class WindowManager {
         if workspace.fullscreen == id { workspace.fullscreen = nil }
         workspace.maximized.remove(id)
         workspace.pseudo[id] = nil
+        marks = marks.filter { $0.value != id }
+        recent.removeAll { $0 == id }
         if focused == id { focused = workspace.history.first }
         hideSpecialIfEmpty(workspace.name)
         applier.forget(id)
@@ -518,6 +731,32 @@ final class WindowManager {
         }
     }
 
+    private func setNativeFullscreen(_ id: WindowID, _ on: Bool) {
+        guard var managed = windows[id] else { return }
+        managed.nativeFullscreen = on
+        windows[id] = managed
+        let workspace = workspace(managed.workspace)
+        if on {
+            workspace.maximized.remove(id)
+            if workspace.fullscreen == id { workspace.fullscreen = nil }
+            workspace.engine.remove(id)
+        } else if !managed.floating, !managed.minimized {
+            workspace.engine.insert(id, after: workspace.history.first { $0 != id })
+        }
+    }
+
+    // MARK: - Marks
+
+    /// A mark names one window. Marking another window with the same name takes it away from the first.
+    func setMark(_ name: String, on id: WindowID) { marks[name] = id }
+
+    /// Removes the mark `name` (from whichever window has it), or every mark of window `id` when there is no name.
+    func removeMarks(named name: String?, of id: WindowID) {
+        if let name { marks[name] = nil } else { marks = marks.filter { $0.value != id } }
+    }
+
+    func marks(of id: WindowID) -> [String] { marks.filter { $0.value == id }.keys.sorted() }
+
     // MARK: - Focus
 
     var focusedMonitor: Monitor? { monitors.first { $0.id == focusedMonitorID } }
@@ -533,7 +772,9 @@ final class WindowManager {
         let workspace = workspace(managed.workspace)
         workspace.history.removeAll { $0 == id }
         workspace.history.insert(id, at: 0)
-        if !isNative, SpecialWorkspace.isSpecial(managed.workspace) {
+        recent.removeAll { $0 == id }
+        recent.insert(id, at: 0)
+        if SpecialWorkspace.isSpecial(managed.workspace) {
             // A window of a special workspace: show that workspace where it is, or where the user is looking.
             let monitorID = monitor(showing: managed.workspace)?.id ?? focusedMonitorID
             if specials[monitorID] != managed.workspace {
@@ -547,9 +788,6 @@ final class WindowManager {
             if let special = specials[monitor.id], windows.values.contains(where: { $0.workspace == special }) {
                 setSpecials(specials.filter { $0.key != monitor.id })
             }
-        } else if isNative {
-            // Same desktop, another virtual row: switch to that row.
-            _ = setRow(NativeWorkspaceName.rowNumber(of: managed.workspace), desktop: NativeWorkspaceName.desktop(of: managed.workspace), focusWindow: false)
         } else if let monitor = focusedMonitor {
             // The window belongs to a hidden workspace: show that workspace where the user is looking.
             showWorkspace(managed.workspace, on: monitor.id, focusWindow: false)
@@ -618,6 +856,39 @@ final class WindowManager {
         setSpecials(specials.filter { $0.key != monitor })
     }
 
+    /// The floating windows of a workspace follow it to another monitor.
+    private func relocateFloats(of name: String, from old: CGRect, to new: CGRect) {
+        for (id, managed) in windows where managed.workspace == name && managed.floating {
+            guard let frame = managed.floatFrame ?? currentFrame(of: id) else { continue }
+            windows[id]?.floatFrame = MonitorGeometry.translated(frame, from: old, to: new)
+        }
+    }
+
+    /// `workspace move monitor`: the workspace of the focused monitor goes to `target`, which shows it from now on. The
+    /// focused monitor shows the lowest free workspace number instead. Returns the reason when it cannot be done.
+    func moveWorkspace(to target: Monitor) -> String? {
+        guard let source = focusedMonitor, source.id != target.id,
+              let from = monitors.firstIndex(where: { $0.id == source.id }),
+              let to = monitors.firstIndex(where: { $0.id == target.id }) else { return nil }
+        let moving = monitors[from].workspace
+        if let bound = boundMonitor(of: moving), bound.id != target.id {
+            return "workspace \(moving) is bound to the monitor '\(bound.name)' by a wm.workspace rule"
+        }
+        let mainIndex = monitors.firstIndex(where: \.isMain) ?? 0
+        let replacement = unusedWorkspaceName(taken: [], display: from, name: source.name, main: mainIndex)
+        setSpecials(specials.filter { $0.key != source.id && $0.key != target.id })
+        relocateFloats(of: moving, from: source.workArea, to: target.workArea)
+        let displaced = monitors[to].workspace
+        monitors[to].workspace = moving
+        monitors[from].workspace = replacement
+        _ = workspace(replacement)
+        previousWorkspace = displaced
+        events.emit("workspace_changed", ["workspace": .string(moving), "previous": .string(displaced), "monitor": .number(Double(target.id))])
+        events.emit("workspace_changed", ["workspace": .string(replacement), "previous": .string(moving), "monitor": .number(Double(source.id))])
+        focusMonitor(target.id)
+        return nil
+    }
+
     func showWorkspace(_ name: String, on requested: UInt32, focusWindow: Bool = true) {
         _ = workspace(name)
         // A workspace that a rule binds to a monitor is shown there, and the focus goes with it.
@@ -625,7 +896,9 @@ final class WindowManager {
         guard let index = monitors.firstIndex(where: { $0.id == monitorID }) else { return }
         setSpecials(specials.filter { $0.key != monitorID })
         if let other = monitors.firstIndex(where: { $0.workspace == name }), other != index {
-            // Already shown on another monitor: swap the two, as AeroSpace does.
+            // Already shown on another monitor: swap the two, as AeroSpace does. Floating windows go along.
+            relocateFloats(of: name, from: monitors[other].workArea, to: monitors[index].workArea)
+            relocateFloats(of: monitors[index].workspace, from: monitors[index].workArea, to: monitors[other].workArea)
             monitors[other].workspace = monitors[index].workspace
         }
         let old = monitors[index].workspace
@@ -646,7 +919,9 @@ final class WindowManager {
         relayout()
     }
 
-    func moveWindow(_ id: WindowID, to name: String) {
+    /// `anchor` is the window that the moved window opens beside in the layout; the default is the one that had the
+    /// focus last on the destination.
+    func moveWindow(_ id: WindowID, to name: String, after anchor: WindowID? = nil) {
         guard var managed = windows[id], managed.workspace != name else { return }
         let source = workspace(managed.workspace)
         source.engine.remove(id)
@@ -657,12 +932,15 @@ final class WindowManager {
         let destination = workspace(name)
         managed.workspace = name
         windows[id] = managed
-        if !managed.floating, !managed.minimized {
-            destination.engine.insert(id, after: destination.history.first)
+        if !managed.floating, !managed.isOutOfLayout {
+            destination.engine.insert(id, after: anchor ?? destination.history.first)
         }
         if focused == id { focused = source.history.first }
         hideSpecialIfEmpty(source.name)
     }
+
+    /// Where a floating window goes at the next layout pass.
+    func setFloatFrame(_ id: WindowID, _ frame: CGRect) { windows[id]?.floatFrame = frame }
 
     func setFloating(_ id: WindowID, _ floating: Bool) {
         guard var managed = windows[id], managed.floating != floating else { return }
@@ -672,11 +950,24 @@ final class WindowManager {
             workspace.maximized.remove(id)
             workspace.pseudo[id] = nil
             workspace.engine.remove(id)
-            managed.floatFrame = currentFrame(of: id) ?? managed.info.frame
+            // A window that floats goes to the middle of its screen.
+            let frame = currentFrame(of: id) ?? managed.info.frame
+            if let area = (monitor(showing: managed.workspace) ?? focusedMonitor)?.workArea {
+                managed.floatFrame = floatFrame(current: frame, in: area)
+            } else {
+                managed.floatFrame = frame
+            }
         } else {
             workspace.engine.insert(id, after: workspace.history.first { $0 != id })
         }
         windows[id] = managed
+    }
+
+    /// Turns `sticky` on or off. A sticky window follows the monitor that shows its workspace now.
+    func setSticky(_ id: WindowID, _ on: Bool) {
+        guard let managed = windows[id] else { return }
+        windows[id]?.sticky = on
+        windows[id]?.stickyMonitor = on ? (monitor(showing: managed.workspace) ?? focusedMonitor)?.id : nil
     }
 
     /// The window that gets focus when a workspace is shown: the most recently focused one.
@@ -688,7 +979,7 @@ final class WindowManager {
     /// a lone window is not full size in every layout (a scrolling column is half the width). On a workspace that has
     /// windows it joins the layout and the layout is balanced, so all windows fit. With `tile` it only joins the layout.
     func arrive(_ id: WindowID, tile: Bool = false) {
-        guard let managed = windows[id], !managed.floating, !managed.minimized else { return }
+        guard let managed = windows[id], !managed.floating, !managed.isOutOfLayout else { return }
         let destination = workspace(managed.workspace)
         if tile { return }
         destination.fullscreen = nil
@@ -714,7 +1005,7 @@ final class WindowManager {
 
     /// `next`, `prev` or `empty` as the name of a workspace (see `RelativeWorkspace`); any other name comes back as it is.
     func resolveWorkspaceName(_ name: String) -> String {
-        guard RelativeWorkspace.words.contains(name), !isNative, let current = focusedMonitor?.workspace else { return name }
+        guard RelativeWorkspace.words.contains(name), let current = focusedMonitor?.workspace else { return name }
         let used = Set(windows.values.map(\.workspace)).union(monitors.map(\.workspace))
         return RelativeWorkspace.resolve(name, from: current, used: used) ?? name
     }
@@ -744,8 +1035,20 @@ final class WindowManager {
             events.emit("layout_changed", ["workspace": .string(workspace.name), "layout": .string(kind.rawValue)])
             return
         }
+        // A master workspace keeps its live ratio, count and orientation (unless the config changed) and the order of its windows.
+        if kind == workspace.kind, let old = workspace.engine as? MasterEngine {
+            workspace.engine = makeEngine(restoring: old.state, settings: settings(forWorkspace: workspace.name))
+            events.emit("layout_changed", ["workspace": .string(workspace.name), "layout": .string(kind.rawValue)])
+            return
+        }
         let order = workspace.engine.windows
         workspace.kind = kind
+        if kind == .master {
+            // Not one `insert` after the other: a new window goes to the top of the stack, which would reverse the stack.
+            workspace.engine = MasterEngine(settings: settings(forWorkspace: workspace.name), windows: order)
+            events.emit("layout_changed", ["workspace": .string(workspace.name), "layout": .string(kind.rawValue)])
+            return
+        }
         var engine = makeEngine(kind, settings: settings(forWorkspace: workspace.name))
         var previous: WindowID?
         for id in order {
@@ -766,12 +1069,13 @@ final class WindowManager {
             focused = nil
             relayout()
         }
-        events.emit("monitor_changed", ["monitor": .number(Double(id))])
+        events.emit("monitor_changed", ["monitor": .number(Double(id)), "name": .string(monitor.name), "workspace": .string(monitor.workspace)])
     }
 
     // MARK: - Layout
 
     func relayout(snapAll: Bool = false) {
+        followSticky()
         var targets: [WindowID: CGRect] = [:]
         var visible: Set<WindowID> = []
         for monitor in monitors {
@@ -780,6 +1084,13 @@ final class WindowManager {
             let workspace = workspace(activeWorkspace(of: monitor))
             let context = layoutContext(forWorkspace: workspace.name)
             let focusHere = focused.flatMap { windows[$0]?.workspace == workspace.name ? $0 : nil }
+            // Zen: one window shows in the middle. The others are not visible, so they are parked like the windows of a hidden
+            // workspace. A fullscreen window wins.
+            if workspace.zen, workspace.fullscreen == nil, let shown = zenWindow(in: workspace, focused: focusHere) {
+                targets[shown] = zenFrame(in: context.gaps.outerArea(context.viewport), width: settings.zen.width)
+                visible.insert(shown)
+                continue
+            }
             for (id, frame) in workspace.engine.frames(in: context, focused: focusHere) {
                 let cell = workspace.pseudo[id].map { PixelFrame.centered($0, in: frame) } ?? frame
                 targets[id] = workspace.fullscreen == id ? monitor.workArea : cell
@@ -791,15 +1102,15 @@ final class WindowManager {
                     targets[maximized] = context.gaps.outerArea(context.viewport)
                 }
             }
-            for (id, managed) in windows where managed.workspace == workspace.name && managed.floating && !managed.minimized {
+            for (id, managed) in windows where managed.workspace == workspace.name && managed.floating && !managed.isOutOfLayout {
                 targets[id] = managed.floatFrame ?? managed.info.frame
                 visible.insert(id)
             }
         }
+        // The window under a modifier drag stays under the pointer, whatever the layout says.
+        if let drag = modifierDrag, drag.followsPointer { targets[drag.window] = drag.frame }
         let corner = hiddenCorner()
-        let shownDesktops = Set(monitors.map { NativeWorkspaceName.desktop(of: $0.workspace) })
-        for (id, managed) in windows where !visible.contains(id) && !managed.minimized
-            && (!isNative || shownDesktops.contains(NativeWorkspaceName.desktop(of: managed.workspace))) {
+        for (id, managed) in windows where !visible.contains(id) && !managed.isOutOfLayout {
             let size = animator.frames[id]?.size ?? managed.info.frame.size
             targets[id] = CGRect(origin: corner, size: size)
         }
@@ -878,7 +1189,7 @@ final class WindowManager {
 
     /// The tabs of the focused window's column, when it shows tabs: a bar of one segment per window.
     private func updateTabIndicator() {
-        guard settings.tabIndicator.enabled, let focused, let managed = windows[focused], !managed.minimized, !managed.floating,
+        guard settings.tabIndicator.enabled, let focused, let managed = windows[focused], !managed.isOutOfLayout, !managed.floating,
               isVisible(managed.workspace), workspace(managed.workspace).fullscreen == nil,
               let scrolling = workspace(managed.workspace).engine as? ScrollingEngine,
               let tabs = scrolling.tabs(of: focused), let index = tabs.firstIndex(of: focused),
@@ -889,8 +1200,8 @@ final class WindowManager {
         tabIndicator.show(on: frame, count: tabs.count, selected: index, settings.tabIndicator)
     }
 
-    private func updateBorder() {
-        guard let focused, let managed = windows[focused], !managed.minimized, settings(forWorkspace: managed.workspace).border.enabled,
+    func updateBorder() {
+        guard let focused, let managed = windows[focused], !managed.isOutOfLayout, settings(forWorkspace: managed.workspace).border.enabled,
               let frame = currentFrame(of: focused), isVisible(managed.workspace) else {
             border.hide()
             return
@@ -901,71 +1212,18 @@ final class WindowManager {
     /// Brings every parked window back on screen. Runs when the daemon quits, so no window stays hidden.
     func restoreAll() {
         let group = DispatchGroup()
-        for (id, managed) in windows where (!lastVisible.contains(id) || lastParked.contains(id)) && !managed.minimized {
+        for (id, managed) in windows where (!lastVisible.contains(id) || lastParked.contains(id)) && !managed.isOutOfLayout {
             let size = lastShownFrame[id]?.size ?? managed.info.frame.size
             let area = (monitors.first { $0.id == focusedMonitorID } ?? monitors.first)?.workArea ?? .zero
             let frame = lastShownFrame[id] ?? CGRect(
                 x: area.midX - size.width / 2, y: area.midY - size.height / 2, width: size.width, height: size.height
             )
             // A window that was parked as a sliver at the screen edge comes back fully on screen.
-            let inside = CGRect(
-                x: min(max(frame.minX, area.minX), max(area.minX, area.maxX - frame.width)),
-                y: min(max(frame.minY, area.minY), max(area.minY, area.maxY - frame.height)),
-                width: frame.width, height: frame.height
-            )
+            let inside = MonitorGeometry.clamped(frame, in: area)
             group.enter()
             watcher(for: managed.info.pid)?.setFrame(id, inside.integral) { _ in group.leave() }
         }
         _ = group.wait(timeout: .now() + 3)
-    }
-
-    /// Native mode: shows virtual row `row` of `desktop` on its display. Rows are extra workspaces inside one desktop;
-    /// the windows of the other rows are parked like windows of a hidden emulated workspace.
-    @discardableResult
-    func setRow(_ row: Int, desktop: String, focusWindow: Bool = true) -> Bool {
-        guard isNative, row >= 1, let index = monitors.firstIndex(where: { NativeWorkspaceName.desktop(of: $0.workspace) == desktop }) else { return false }
-        let name = NativeWorkspaceName.row(of: desktop, row)
-        guard monitors[index].workspace != name else { return true }
-        let previous = monitors[index].workspace
-        activeRow[desktop] = row
-        monitors[index].workspace = name
-        previousWorkspace = previous
-        focusedMonitorID = monitors[index].id
-        _ = workspace(name)
-        events.emit("workspace_changed", ["workspace": .string(name), "previous": .string(previous), "monitor": .number(Double(monitors[index].id))])
-        if focusWindow {
-            let target = workspace(name)
-            if let id = windowToFocus(in: target) {
-                focus(id)
-                return true
-            }
-            focused = nil
-        }
-        relayout()
-        return true
-    }
-
-    /// `up` / `down` / a number, relative to the row shown on the focused display.
-    func rowNumber(for spec: String?) -> Int? {
-        guard let current = focusedMonitor.map({ NativeWorkspaceName.rowNumber(of: $0.workspace) }), let spec else { return nil }
-        switch spec {
-        case "up": return max(current - 1, 1)
-        case "down": return current + 1
-        default: return Int(spec).flatMap { $0 >= 1 ? $0 : nil }
-        }
-    }
-
-    var focusedDesktop: String? { focusedMonitor.map { NativeWorkspaceName.desktop(of: $0.workspace) } }
-
-    /// Native mode: switches the focused display to another desktop with the Mission Control shortcut
-    /// (Control-1 ... Control-9, Control-0). macOS must have "Switch to Desktop N" enabled in Keyboard Shortcuts.
-    func switchSpace(to name: String) -> Bool {
-        guard let names = nativeSpaces[focusedMonitorID] else { return false }
-        guard let index = names.firstIndex(of: name) ?? Int(name).map({ $0 - 1 }),
-              names.indices.contains(index), index < 10,
-              let code = KeyCodes.code(for: String((index + 1) % 10)) else { return false }
-        EventTap.post(keyCode: code, flags: .maskControl)
-        return true
     }
 
     func setMode(_ name: String) -> Bool {
@@ -980,6 +1238,8 @@ final class WindowManager {
 
     // MARK: - Mouse resize
 
+    /// A drag with the mouse modifier: the window follows the pointer (see MouseDrag.swift).
+    var modifierDrag: ModifierDrag?
     private var mouseIsDown = false
     private var gestureCounter = 0
     /// Where the tiled windows really were when the mouse button went down. Compared with where they are after the
@@ -1015,7 +1275,7 @@ final class WindowManager {
 
     private func isTiledAndShown(_ id: WindowID) -> Bool {
         guard let managed = windows[id] else { return false }
-        return !managed.floating && !managed.minimized && isVisible(managed.workspace)
+        return !managed.floating && !managed.isOutOfLayout && isVisible(managed.workspace)
             && workspace(managed.workspace).fullscreen == nil && !workspace(managed.workspace).maximized.contains(id)
     }
 
@@ -1059,10 +1319,11 @@ final class WindowManager {
     // MARK: - Lookups
 
     /// The window that a selector names: `focused`, `app:<name>` (bundle id or app name, exact, ignoring case),
-    /// `title:<regex>` (matched anywhere in the title) or `pid:<n>`. With several matches the focused window wins when
+    /// `title:<regex>` (matched anywhere in the title), `pid:<n>` or `mark:<name>`. With several matches the focused window wins when
     /// it is one, then the most recently used one on the focused workspace, then the lowest id.
     func window(matching selector: String) -> WindowID? {
         if selector == "focused" { return focused }
+        if selector.hasPrefix("mark:") { return marks[String(selector.dropFirst(5))].flatMap { windows[$0] == nil ? nil : $0 } }
         let matches: [WindowID]
         if selector.hasPrefix("app:") {
             let name = String(selector.dropFirst(4))
@@ -1088,7 +1349,7 @@ final class WindowManager {
     func window(at point: CGPoint) -> WindowID? {
         for monitor in monitors {
             let name = activeWorkspace(of: monitor)
-            for (id, managed) in windows where managed.workspace == name && !managed.minimized {
+            for (id, managed) in windows where managed.workspace == name && !managed.isOutOfLayout {
                 if currentFrame(of: id)?.contains(point) == true { return id }
             }
         }
