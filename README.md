@@ -18,7 +18,8 @@ What you get:
 - One command set with three entry points: the `wm` CLI, Lua (`wm.dispatch`) and `wm://` URLs.
 - Layouts that survive a restart of the daemon.
 
-wm has no default key bindings. Until you bind keys in `init.lua`, it only reacts to the `wm` command.
+wm has no default key bindings. Until you bind keys in `init.lua`, it only reacts to the `wm` command and to the
+[built-in trackpad swipes](#swipes-with-3-or-4-fingers).
 
 ## Install
 
@@ -213,6 +214,21 @@ wm.bind("alt-shift-r", "mode resize")
 
 While the mode is active, a panel lists its keys with the text from `description`. See [The key panel](#the-key-panel).
 
+`wm.mode(name, binds, options)` takes options as its third argument:
+
+| Option | What it does |
+|---|---|
+| `once = true` | The mode ends after the first bind of it has run, and the mode before it is back. A bind that goes to another mode itself keeps that mode. |
+| `swallow = true` | A key that the mode does not bind is not typed into the app. Without it, such keys go on to the app (a hyper chord with no bind is always swallowed). |
+
+`wm mode back` (or `wm.dispatch("mode back")`) goes back to the mode before the current one. wm keeps the last 8 modes, and
+`mode main` forgets them. `back` is not a name for a mode.
+
+```lua
+wm.mode("focus", { h = "focus left", l = "focus right", j = "focus down", k = "focus up" }, { once = true, swallow = true })
+wm.bind("alt-f", "mode focus")   -- alt-f, then one of h j k l, and the mode is over
+```
+
 ### One prefix key, then a letter
 
 ```lua
@@ -280,7 +296,7 @@ For a whole file, see the [author's configuration](https://github.com/g4rcez/dot
 ```lua
 wm.config {
   layout = "tiling",                   -- scrolling | tiling | master
-  gaps = { inner = 8, outer = 8 },     -- outer can also be { top=, right=, bottom=, left= }
+  gaps = { inner = 8, outer = 8, smart = false },  -- outer can also be { top=, right=, bottom=, left= }; smart: no gaps around a lone tiled window
   animations = { enabled = true, rate = 14 },  -- rate: spring stiffness; a long move ends in about 10 / rate seconds
   border = { enabled = true, width = 2, radius = 10, active = "#89b4fa", inactive = "#00000000" },
   focus_follows_mouse = false,         -- or { enabled = true, only_fully_visible = true }: only windows that are fully on screen
@@ -374,6 +390,37 @@ wm.mode("vim", {
   (password fields, some terminals) blocks every key tap, so hyper chords do nothing there.
 - `hyper` works in chords only. `mouse` and `wm.gesture` modifiers stay `alt`, `cmd`, `ctrl` and `shift`.
 
+#### Keyboards
+
+The CapsLock mapping reaches every keyboard that macOS has, also one that connects later (USB, Bluetooth): wm sees it come and
+gives it the mapping within a second, and again after sleep and on `wm daemon reload`. A keyboard whose keys come through a
+consumer-control or mouse part (the Dygma Raise, for example) is found too. `wm query keyboards` shows them:
+
+```
+$ wm query keyboards
+NAME                                ID         TRANSPORT  BUILT-IN  STATE    CAPSLOCK
+Apple Internal Keyboard / Trackpad  0000:0000  FIFO       yes       enabled  hyper
+Raise                               1209:2201  USB        no        enabled  hyper
+```
+
+`id` is `vendor:product` in hex (a built-in keyboard has none: use its name). `capslock` is what the system reports now: `hyper`
+means CapsLock sends F18 on this keyboard. `wm query keyboards --json` and `wm.query("keyboards")` give the same list as data.
+
+`keyboards` in `wm.config` turns a keyboard on or off for wm. Every keyboard is on unless the config says no:
+
+```lua
+wm.config { keyboards = {
+  default = true,                                  -- what a keyboard that is not named gets
+  ["Apple Internal Keyboard / Trackpad"] = true,   -- by name (the match ignores case) ...
+  ["1209:2201"] = true,                            -- ... or by vendor:product. The id wins over the name.
+  -- ["Some USB Receiver"] = false,                -- keeps its own CapsLock
+} }
+```
+
+A keyboard that wm manages has CapsLock as the hyper key. One that the config turns off gets wm's mapping taken away. What wm
+cannot do is tell which keyboard a key came from, so the binds (`alt-h`, remaps of the hyper key) work on all keyboards: `keyboards`
+decides where CapsLock becomes the hyper key.
+
 ### The key panel
 
 While a mode other than `main` is active, or while a prefix waits for its next key, a panel shows what you can press.
@@ -408,6 +455,7 @@ It has a chip with the mode name and one chip per key, with the key's `descripti
 | `repeating = true` | A second bind of the same chord: it runs for each repeat while the key is held, and the plain bind runs only when the key goes down. Alone, it runs on the press and on every repeat. |
 | `release = true` | Run when the key comes up. A chord can have a press bind and a release bind. |
 | `long_press = true` | Run when the key is held for `binds.long_press_timeout` seconds. A short press runs the normal bind of the same chord. |
+| `long_press = 0.8` | The same, with a wait of its own: 0.1 to 3 seconds. |
 | `universal = true` | The bind works in every mode. `submap_universal` is the same option, with the name that Hyprland uses. |
 | `hidden = true` | Leave the key out of the key panel. |
 
@@ -445,23 +493,33 @@ no gesture uses goes on to the built-in Option + scroll, which moves the scrolli
 
 #### Swipes with 3 or 4 fingers
 
-The private MultitouchSupport framework does say how many fingers touch the pad. Turn it on, and name the fingers in the
-gesture instead of (or besides) the modifier:
+The private MultitouchSupport framework does say how many fingers touch the pad. wm reads it by default, and the swipes
+below work without a config. `trackpad.fingers` (4 by default, or 3) is the number of fingers:
+
+| Swipe | Command |
+| --- | --- |
+| fingers left | `workspace next` |
+| fingers right | `workspace prev` |
+| fingers up | `overview open` |
+| fingers down | `overview close` |
+
+On a scrolling workspace the sideways swipe scrolls the strip instead (see below). A `wm.gesture` for the same fingers
+and direction replaces a built-in swipe. Name the fingers in the gesture instead of (or besides) the modifier:
 
 ```lua
-wm.config { trackpad = { enabled = true, scroll_fingers = 3, speed = 1 } }
+wm.config { trackpad = { fingers = 4, scroll_fingers = 4, speed = 1 } }   -- enabled = false turns all of this off
 
-wm.gesture { fingers = 3, direction = "up",   command = "workspace next" }
-wm.gesture { fingers = 3, direction = "down", command = "workspace prev" }
 wm.gesture { fingers = 4, direction = "up",   command = "overview" }
+wm.gesture { fingers = 3, direction = "down", command = "workspace prev" }
 ```
 
 - A swipe starts when the same number of fingers (3 or 4) has touched the pad for a few frames. It ends when the fingers
   lift, or when their number changes; then no new swipe starts until all fingers are up.
 - A gesture claims the swipe on its axis, as above. A swipe that no gesture claims scrolls the scrolling strip when its
-  finger count is `scroll_fingers` (3 by default, 4, or 0 for never). The strip goes on a little after the fingers lift
-  and then settles on a column. `speed` (0.1 to 10) says how far a swipe moves the strip.
-- `trackpad.enabled` is off by default. A config reload looks for trackpads again.
+  finger count is `scroll_fingers` (the same as `fingers` unless you set it, or 0 for never). The strip goes on a little
+  after the fingers lift and then settles on a column. `speed` (0.1 to 10) says how far a swipe moves the strip.
+- With `trackpad = { enabled = true }` in the config, wm shows a notification when the framework or a trackpad is
+  missing. Without it, wm only writes a line to the log. A config reload looks for trackpads again.
 
 ### Window rules
 
@@ -657,6 +715,11 @@ workspace has windows, the window joins the layout and `balance` runs. Add `--ti
 
 - `window float` moves the window to the middle of its screen. It keeps its size, but a window that fills (about) the whole work
   area gets 60% of it, so you can see it float. Windows that open floating (rules, dialogs) keep their own place.
+- `window float on` and `window float off` float or tile the window and never toggle, so a bind can be repeated safely.
+  `window center` floats the window (a tiled one first) and puts it in the middle of its monitor, with the same size.
+- `move <dir> [points]` and `resize <width|height> <+n|-n>` work on a floating window too: it moves by `points` (40 if you
+  leave it out) or changes by n points, keeps its top left corner when it resizes, and stays inside the work area of its
+  monitor. At the edge `move` stops; it does not go to the next monitor.
 - `window snap <place>` floats the window (a tiled one first) into a part of the work area inside the gaps: `left`, `right`,
   `top`, `bottom`, the four corners, or `center`. The same place again goes on to the next size: half, a third, two thirds
   (`center`: 60%, 80%, 40%).
@@ -684,21 +747,36 @@ not fit is cropped). `switcher = { thumbnails = false }` turns the pictures off.
 switcher). Choosing a tile shows the workspace of that window. In the switcher and in the overview, Cmd+W closes the
 selected window, and the panel stays open without it.
 
-`overview` opens a panel in the middle of the screen (it does not cover the screen). A search field is at the top, and below
-it there is one row for each workspace that holds windows or that a monitor shows. A row shows its workspace in the layout
-that it has: a scrolling workspace is the whole strip of columns, with a dashed outline around the part that is on screen,
-and a tiling workspace is the tiles of the screen. Every window is a card with its picture, the icon of its app and its title;
-a floating window has a dashed edge. The workspace of the focused monitor has a dot and a bright edge. If there are more rows
-than the panel can hold, the rows get smaller, and then the list scrolls.
+`overview` darkens the screen (as the overview of Niri does) and shows every workspace as a small copy of its screen, one under
+the other in one column. The workspace that you are on is in the middle, and the ones before and after it show above and
+below; the column scrolls. There is one copy for each workspace that holds windows or that a monitor shows, and an empty one
+at the end for a new workspace. A copy shows its workspace in the layout that it has: a scrolling workspace is the whole
+strip of columns, with a dashed outline around the part that is on screen, and a tiling workspace is the tiles of the screen.
+Every window is a card with its picture, the icon of its app and its title; a floating window has a dashed edge, and the
+selected card has a ring. The name of the workspace is above its copy, with a dot when the focused monitor shows it. A search
+field is at the top. It fades in and out in 0.12 seconds, and nothing zooms or moves while it does.
+
+`overview` opens or closes it. `overview open` and `overview close` do only one of the two: the swipes with 4 fingers up and
+down use them (see [Gestures](#gestures)).
+
+```lua
+wm.config { overview = {
+  zoom = 0.5,                  -- a workspace is its screen times this: 0.2 to 0.75
+  gap = 48,                    -- points between two workspaces
+  backdrop = "#0f0f14db",      -- the dark layer behind them
+} }
+```
 
 - **Search:** type, and the cards that do not match (their title, app, workspace name or marks) are dimmed. The selection
   goes to the most recent match, and the number in the field shows how many there are. Backspace deletes a letter. Escape always
   closes the overview, also when nothing matches.
-- **Keys:** the arrow keys and Tab move the selection, Return focuses the window and shows its workspace, Cmd+W closes it.
+- **Keys:** the arrow keys and Tab move the selection (up and down also go to the workspace above and below), Return focuses
+  the window and shows its workspace, Cmd+W closes it. The column scrolls to put the workspace of the selection in the middle.
 - **Mouse:** move the pointer onto a card to select it, and a red button appears at its corner that closes the window. Click a
-  card to focus it. A click anywhere outside the panel closes it, and the click goes on to what is under it (so you can start a screenshot). The mouse wheel or the trackpad scrolls the rows.
-- **Move a window:** **drag a card onto another row to move the window there.** The last row, an empty screen with a `+`, is a
-  new workspace with the first unused number. The focus and the shown workspace stay as they are.
+  card to focus it. A click on the dark backdrop closes the overview, and the click goes on to what is under it (so you can
+  start a screenshot). The mouse wheel or the trackpad scrolls the column.
+- **Move a window:** **drag a card onto another workspace to move the window there.** The last one, an empty screen, is a new
+  workspace with the first unused number. The focus and the shown workspace stay as they are.
 
 The pictures come from Screen Recording. A window that wm parked off screen (another workspace) is captured with a private
 macOS call (SkyLight), and wm also keeps the last picture of every window that was on screen. If both fail, for example an app
@@ -817,8 +895,8 @@ Lua (`wm.dispatch`) and in `wm://` URLs.
 FOCUS AND MOVE   focus <dir> | focus back | focus next|prev | focus window <id> | focus monitor <monitor> | focus layer
                  focus app <name> [--launch]
                  focus column <first|last|n> | focus stack <first|last|n>
-                 move <dir> | swap <dir> | resize <width|height|smart> <+n|-n>
-WINDOWS          window close | float | fullscreen | native-fullscreen | maximize | pseudo | raise-floating | rescue
+                 move <dir> [points] | swap <dir> | resize <width|height|smart> <+n|-n>
+WINDOWS          window close | float [on|off] | center | fullscreen | native-fullscreen | maximize | pseudo | raise-floating | rescue
                  window snap <left|right|top|bottom|top-left|top-right|bottom-left|bottom-right|center> | sticky
                  window mark <name> | unmark [name] | remember [--title] | forget [--title]
                  window send workspace <name> | monitor <monitor> | strip <horizontal|vertical>
@@ -827,9 +905,9 @@ WORKSPACES       workspace <name|back|next|prev|empty> | workspace special [name
 LAYOUT           layout set <scrolling|tiling> | balance | rotate | flip | tile | preselect <dir>
                  layout split <toggle|swap|root|ratio> | column <width|match|expand|center|center-visible>
                  layout stack <join|leave|tabs|equalize|height> | column move <first|last|n>
-INTERFACE        switcher | overview | palette | menu | mode <name> | pointer <window|monitor> | zen [on|off]
+INTERFACE        switcher | overview | palette | menu | mode <name|back> | pointer <window|monitor> | zen [on|off]
                  exec [options] <command> | batch <commands> | set <key> <value> | notify <text> | key send <chord> | key press <chord>
-INSPECT          list [windows|workspaces|monitors|memory|binds] | subscribe | logs [-n count] [-f] [-o otel|json]
+INSPECT          list [windows|workspaces|monitors|keyboards|memory|binds] | query [what] | subscribe [--snapshot] [event ...] | logs [-n count] [-f] [-o otel|json]
 DAEMON           daemon start | stop | status | reload | version
 EDITOR           lsp [--write] [--force]
 SHELL            completion <zsh|bash>
@@ -858,7 +936,24 @@ $ wm list windows
 ```
 
 `wm daemon status` exits with 1 when wm does not run, so a script can test it. `wm subscribe` prints one JSON event per
-line until you stop it.
+line until you stop it:
+
+```sh
+wm subscribe                                          # every event
+wm subscribe window_focus workspace_changed           # only these events
+wm subscribe --snapshot window_focus                  # the first line is the state of wm now
+wm subscribe | jq -c 'select(.event == "window_focus") | .app'
+```
+
+Every line has an `event` field with the name, and the fields of the event (the same ones that `wm.on` handlers get). With
+`--snapshot` the first line is `{"event":"snapshot","mode":"main","state":<wm list --json>}`, so a status bar can draw
+itself and then follow the changes. An event name that wm does not know is an error, with the list of names.
+
+**The socket.** `wm` is a client of a unix socket (mode 0600) named `wm.sock` in the temporary folder of your user
+(`getconf DARWIN_USER_TEMP_DIR`; `/tmp/wm.sock` when that fails). One exchange is one request and one answer. Each message is a 4-byte big-endian length and then that many bytes of
+JSON. The request is `{"args":["focus","left"],"windowId":null,"windowSelector":null}` (the words of the command, as the
+CLI gets them) and the answer is `{"exitCode":0,"stdout":"","stderr":""}`. A `subscribe` request gets its answer, and the
+connection stays open: the daemon then writes one frame for each event (and the snapshot first), until you close it.
 
 ### Logs
 
@@ -932,9 +1027,9 @@ wins, then the lowest id. No match is an error. The flag goes before or after th
   end)
   local here = wm.query("monitor")   -- the focused monitor: here.name, here.index, here.role
   ```
-- Events: `window_open`, `window_close`, `window_focus`, `workspace_changed`, `special_changed`, `monitor_changed`,
-  `layout_changed`, `mode_changed` and `config_reloaded`. `wm.on(event, [filter,] handler)` takes an optional table of
-  fields that must match.
+- Events: `window_open`, `window_close`, `window_focus`, `window_title`, `window_floating`, `window_fullscreen`,
+  `window_moved`, `workspace_changed`, `special_changed`, `monitor_changed`, `layout_changed`, `mode_changed` and
+  `config_reloaded`. `wm.on(event, [filter,] handler)` takes an optional table of fields that must match.
 - `wm.exec(command)` runs a shell command and returns nothing. It does not wait for the command and it drops its output.
   wm runs it as `/bin/zsh -c "<command>"`, which does not read `.zshrc`: use absolute paths (`/opt/homebrew/bin/htop`).
   `$HOME` and `$(...)` work. A folder such as `/Applications/Foo.app` is not a command: use `open -a Foo`, or the program
@@ -1160,10 +1255,18 @@ wm.workspace("special:term", { layout = "scrolling" })
 wm.rule { app = "com.spotify.client", workspace = "special:music" }
 ```
 
-A special workspace takes the work area with 5% free on each side. It hides when you run the command again, when you
-switch to a workspace, when its last window goes away, and when a window of the normal workspace gets the focus.
-While it is shown, the windows of the normal workspace are parked. macOS brings every window of the active app forward,
-so wm cannot keep the special windows above them.
+A special workspace takes the work area with 5% free on each side (`special.size`, 0.9 by default). It hides when you run
+the command again, when you switch to a workspace, when its last window goes away, and when a window of the normal
+workspace on the same monitor gets the focus. While it is shown, the windows of the normal workspace are parked. macOS
+brings every window of the active app forward, so wm cannot keep the special windows above them.
+
+```lua
+wm.config { special = {
+  size = 0.8,                       -- a fraction of the work area, 0.5 to 1
+  backdrop = "#00000066",           -- a dim layer on the monitor, behind the windows; "" (the default) is none
+  hide_on_other_monitor = true,     -- a normal window that gets the focus on another monitor hides it too
+} }
+```
 
 ## Saved state
 
@@ -1216,9 +1319,10 @@ A layout that you change in the config while wm is stopped wins over the saved o
 - The border and the tab indicator are separate overlay windows above normal windows.
 - A window with a minimum size larger than its tile overlaps its neighbours.
 - Gestures with `mods` see only a modifier and a scroll direction, not the finger count. Gestures with `fingers` read the
-  trackpad through the private MultitouchSupport framework. A macOS update can change it. When it cannot be loaded, wm
-  says so and the gestures stay off. macOS keeps its own three-finger gestures: turn them off in System Settings >
-  Trackpad (or use four fingers), or both act on the same swipe.
+  trackpad through the private MultitouchSupport framework. A macOS update can change it. When it cannot be loaded, the
+  gestures stay off, and wm says so in the log (in a notification when the config has `trackpad = { enabled = true }`).
+  macOS keeps its own gestures with three and with four fingers (Mission Control, Spaces, Exposé): turn the ones that you
+  use in wm off in System Settings > Trackpad > More Gestures, or both act on the same swipe.
 - When a display goes away (lid closed, display asleep, unplugged), its workspace keeps its windows, and they stay hidden.
   The display shows that workspace again when it comes back. Until then, `wm workspace N` shows it on another monitor.
 
