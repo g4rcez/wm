@@ -8,6 +8,8 @@
     <string>wm</string>
     <key>CFBundleExecutable</key>
     <string>wmd</string>
+    <key>CFBundleIconFile</key>
+    <string>wm</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
