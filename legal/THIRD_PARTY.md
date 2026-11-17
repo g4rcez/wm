@@ -52,8 +52,7 @@ SOFTWARE.
 ## paneru (MIT, https://github.com/karinushka/paneru)
 
 Used as the reference for the scrolling strip in `Sources/Core/ScrollingEngine.swift` (columns, minimal-shift scrolling,
-centring modes, parked slivers), the frame-rate independent ease-out in `Sources/Core/Animator.swift`, and the read-only
-SkyLight use for native Spaces in `Sources/Platform/SpaceReader.swift`. Ribbon.app, the commercial app built on paneru,
+centring modes, parked slivers), and the frame-rate independent ease-out in `Sources/Core/Animator.swift`. Ribbon.app, the commercial app built on paneru,
 was only inspected to learn how it works; none of its code or assets are used.
 
 ```
