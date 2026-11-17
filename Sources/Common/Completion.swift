@@ -69,7 +69,8 @@ private let monitorWords = ["left", "right", "up", "down", "next", "prev", "last
 
 /// Arguments that `CommandSpec.args` cannot list: the text of the spec names a placeholder, or describes them in `details`.
 private let extraValues: [String: [String]] = [
-    "list": ["windows", "workspaces", "monitors", "memory", "binds"],
+    "list": ["windows", "workspaces", "monitors", "keyboards", "memory", "binds"],
+    "query": ["windows", "workspaces", "monitors", "keyboards", "memory"],
     "zen": ["on", "off"],
     "window snap": ["left", "right", "top", "bottom", "top-left", "top-right", "bottom-left", "bottom-right", "center"],
     "workspace": ["next", "prev", "empty"],
@@ -177,7 +178,7 @@ public func complete(_ words: [String], source: CompletionSource = CompletionSou
     case .window?: found += windowCandidates(source.windows())
     case .workspace?: found += source.workspaces().filter { !$0.hasPrefix("special") }.map { CompletionCandidate($0) }
     case .special?: found += source.workspaces().filter { $0.hasPrefix("special:") }.map { CompletionCandidate(String($0.dropFirst("special:".count))) }
-    case .mode?: found += source.modes().map { CompletionCandidate($0) }
+    case .mode?: found += (source.modes() + ["back"]).map { CompletionCandidate($0) }
     case .mark?: found += source.marks().map { CompletionCandidate($0) }
     case nil: break
     }

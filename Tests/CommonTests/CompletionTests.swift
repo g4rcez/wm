@@ -85,8 +85,8 @@ struct CompletionTests {
         #expect(words(complete(["workspace", "special", ""], source: source())) == ["term"])
     }
 
-    @Test func modeCompletesTheModesThatHaveBinds() {
-        #expect(words(complete(["mode", "r"], source: source())) == ["main", "resize"])
+    @Test func modeCompletesTheModesThatHaveBindsAndBack() {
+        #expect(words(complete(["mode", "r"], source: source())) == ["back", "main", "resize"])
     }
 
     @Test func withoutTheDaemonOnlyTheFixedWordsComplete() {

@@ -197,12 +197,17 @@ if arguments == ["daemon", "stop"] {
     exit(0)
 }
 
-if arguments == ["subscribe"] {
-    // One JSON event per line until the daemon goes away.
+if arguments.first == "subscribe" {
+    // One JSON event per line until the daemon goes away. `wm subscribe window_focus` keeps the events with these names, and
+    // `--snapshot` makes the first line the state of wm now.
     do {
         let connection = try connectToServer(path: defaultSocketPath(), timeoutSeconds: 0)
         try writeFrame(connection, JSONEncoder().encode(ClientRequest(args: arguments)))
-        _ = try readFrame(connection)
+        let answer = try JSONDecoder().decode(ServerAnswer.self, from: readFrame(connection))
+        guard answer.exitCode == 0 else {
+            printError(answer.stderr)
+            exit(answer.exitCode)
+        }
         while true {
             let event = try readFrame(connection)
             FileHandle.standardOutput.write(event + Data("\n".utf8))

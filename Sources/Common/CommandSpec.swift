@@ -63,13 +63,19 @@ public let commandSections: [CommandSection] = [
             details: "The monitor is a direction, next, prev, last (the one that had the focus before), a role (main, secondary,\ntertiary), a number (1 is the leftmost) or part of the name. main is the display with the menu bar.",
             example: "wm focus monitor last"),
         CommandSpec("focus layer", "[floating|tiling]", "", "Switch focus between floating and tiling windows."),
-        CommandSpec("move", "<dir>", "", "Move the window; at the edge it goes to the next monitor."),
+        CommandSpec(
+            "move", "<dir> [points]", "", "Move the window; at the edge it goes to the next monitor.",
+            details: "A floating window moves by `points` (40 if you leave it out) and stops at the edge of its monitor."),
         CommandSpec("swap", "<dir>", "", "Exchange places with the window in that direction."),
-        CommandSpec("resize", "<width|height|smart> <+n|-n>", "", "Grow or shrink the window by n points.", example: "wm resize width +50"),
+        CommandSpec(
+            "resize", "<width|height|smart> <+n|-n>", "", "Grow or shrink the window by n points.",
+            details: "Also for a floating window (`smart` is the width there). It keeps its top left corner and stays on its monitor.",
+            example: "wm resize width +50"),
     ]),
     CommandSection(title: "Windows", specs: [
         CommandSpec("window close", "", "", "Close the window."),
-        CommandSpec("window float", "", "", "Float the window and center it, or tile it again."),
+        CommandSpec("window float", "[on|off]", "", "Float the window and center it, or tile it again."),
+        CommandSpec("window center", "", "", "Float the window (a tiled one first), centered."),
         CommandSpec(
             "window sticky", "", "", "Show the window on every workspace of its monitor.",
             details: "A tiled window floats first. The window follows the workspace that the monitor shows (also a special workspace). Again\nto end it; the window then stays floating on the workspace that it is on. `window remember` keeps it.",
@@ -174,8 +180,8 @@ public let commandSections: [CommandSection] = [
             details: "The other windows of the workspace are moved off screen, like the windows of a hidden workspace; the layout is not changed.\nFocusing another window shows that one instead. `zen.width` in the config sets the width (default 0.7 of the work area).\nWithout an argument it turns the mode on or off. A fullscreen window wins over it.",
             example: "wm zen"),
         CommandSpec(
-            "overview", "", "", "Show all workspaces; type to search a window.",
-            details: "Each row is a workspace in its own layout. Typing searches, Return focuses, Cmd-W closes the selected window, and\ndragging a window onto another row moves it there."),
+            "overview", "[open|close|toggle]", "", "Show all workspaces; type to search a window.",
+            details: "Every workspace is a small copy of its screen, in one column that scrolls; yours is in the middle. Typing searches, the\narrows move, Return focuses, Cmd-W closes the selected window, and dragging a window onto another workspace moves it there.\nWithout an argument it opens or closes the overview; `open` and `close` do only that (the swipes of 4 fingers use them)."),
         CommandSpec(
             "palette", "[windows|apps|commands|menu]", "[--cmdtab] [--reverse]", "Search running apps, windows, commands and menu items.",
             details: "One text field. Without a prefix it lists the running apps with their windows. `>` finds wm commands (Tab completes one, and after a\ncommand it lists what can follow) and `/` finds the menu items of the app that was in front. Up and down move, Return\nruns the row and Escape closes. The word picks the list to start in.\n--cmdtab works like the Cmd+Tab of macOS: it lists the running apps, selects the previous one, Tab and Shift+Tab move while you hold\nthe modifier, and letting go of it switches to the app. wm swallows those keys, so the macOS switcher does not open.\n--reverse starts from the last app (bind it to cmd-shift-tab).",
@@ -184,7 +190,7 @@ public let commandSections: [CommandSection] = [
             "menu", "", "", "Show the menus of the app at the pointer.",
             details: "It reads the menu bar of the app of the window (the focused app) and shows it as a menu at the mouse pointer. An item\nthat you choose runs in that app. It shows what the app gives to the Accessibility API; an app that fills its menus\nonly when you open them can show fewer items.",
             example: "wm menu"),
-        CommandSpec("mode", "<name>", "", "Switch the binding mode (`main` is the default).", example: "wm mode resize"),
+        CommandSpec("mode", "<name|back>", "", "Switch the binding mode (`back`: the one before).", example: "wm mode resize"),
         CommandSpec("pointer", "<window|monitor>", "", "Move the mouse pointer to the center of the target."),
         CommandSpec(
             "exec", "[options] <command>", "", "Run a shell command (--window sets $WM_WINDOW_ID).",
@@ -209,10 +215,17 @@ public let commandSections: [CommandSection] = [
     ]),
     CommandSection(title: "Inspect", specs: [
         CommandSpec(
-            "list", "[what]", "[--focused] [--json]", "List windows, workspaces, monitors or binds.",
-            details: "`what` is windows, workspaces, monitors, memory or binds. With no argument it lists the workspaces and their windows. --focused lists only the focused window (or, with monitors, the focused monitor).\n--json prints JSON for scripts. `list binds` shows every key bind with its description.",
+            "list", "[what]", "[--focused] [--json]", "List windows, workspaces, monitors, keyboards or binds.",
+            details: "`what` is windows, workspaces, monitors, keyboards, memory or binds. With no argument it lists the workspaces and their windows. --focused lists only the focused window (or, with monitors, the focused monitor).\n--json prints JSON for scripts. `list binds` shows every key bind with its description.",
             example: "wm list windows --json"),
-        CommandSpec("subscribe", "", "", "Print one JSON event per line until stopped."),
+        CommandSpec(
+            "query", "[what]", "[--focused] [--json]", "The same as `list`.",
+            details: "`wm query keyboards` shows the keyboards: name, `vendor:product` id, transport, whether the config enables it\n(`keyboards` in `wm.config`) and whether CapsLock is the hyper key on it now. Use the name or the id in the config.",
+            example: "wm query keyboards"),
+        CommandSpec(
+            "subscribe", "[--snapshot] [event ...]", "", "Print one JSON event per line until stopped.",
+            details: "With event names, only those events. With --snapshot, the first line is the state of wm now (`event` is\n`snapshot`, `state` is `wm list --json`). The events: " + subscribableEvents.joined(separator: ", ") + ".",
+            example: "wm subscribe --snapshot window_focus workspace_changed"),
         CommandSpec(
             "logs", "", "[--lines=n] [--follow] [--output=otel|json]", "Show the log of the daemon.",
             details: "Short forms: -n, -f, -o. The default output is text in the OpenTelemetry log data model: time, severity, message,\nattributes. -o json prints one JSON object per line (time, level, message, source). It shows the last 100 records;\n-n 0 shows all. --follow waits for new records. It reads the log file ($XDG_STATE_HOME/wm/wm.log, else\n~/.local/state/wm/wm.log), so it works when the daemon is not running.",
@@ -322,7 +335,6 @@ public let renamedCommands: [String: String] = [
     "rotate-counterclockwise": "layout rotate ccw",
     "rotate-layout": "layout flip",
     "move-mouse": "pointer <window|monitor>",
-    "query": "list [windows|workspaces|monitors]",
     "status": "daemon status",
     "start": "daemon start",
     "stop": "daemon stop",

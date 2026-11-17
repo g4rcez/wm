@@ -37,3 +37,9 @@ public func defaultSocketPath() -> String {
         : "/tmp/"
     return directory + "wm.sock"
 }
+
+/// The events that `wm subscribe` and `wm.on` can name, as they appear in the `event` field of a line.
+public let subscribableEvents = [
+    "window_open", "window_close", "window_focus", "window_title", "window_floating", "window_fullscreen", "window_moved",
+    "workspace_changed", "special_changed", "monitor_changed", "layout_changed", "mode_changed", "config_reloaded",
+]

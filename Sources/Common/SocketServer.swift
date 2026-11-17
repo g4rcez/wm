@@ -5,11 +5,11 @@ public final class SocketServer: @unchecked Sendable {
     private let path: String
     private let source: any DispatchSourceRead
 
-    /// `subscriber` takes over the connection of a `subscribe` request: the server keeps it open and the
-    /// subscriber owns it (and must close it).
+    /// `subscriber` takes over the connection of a `subscribe` request, with the words after `subscribe`: the server keeps
+    /// it open and the subscriber owns it (and must close it).
     public init(
         path: String = defaultSocketPath(),
-        subscriber: (@Sendable (Int32) -> Void)? = nil,
+        subscriber: (@Sendable (Int32, [String]) -> Void)? = nil,
         handler: @escaping @Sendable (ClientRequest) -> ServerAnswer
     ) throws {
         let listener = try listenOnSocket(path: path)
@@ -30,7 +30,7 @@ public final class SocketServer: @unchecked Sendable {
 
     private static func serve(
         _ connection: Int32,
-        _ subscriber: (@Sendable (Int32) -> Void)?,
+        _ subscriber: (@Sendable (Int32, [String]) -> Void)?,
         _ handler: @Sendable (ClientRequest) -> ServerAnswer
     ) {
         var keepOpen = false
@@ -45,12 +45,12 @@ public final class SocketServer: @unchecked Sendable {
         }
         guard let payload = try? JSONEncoder().encode(answer) else { return }
         try? writeFrame(connection, payload)
-        if let subscriber, answer.exitCode == 0, (try? JSONDecoder().decode(ClientRequest.self, from: frame))?.args == ["subscribe"] {
+        if let subscriber, answer.exitCode == 0, let args = (try? JSONDecoder().decode(ClientRequest.self, from: frame))?.args, args.first == "subscribe" {
             // Streaming connections wait for events, so the read timeout no longer applies.
             var none = timeval(tv_sec: 0, tv_usec: 0)
             setsockopt(connection, SOL_SOCKET, SO_RCVTIMEO, &none, socklen_t(MemoryLayout<timeval>.size))
             keepOpen = true
-            subscriber(connection)
+            subscriber(connection, Array(args.dropFirst()))
         }
     }
 }
