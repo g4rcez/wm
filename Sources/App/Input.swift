@@ -29,8 +29,10 @@ final class InputRouter {
     private var pendingMode = "main"
     /// Set by the app: the switcher takes over the keys while it is open.
     var switcher: SwitcherController?
-    /// While the palette is open its text field gets every key, so no bind runs. The `--cmdtab` palette takes Tab and the arrow
-    /// keys itself, so that macOS does not see its Cmd+Tab.
+    /// Key codes of remaps that a panel used up, until their key comes up.
+    private var overlayHeld: Set<Int> = []
+    /// While the palette is open its text field gets every key, so no bind runs; remaps still do, and the panel gets their target
+    /// (`hyper-j` → `down`). The `--cmdtab` palette takes Tab and the arrow keys itself, so that macOS does not see its Cmd+Tab.
     var palette: PaletteController?
     /// Set by the app: the template picker takes over the keys while it is open.
     var picker: TemplatePicker?
@@ -56,6 +58,8 @@ final class InputRouter {
         tap.onKey = { [unowned self] code, flags, isRepeat in handleKey(code, flags, isRepeat: isRepeat) }
         tap.onKeyUp = { [unowned self] code, flags in
             if hyperEnabled, code == KeyboardRemap.hyperKeyCode { return hyperKeyUp() }
+            // A remap that a panel used up: the app never saw the key down, so it does not see the key up.
+            if overlayHeld.remove(code) != nil { return true }
             let outcome = tracker.keyUp(keyCode: code)
             apply(outcome.effects, flags: flags)
             return outcome.swallow
@@ -67,7 +71,10 @@ final class InputRouter {
             palette?.flagsChanged(flags)
         }
         // The key ups of the hyper key are lost while the tap is off, and a hyper key that stays down would eat every key.
-        tap.onReenabled = { [unowned self] in hyperDown = false }
+        tap.onReenabled = { [unowned self] in
+            hyperDown = false
+            overlayHeld = []
+        }
         tap.onButton = { [unowned self] isDown in manager.mouseButton(isDown: isDown) }
         tap.onMouse = { [unowned self] event in
             if event.kind == .down { switcher?.pointerPressed(at: event.location) }
@@ -80,19 +87,29 @@ final class InputRouter {
         if hyperEnabled, code == KeyboardRemap.hyperKeyCode { return hyperKeyDown(isRepeat: isRepeat) }
         guard let key = KeyCodes.name(for: code) else { return false }
         if hyperDown { hyperUsed = true }
-        if let palette, palette.isOpen { return palette.handleKey(key, flags: flags) }
-        if let switcher, switcher.isOpen { return switcher.handleKey(key, flags: flags) }
-        if let picker, picker.isOpen { return picker.handleKey(key) }
         var modifiers = Self.modifiers(of: flags)
         if hyperDown { modifiers.insert(.hyper) }
         let chord = Chord(modifiers: modifiers, key: key)
+        let mode = manager.mode
+
+        // A remap comes first: the key is its target everywhere, in the panels of wm too. A panel that is open gets the target.
+        if pending.isEmpty, let (remap, target) = remap(for: chord, mode: mode) {
+            if overlayKey(target.key, flags: KeyOutput.flags(of: target.modifiers)) == true {
+                overlayHeld.insert(code)
+                return true
+            }
+            let outcome = tracker.keyDown(keyCode: code, isRepeat: isRepeat, lookup: remap)
+            apply(outcome.effects, flags: flags)
+            return outcome.swallow
+        }
+        // The panels take every other key. A hyper chord is not text, so the keys are not typed.
+        if let handled = overlayKey(key, flags: flags) { return handled || chord.modifiers.contains(.hyper) }
 
         if !pending.isEmpty {
             // A key held down after the prefix must not count as the second key.
             if isRepeat { return true }
             return continueSequence(with: chord, flags: flags)
         }
-        let mode = manager.mode
         let lookup = lookup(for: chord, mode: mode)
         if !lookup.isEmpty {
             let outcome = tracker.keyDown(keyCode: code, isRepeat: isRepeat, lookup: lookup)
@@ -103,13 +120,29 @@ final class InputRouter {
             beginSequence(chord, mode: mode)
             return true
         }
-        if let remap = remapLookup(for: chord, mode: mode) {
-            let outcome = tracker.keyDown(keyCode: code, isRepeat: isRepeat, lookup: remap)
-            apply(outcome.effects, flags: flags)
-            return outcome.swallow
-        }
         // A hyper chord that nothing uses is not typed: the keys are not for the app.
         return chord.modifiers.contains(.hyper)
+    }
+
+    /// The open panel (palette, switcher, template picker) takes the key. `nil` when no panel is open.
+    private func overlayKey(_ key: String, flags: CGEventFlags) -> Bool? {
+        if let palette, palette.isOpen { return palette.handleKey(key, flags: flags) }
+        if let switcher, switcher.isOpen { return switcher.handleKey(key, flags: flags) }
+        if let picker, picker.isOpen { return picker.handleKey(key) }
+        return nil
+    }
+
+    /// The remap that a chord fires, with the key lookup to run it. An exact bind of the chord wins, and so does a sequence
+    /// that starts with it; then the remap with fewer modifiers than the chord (`remapLookup`).
+    private func remap(for chord: Chord, mode: String) -> (lookup: BindLookup, target: Chord)? {
+        let exact = lookup(for: chord, mode: mode)
+        if !exact.isEmpty {
+            guard case .remap(let target)? = exact.press, exact.release == nil, exact.longPress == nil, exact.hold == nil else { return nil }
+            return (exact, target)
+        }
+        guard !hasSequence(in: mode, startingWith: [chord]), let loose = remapLookup(for: chord, mode: mode),
+              case .remap(let target)? = loose.press else { return nil }
+        return (loose, target)
     }
 
     private func hyperKeyDown(isRepeat: Bool) -> Bool {
