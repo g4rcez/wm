@@ -19,7 +19,9 @@ extension WindowManager {
         case "move":
             if let bad = unknownOption(flags, allowed: [], usage: "move") { return bad }
             guard let direction = words.first.flatMap(Direction.init(rawValue:)) else { return fail("move needs a direction", 2, usage: "move") }
-            return moveDirection(direction, target: id)
+            let step = words.dropFirst().first.map { Double($0) }
+            if step == .some(nil) || words.count > 2 { return fail("move takes a direction and an optional number of points", 2, usage: "move") }
+            return moveDirection(direction, target: id, step: CGFloat(step.flatMap { $0 } ?? 40))
         case "swap":
             if let bad = unknownOption(flags, allowed: [], usage: "swap") { return bad }
             guard let direction = words.first.flatMap(Direction.init(rawValue:)) else { return fail("swap needs a direction", 2, usage: "swap") }
@@ -30,11 +32,14 @@ extension WindowManager {
             guard words.count == 2, let dimension = ResizeDimension(rawValue: words[0]), let delta = Double(words[1]) else {
                 return fail("resize needs a dimension and an amount", 2, usage: "resize")
             }
+            if let id, let managed = windows[id], managed.floating {
+                return resizeFloating(id, dimension, CGFloat(delta))
+            }
             return layoutCommand(.resize(dimension, CGFloat(delta)), target: id)
         case "workspace": return workspaceCommand(words, flags, target: target)
         case "window": return windowCommand(words, flags, id)
         case "layout": return layoutGroup(words, flags, id)
-        case "list": return listCommand(words, flags, target: target)
+        case "list", "query": return listCommand(words, flags, target: target)
         case "pointer":
             if let bad = unknownOption(flags, allowed: [], usage: "pointer") { return bad }
             return moveMouse(words.first, target: id)
@@ -273,13 +278,30 @@ extension WindowManager {
             watcher(for: managed.info.pid)?.close(id)
             return ok()
         case "float":
-            setFloating(id, !managed.floating)
+            let on: Bool
+            switch words.dropFirst().first {
+            case nil: on = !managed.floating
+            case "on": on = true
+            case "off": on = false
+            default: return fail("window float takes on or off", 2, usage: "window float")
+            }
+            setFloating(id, on)
+            relayout()
+            return ok()
+        case "center":
+            guard !managed.isOutOfLayout, let area = floatArea(of: managed) else {
+                return fail("this window is not in the layout (minimized or in native fullscreen)")
+            }
+            setFloating(id, true)
+            guard let frame = windows[id]?.floatFrame ?? currentFrame(of: id) else { return fail("this window has no frame") }
+            setFloatFrame(id, FloatGeometry.centered(frame, in: area))
             relayout()
             return ok()
         case "fullscreen":
             let workspace = workspace(managed.workspace)
             workspace.fullscreen = workspace.fullscreen == id ? nil : id
             if workspace.fullscreen != nil { workspace.maximized = [] }
+            events.emit("window_fullscreen", ["id": .number(Double(id)), "fullscreen": .bool(workspace.fullscreen == id), "native": .bool(false)])
             relayout()
             return ok()
         case "maximize":
@@ -576,9 +598,33 @@ extension WindowManager {
         return ok()
     }
 
-    private func moveDirection(_ direction: Direction, target id: WindowID?) -> ServerAnswer {
+    /// The work area of the monitor that shows the window's workspace: where a floating window may be put by keyboard.
+    private func floatArea(of managed: ManagedWindow) -> CGRect? {
+        (monitor(showing: managed.workspace) ?? focusedMonitor)?.workArea
+    }
+
+    /// A floating window: its frame, and the area that it must stay in.
+    private func floatingFrame(_ id: WindowID) -> (frame: CGRect, area: CGRect)? {
+        guard let managed = windows[id], managed.floating, !managed.isOutOfLayout, let area = floatArea(of: managed),
+              let frame = managed.floatFrame ?? currentFrame(of: id) else { return nil }
+        return (frame, area)
+    }
+
+    private func resizeFloating(_ id: WindowID, _ dimension: ResizeDimension, _ delta: CGFloat) -> ServerAnswer {
+        guard let (frame, area) = floatingFrame(id) else { return fail("this window is not in the layout (minimized or in native fullscreen)") }
+        setFloatFrame(id, FloatGeometry.resized(frame, dimension, by: delta, in: area))
+        relayout()
+        return ok()
+    }
+
+    private func moveDirection(_ direction: Direction, target id: WindowID?, step: CGFloat) -> ServerAnswer {
         guard let id, let managed = windows[id] else { return fail("there is no focused window") }
-        guard !managed.floating else { return fail("cannot move a floating window", 1, hint: "tile it first with `wm window float`") }
+        if managed.floating {
+            guard let (frame, area) = floatingFrame(id) else { return fail("this window is not in the layout (minimized or in native fullscreen)") }
+            setFloatFrame(id, FloatGeometry.moved(frame, direction, by: step, in: area))
+            relayout()
+            return ok()
+        }
         let workspace = workspace(managed.workspace)
         if workspace.engine.perform(.move(direction), focused: id, in: layoutContext(forWorkspace: workspace.name)) {
             relayout()
@@ -741,8 +787,18 @@ extension WindowManager {
             if let target { return ok(json ? (windowValue(target)?.json ?? "null") + "\n" : overviewText(only: target)) }
             return ok(json ? overviewValue().json + "\n" : overviewText())
         }
-        guard ["windows", "workspaces", "monitors", "memory"].contains(kind) else {
-            return fail("unknown list '\(kind)'", 2, usage: "list", hint: kind == "focused" ? "use `wm list windows --focused`" : "choose windows, workspaces, monitors, memory or binds")
+        guard ["windows", "workspaces", "monitors", "memory", "keyboards"].contains(kind) else {
+            return fail("unknown list '\(kind)'", 2, usage: "list", hint: kind == "focused" ? "use `wm list windows --focused`" : "choose windows, workspaces, monitors, keyboards, memory or binds")
+        }
+        if kind == "keyboards" {
+            if flags.contains("--focused") { return fail("--focused applies to `wm list windows` and `wm list monitors`", 2, usage: "list") }
+            if json { return ok((query("keyboards") ?? .nil).json + "\n") }
+            let keyboards = KeyboardDevices.list()
+            guard !keyboards.isEmpty else { return ok("no keyboards found\n") }
+            return ok(renderTable(["name", "id", "transport", "built-in", "state", "capslock"], keyboards.map { keyboard in
+                [keyboard.name, keyboard.id, keyboard.transport, keyboard.isBuiltIn ? "yes" : "no",
+                 settings.keyboards.isEnabled(keyboard) ? "enabled" : "disabled", keyboard.hyperMapped ? "hyper" : "normal"]
+            }))
         }
         if flags.contains("--focused"), kind != "windows", kind != "monitors" {
             return fail("--focused applies to `wm list windows` and `wm list monitors`", 2, usage: "list")
@@ -850,6 +906,17 @@ extension WindowManager {
                 }
                 if let width = entry.columnWidth { fields["column_width"] = .number(width) }
                 if let strip = entry.strip { fields["strip"] = .string(strip.rawValue) }
+                return .table(fields)
+            })
+        case "keyboards":
+            return .array(KeyboardDevices.list().map { keyboard in
+                var fields: [String: LuaValue] = [
+                    "name": .string(keyboard.name), "id": .string(keyboard.id), "vendor_id": .number(Double(keyboard.vendorID)),
+                    "product_id": .number(Double(keyboard.productID)), "location_id": .number(Double(keyboard.locationID)),
+                    "transport": .string(keyboard.transport), "built_in": .bool(keyboard.isBuiltIn),
+                    "enabled": .bool(settings.keyboards.isEnabled(keyboard)), "hyper": .bool(keyboard.hyperMapped),
+                ]
+                if let manufacturer = keyboard.manufacturer { fields["manufacturer"] = .string(manufacturer) }
                 return .table(fields)
             })
         case "monitor":

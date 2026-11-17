@@ -11,9 +11,8 @@ import Scripting
 /// a URL), it stays open until Return or Escape. Focus never moves while the switcher is open, so Escape has nothing
 /// to restore.
 ///
-/// `overview` uses the same panel for all workspaces that hold windows, one row each: the arrow keys or `h j k l` move
-/// the selection, Return focuses the window and shows its workspace, Escape closes. Every window has a key label
-/// (`WindowHints`): typing it focuses that window.
+/// `overview` shows all workspaces that hold windows as small screens in one column (see `OverviewOverlay`): the arrow keys
+/// move the selection, typing searches, Return focuses the window and shows its workspace, Escape closes.
 @MainActor
 final class SwitcherController {
     private struct Session {
@@ -43,6 +42,10 @@ final class SwitcherController {
         /// What the search looks at in each window, in lower case: the title, the app, the workspace and the marks.
         var haystacks: [WindowID: String]
         var query = ""
+        /// The slot that starts in the middle of the screen: the workspace that has the focus.
+        var focusedRow = 0
+        /// The overview fades in when it opens. It does not after a drop, because it was there before.
+        var animated = true
     }
 
     /// The modifiers that keep the switcher open. Shift is not one of them: it only reverses Tab.
@@ -166,7 +169,7 @@ final class SwitcherController {
         pendingQuery = current.overview?.query ?? ""
         close()
         if wasOverview {
-            _ = overview()
+            _ = overview(animated: false)
         } else {
             _ = open(all: wasAll, hold: hold)
         }
@@ -192,11 +195,14 @@ final class SwitcherController {
     /// `overview`: opens the overview of all workspaces, or closes it when it is open. A row shows a workspace in its own
     /// layout. Typing searches the windows, a click focuses one, and dragging a window onto another row moves it there;
     /// the last row is a new, empty workspace.
-    func overview(selecting wanted: WindowID? = nil) -> String? {
+    /// `mode` is `toggle`, `open` (nothing happens when it is open) or `close` (nothing happens when it is closed). A swipe
+    /// of the trackpad up opens it and down closes it. `animated: false` is for the overview that opens again after a drop.
+    func overview(mode: String = "toggle", selecting wanted: WindowID? = nil, animated: Bool = true) -> String? {
         if isOpen {
-            cancel()
+            if mode != "open" { cancel() }
             return nil
         }
+        if mode == "close" { return nil }
         guard let monitor = manager.focusedMonitor else { return "no monitor" }
         let shownNames = Set(manager.monitors.map(\.workspace))
         let names = manager.workspaces.keys
@@ -222,7 +228,9 @@ final class SwitcherController {
                 part.frames[id] = (window.floatFrame ?? window.info.frame).offsetBy(dx: scrolledX, dy: scrolledY)
                 floating.insert(id)
             }
-            inputs.append(OverviewRowInput(frames: part.frames, viewports: part.viewports, screen: context.viewport.size))
+            inputs.append(OverviewRowInput(
+                frames: part.frames, viewports: part.viewports, screen: context.viewport.size,
+                origin: part.viewports.first?.origin ?? context.viewport.origin))
             let count = part.frames.count
             infos.append(OverviewOverlay.RowInfo(
                 name: name, subtitle: "\(workspace.kind.rawValue) · \(count == 0 ? "empty" : count == 1 ? "1 window" : "\(count) windows")",
@@ -239,19 +247,21 @@ final class SwitcherController {
         // An empty screen at the end: a window dropped there goes to the first workspace that nobody uses.
         let taken = Set(names).union(shownNames)
         let fresh = (1...).lazy.map(String.init).first { !taken.contains($0) }!
-        inputs.append(OverviewRowInput(frames: [:], viewports: [], screen: monitor.workArea.size))
+        inputs.append(OverviewRowInput(frames: [:], viewports: [], screen: monitor.workArea.size, origin: monitor.workArea.origin))
         infos.append(OverviewOverlay.RowInfo(name: fresh, subtitle: "new workspace", isNew: true))
 
         let settings = manager.settings.switcher
         let geometry = OverviewLayout.compute(
-            inputs, panelWidth: max(min(monitor.frame.width * min(settings.maxScale, 0.82), 1560), 640),
-            maxPanelHeight: monitor.frame.height * settings.maxScale)
+            inputs, screen: monitor.frame.size, zoom: CGFloat(manager.settings.overview.zoom), gap: CGFloat(manager.settings.overview.gap))
+        let focusedRow = names.firstIndex { $0 == manager.focusedWorkspace?.name } ?? 0
         let query = pendingQuery
         pendingQuery = ""
-        let data = OverviewSession(geometry: geometry, rows: infos, rowNames: names + [fresh], cards: cards, haystacks: haystacks, query: query)
+        let data = OverviewSession(
+            geometry: geometry, rows: infos, rowNames: names + [fresh], cards: cards, haystacks: haystacks, query: query,
+            focusedRow: focusedRow, animated: animated)
         var model = overviewModel(data, matching: matches(in: data))
         if let wanted { model.select(wanted) }
-        var next = Session(model: model, hold: [], monitorFrame: monitor.frame, panelSize: geometry.panel, tiles: [], viewports: [], overview: data)
+        var next = Session(model: model, hold: [], monitorFrame: monitor.frame, panelSize: monitor.frame.size, tiles: [], viewports: [], overview: data)
         next.shown = false
         session = next
         startTimers(delay: 0)
@@ -400,7 +410,7 @@ final class SwitcherController {
     func pointerPressed(at point: CGPoint) {
         guard let session, session.isOverview else { return }
         let origin = session.monitorFrame.origin
-        if !overviewOverlay.panelFrame.offsetBy(dx: origin.x, dy: origin.y).contains(point) { close() }
+        if !overviewOverlay.isOnContent(CGPoint(x: point.x - origin.x, y: point.y - origin.y)) { close() }
     }
 
     func flagsChanged(_ flags: CGEventFlags) {
@@ -449,7 +459,7 @@ final class SwitcherController {
         guard name != window.workspace else { return }
         close()
         manager.sendQuietly(id, to: name)
-        _ = overview(selecting: id)
+        _ = overview(selecting: id, animated: false)
     }
 
     private func close() {
@@ -485,8 +495,9 @@ final class SwitcherController {
         if let data = current.overview {
             let settings = manager.settings.switcher
             overviewOverlay.show(
-                geometry: data.geometry, rows: data.rows, cards: data.cards, selected: current.model.selected, query: data.query,
-                accent: Self.nsColor(settings.selected), background: Self.nsColor(settings.background), on: current.monitorFrame)
+                geometry: data.geometry, rows: data.rows, cards: data.cards, row: data.focusedRow, selected: current.model.selected,
+                query: data.query, accent: Self.nsColor(settings.selected), backdrop: Self.nsColor(manager.settings.overview.backdrop),
+                on: current.monitorFrame, animated: data.animated)
             if !data.query.isEmpty { overviewOverlay.setSearch(data.query, matches: matches(in: data), total: data.cards.count) }
         } else {
             overlay.show(

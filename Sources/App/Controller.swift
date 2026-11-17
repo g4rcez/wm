@@ -61,14 +61,29 @@ final class AppController: HostBridge, @unchecked Sendable {
         manager.runRuleCommand = { [unowned self] command, window in _ = run(command, target: window) }
         manager.events.add { [unowned self] name, payload in
             host.fire(event: name, payload: payload)
-            broadcaster.send(LuaValue.table(payload.merging(["event": .string(name)]) { $1 }).json)
+            broadcaster.send(event: name, json: LuaValue.table(payload.merging(["event": .string(name)]) { $1 }).json)
         }
     }
 
     @MainActor func startServer() throws {
-        server = try SocketServer(subscriber: { [broadcaster] descriptor in broadcaster.add(descriptor) }) { [unowned self] request in
+        server = try SocketServer(subscriber: { [broadcaster, unowned self] descriptor, words in
+            // `run` has checked the words, so they parse. The state goes first, so that the client misses no change.
+            guard case .success(let subscription) = Subscription.parse(words) else {
+                close(descriptor)
+                return
+            }
+            broadcaster.add(descriptor, subscription, snapshot: subscription.snapshot ? snapshotJSON() : nil)
+        }) { [unowned self] request in
             run(request)
         }
+    }
+
+    /// The first line of `wm subscribe --snapshot`: `wm list --json` (windows, workspaces and monitors) with the event name
+    /// `snapshot`, and the current binding mode.
+    private func snapshotJSON() -> String {
+        let overview = run(ClientRequest(args: ["list", "--json"])).stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        let mode = onMain { manager.mode }
+        return #"{"event":"snapshot","mode":\#(LuaValue.string(mode).json),"state":\#(overview.isEmpty ? "null" : overview)}"#
     }
 
     @MainActor func stopServer() {
@@ -131,7 +146,9 @@ final class AppController: HostBridge, @unchecked Sendable {
     @MainActor private func updateTrackpad(_ settings: TrackpadSettings) {
         trackpad.stop()
         guard settings.enabled else { return }
-        if !trackpad.start() { onNotify("wm: trackpad gestures need MultitouchSupport and a trackpad", 3) }
+        guard !trackpad.start() else { return }
+        let message = "trackpad gestures need MultitouchSupport and a trackpad"
+        if settings.warnsWhenMissing { onNotify("wm: \(message)", 3) } else { Log.write(.info, message, source: "trackpad") }
     }
 
     @MainActor private func stateLine() -> String {
@@ -151,7 +168,11 @@ final class AppController: HostBridge, @unchecked Sendable {
                 switcher.command(Array(args.dropFirst()), preselect: target).map { fail($0, 1, usage: "switcher") } ?? ok()
             }
         case "overview":
-            return onMain { switcher.overview().map { fail($0) } ?? ok() }
+            let mode = args.dropFirst().first
+            guard mode == nil || ["open", "close", "toggle"].contains(mode) else {
+                return fail("overview takes open, close or toggle", 2, usage: "overview")
+            }
+            return onMain { switcher.overview(mode: mode ?? "toggle").map { fail($0) } ?? ok() }
         case "menu":
             return onMain { showMenu(of: target) }
         case "palette":
@@ -167,7 +188,11 @@ final class AppController: HostBridge, @unchecked Sendable {
         case "list" where args.dropFirst().first == "binds":
             return onMain { listBinds(Set(args.filter { $0.hasPrefix("--") })) }
         case "daemon": return daemon(Array(args.dropFirst()))
-        case "subscribe": return ok()
+        case "subscribe":
+            if case .failure(let error) = Subscription.parse(Array(args.dropFirst())) {
+                return fail(error.message, 2, usage: "subscribe", hint: "events: " + subscribableEvents.joined(separator: ", "))
+            }
+            return ok()
         case "exec":
             let text = args.dropFirst().joined(separator: " ")
             let parsed: (rule: WindowRule?, command: String)
@@ -186,6 +211,7 @@ final class AppController: HostBridge, @unchecked Sendable {
             return onMain { sendKey(Array(args.dropFirst()), target: target) }
         case "mode":
             guard let name = args.dropFirst().first else { return fail("mode needs a name", 2, usage: "mode") }
+            if name == "back" { return onMain { _ = manager.modeBack(); return ok() } }
             return onMain {
                 manager.setMode(name) ? ok() : fail("no mode '\(name)'", 1, hint: "modes: " + manager.modeNames.sorted().joined(separator: ", "))
             }
@@ -427,14 +453,33 @@ final class AppController: HostBridge, @unchecked Sendable {
         SystemShortcuts.setCommandTab(enabled: !disabled)
     }
 
-    /// `binds.capslock`: CapsLock sends F18 while the config asks for the hyper key. It also runs on a reload, so that a keyboard
-    /// that connected since gets the mapping.
+    /// `binds.capslock`: CapsLock sends F18 while the config asks for the hyper key. It also runs on a reload, after wake and when a
+    /// keyboard connects, so that every keyboard that the config enables (`keyboards`) has the mapping.
     private var capsLockMapped = false
+    private var keyboardSettings = KeyboardSettings()
+    @MainActor private lazy var keyboardWatcher = KeyboardWatcher { [unowned self] in refreshKeyboards() }
 
     @MainActor private func setCapsLockHyper(_ on: Bool) {
         guard on || capsLockMapped else { return }
         capsLockMapped = on
-        KeyboardRemap.setCapsLockToF18(on)
+        if on { refreshKeyboards() } else { KeyboardRemap.removeCapsLockMapping() }
+    }
+
+    /// Gives the hyper key to the keyboards that the config enables, and takes it from the ones that it turns off. Without a
+    /// readable list of keyboards, every keyboard gets it.
+    @MainActor private func refreshKeyboards() {
+        guard capsLockMapped else { return }
+        let keyboards = KeyboardDevices.list()
+        if keyboards.isEmpty {
+            KeyboardRemap.setCapsLockToF18(true)
+        } else {
+            KeyboardRemap.apply(KeyboardPlan.plan(keyboards, settings: keyboardSettings))
+        }
+    }
+
+    /// Looks for keyboards that connect later (USB, Bluetooth).
+    @MainActor func watchKeyboards() {
+        keyboardWatcher.start()
     }
 
     /// Gives macOS its Cmd+Tab and its CapsLock back. Runs when the daemon quits.
@@ -445,8 +490,7 @@ final class AppController: HostBridge, @unchecked Sendable {
 
     /// After sleep the keyboards may have been set up again.
     @MainActor func keyboardsWoke() {
-        guard capsLockMapped else { return }
-        KeyboardRemap.setCapsLockToF18(true)
+        refreshKeyboards()
     }
 
     @MainActor private func apply(_ loaded: LoadedConfig) {
@@ -459,10 +503,16 @@ final class AppController: HostBridge, @unchecked Sendable {
         input.longPressBinds = loaded.longPressBinds
         input.holdBinds = loaded.holdBinds
         setSystemCmdTab(disabled: loaded.settings.binds.disableSystemCmdTab)
+        keyboardSettings = loaded.settings.keyboards
+        // Also on a reload with the hyper key already on: the keyboards or their settings may have changed.
         setCapsLockHyper(loaded.settings.binds.capsLockHyper)
         input.noRepeat = loaded.noRepeat
-        input.gestures = loaded.gestures
-        bindRecords = loaded.bindRecords
+        input.modeOptions = loaded.modeOptions
+        input.longPressTimeouts = loaded.longPressTimeouts
+        let pad = loaded.settings.trackpad
+        let builtIn = pad.enabled ? Gesture.missingDefaults(loaded.gestures, fingers: pad.fingers) : []
+        input.gestures = loaded.gestures + builtIn
+        bindRecords = loaded.bindRecords + builtIn.map(\.bindRecord)
         manager.apply(
             settings: loaded.settings, rules: loaded.rules, workspaceLayouts: loaded.workspaceLayouts,
             workspaceRules: loaded.workspaceRules)
@@ -524,21 +574,29 @@ final class AppController: HostBridge, @unchecked Sendable {
     }
 }
 
-/// Writes events to every `wm subscribe` client and drops the ones that went away.
+/// Writes events to every `wm subscribe` client that wants them and drops the ones that went away.
 final class Broadcaster: @unchecked Sendable {
     private let queue = DispatchQueue(label: "wm.broadcast")
-    private var subscribers: [Int32] = []
+    private var subscribers: [(descriptor: Int32, subscription: Subscription)] = []
 
-    func add(_ descriptor: Int32) {
-        queue.async { self.subscribers.append(descriptor) }
+    /// `snapshot` is the first line of the client, before any event.
+    func add(_ descriptor: Int32, _ subscription: Subscription, snapshot: String? = nil) {
+        queue.async {
+            if let snapshot, (try? writeFrame(descriptor, Data(snapshot.utf8))) == nil {
+                close(descriptor)
+                return
+            }
+            self.subscribers.append((descriptor, subscription))
+        }
     }
 
-    func send(_ json: String) {
+    func send(event: String, json: String) {
         queue.async {
             let payload = Data(json.utf8)
-            self.subscribers.removeAll { descriptor in
-                guard (try? writeFrame(descriptor, payload)) == nil else { return false }
-                close(descriptor)
+            self.subscribers.removeAll { subscriber in
+                guard subscriber.subscription.wants(event) else { return false }
+                guard (try? writeFrame(subscriber.descriptor, payload)) == nil else { return false }
+                close(subscriber.descriptor)
                 return true
             }
         }

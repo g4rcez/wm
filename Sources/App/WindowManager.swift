@@ -89,7 +89,8 @@ final class WindowManager {
     /// monitor's workspace and comes back when the special one hides.
     private(set) var specials: [UInt32: String] = [:]
     /// The active binding mode ("main" by default).
-    private(set) var mode = "main"
+    private var modes = ModeStack()
+    var mode: String { modes.current }
     var modeNames: Set<String> = ["main"]
 
     let events = EventHub()
@@ -103,6 +104,7 @@ final class WindowManager {
     let applier = FrameApplier()
     var animator = Animator()
     private let border = BorderOverlay()
+    private let backdrop = SpecialBackdrop()
     private let tabIndicator = TabIndicatorOverlay()
     private var clock: Timer?
     private var lastTick = CACurrentMediaTime()
@@ -180,6 +182,7 @@ final class WindowManager {
             let target = workspace(name)
             if target.kind != kind { rebuild(target, as: kind) }
         }
+        updateBackdrop()
         scheduleRefresh()
     }
 
@@ -295,6 +298,9 @@ final class WindowManager {
         for info in infos {
             seen.insert(info.id)
             if var managed = windows[info.id] {
+                if info.title != managed.info.title {
+                    events.emit("window_title", ["id": .number(Double(info.id)), "app": .string(info.bundleID), "title": .string(info.title)])
+                }
                 managed.info = info
                 if info.isMinimized != managed.minimized { setMinimized(info.id, info.isMinimized) }
                 if info.isFullscreen != managed.nativeFullscreen { setNativeFullscreen(info.id, info.isFullscreen) }
@@ -761,6 +767,7 @@ final class WindowManager {
         guard var managed = windows[id] else { return }
         managed.nativeFullscreen = on
         windows[id] = managed
+        events.emit("window_fullscreen", ["id": .number(Double(id)), "fullscreen": .bool(on), "native": .bool(true)])
         let workspace = workspace(managed.workspace)
         if on {
             workspace.maximized.remove(id)
@@ -811,9 +818,10 @@ final class WindowManager {
             focusedMonitorID = monitor.id
             // A normal window got the focus (Cmd-Tab, the Dock): its workspace must show, so the special workspace
             // hides. An empty one stays: the user opened it to start an app in it.
-            if let special = specials[monitor.id], windows.values.contains(where: { $0.workspace == special }) {
-                setSpecials(specials.filter { $0.key != monitor.id })
-            }
+            let hiding = SpecialWorkspace.monitorsHiding(
+                onFocusOf: monitor.id, shown: specials, otherMonitors: settings.special.hideOnOtherMonitor
+            ) { name in windows.values.contains { $0.workspace == name } }
+            if !hiding.isEmpty { setSpecials(specials.filter { !hiding.contains($0.key) }) }
         } else if let monitor = focusedMonitor {
             // The window belongs to a hidden workspace: show that workspace where the user is looking.
             showWorkspace(managed.workspace, on: monitor.id, focusWindow: false)
@@ -873,6 +881,13 @@ final class WindowManager {
             _ = workspace(name)
             events.emit("special_changed", ["workspace": .string(name), "monitor": .number(Double(monitor)), "visible": .bool(true)])
         }
+        updateBackdrop()
+    }
+
+    /// The dim layer behind each shown special workspace (`special.backdrop`).
+    func updateBackdrop() {
+        let shown = monitors.filter { specials[$0.id] != nil }.map(\.frame)
+        backdrop.show(on: shown, settings.special.backdrop)
     }
 
     /// A shown special workspace that lost its last window hides.
@@ -956,8 +971,10 @@ final class WindowManager {
         source.maximized.remove(id)
         source.pseudo[id] = nil
         let destination = workspace(name)
+        let previous = managed.workspace
         managed.workspace = name
         windows[id] = managed
+        events.emit("window_moved", ["id": .number(Double(id)), "workspace": .string(name), "previous": .string(previous)])
         if !managed.floating, !managed.isOutOfLayout {
             destination.engine.insert(id, after: anchor ?? destination.history.first)
         }
@@ -987,6 +1004,7 @@ final class WindowManager {
             workspace.engine.insert(id, after: workspace.history.first { $0 != id })
         }
         windows[id] = managed
+        events.emit("window_floating", ["id": .number(Double(id)), "floating": .bool(floating)])
     }
 
     /// Turns `sticky` on or off. A sticky window follows the monitor that shows its workspace now.
@@ -1173,10 +1191,11 @@ final class WindowManager {
     /// The context of the monitor that has `workspace` (the focused monitor if none has). A shown special workspace
     /// gets a smaller area and no slivers, so it does not look like a normal workspace.
     func layoutContext(forWorkspace name: String) -> LayoutContext {
-        guard let monitor = monitor(showing: name) ?? focusedMonitor else { return LayoutContext(viewport: .zero, gaps: settings(forWorkspace: name).gaps) }
-        var context = layoutContext(for: monitor, gaps: settings(forWorkspace: name).gaps)
+        let gaps = settings(forWorkspace: name).gaps.effective(tiledCount: workspaces[name]?.engine.windows.count ?? 0)
+        guard let monitor = monitor(showing: name) ?? focusedMonitor else { return LayoutContext(viewport: .zero, gaps: gaps) }
+        var context = layoutContext(for: monitor, gaps: gaps)
         if specials[monitor.id] == name {
-            context.viewport = SpecialWorkspace.viewport(in: monitor.workArea)
+            context.viewport = SpecialWorkspace.viewport(in: monitor.workArea, size: settings.special.size)
             context.sliverEdges = []
         }
         return context
@@ -1254,10 +1273,21 @@ final class WindowManager {
 
     func setMode(_ name: String) -> Bool {
         guard modeNames.contains(name) else { return false }
-        mode = name
-        events.emit("mode_changed", ["mode": .string(name)])
-        onModeChange?(name)
+        if modes.enter(name) { modeChanged() }
         return true
+    }
+
+    /// `mode back`: the mode before this one, or `main`. Returns `false` when the mode is `main` already.
+    @discardableResult
+    func modeBack() -> Bool {
+        guard modes.back() else { return false }
+        modeChanged()
+        return true
+    }
+
+    private func modeChanged() {
+        events.emit("mode_changed", ["mode": .string(mode)])
+        onModeChange?(mode)
     }
 
     func watcher(for pid: pid_t) -> AppWatcher? { tracker?.watcher(for: pid) }

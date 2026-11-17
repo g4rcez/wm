@@ -47,6 +47,8 @@ public struct Gaps: Sendable, Equatable {
     public var right: CGFloat
     public var bottom: CGFloat
     public var left: CGFloat
+    /// Smart gaps: a workspace with one tiled window has no gaps (see `effective(tiledCount:)`).
+    public var smart = false
 
     public init(inner: CGFloat = 0, top: CGFloat = 0, right: CGFloat = 0, bottom: CGFloat = 0, left: CGFloat = 0) {
         self.inner = inner
@@ -58,6 +60,11 @@ public struct Gaps: Sendable, Equatable {
 
     public init(inner: CGFloat, outer: CGFloat) {
         self.init(inner: inner, top: outer, right: outer, bottom: outer, left: outer)
+    }
+
+    /// The gaps to lay out a workspace with `tiledCount` tiled windows: none with smart gaps and one window.
+    public func effective(tiledCount: Int) -> Gaps {
+        smart && tiledCount == 1 ? Gaps() : self
     }
 
     /// The area that tiles partition: the viewport minus the outer gaps, grown by half the inner gap so that

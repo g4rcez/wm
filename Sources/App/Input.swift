@@ -17,6 +17,12 @@ final class InputRouter {
     /// Binds that run for each repeat of a held key (`repeating = true`).
     var holdBinds: [String: [Chord: BindAction]] = [:]
     var noRepeat: [String: Set<Chord>] = [:]
+    /// The options of the modes that have some (`wm.mode`).
+    var modeOptions: [String: ModeOptions] = [:]
+    /// Seconds of the `long_press` binds that name their own, by mode name.
+    var longPressTimeouts: [String: [Chord: Double]] = [:]
+    /// The timeout of the long press that the key being handled starts; `nil`: `binds.long_press_timeout`.
+    private var longPressTimeout: Double?
     /// Swipes with a modifier (`wm.gesture`).
     var gestures: [Gesture] = []
     private var gestureTracker = GestureTracker()
@@ -112,6 +118,8 @@ final class InputRouter {
         }
         let lookup = lookup(for: chord, mode: mode)
         if !lookup.isEmpty {
+            longPressTimeout = longPressTimeouts[mode]?[chord] ?? longPressTimeouts[universalMode]?[chord]
+            defer { longPressTimeout = nil }
             let outcome = tracker.keyDown(keyCode: code, isRepeat: isRepeat, lookup: lookup)
             apply(outcome.effects, flags: flags)
             return outcome.swallow
@@ -120,6 +128,8 @@ final class InputRouter {
             beginSequence(chord, mode: mode)
             return true
         }
+        // A mode with `swallow = true` keeps every key that it does not bind away from the app.
+        if modeOptions[mode]?.swallow == true { return true }
         // A hyper chord that nothing uses is not typed: the keys are not for the app.
         return chord.modifiers.contains(.hyper)
     }
@@ -205,7 +215,7 @@ final class InputRouter {
                 perform(action, flags: flags)
             case .startLongPress(let code):
                 longPressTimers[code]?.invalidate()
-                longPressTimers[code] = Timer.scheduledTimer(withTimeInterval: manager.settings.binds.longPressTimeout, repeats: false) { [weak self] _ in
+                longPressTimers[code] = Timer.scheduledTimer(withTimeInterval: longPressTimeout ?? manager.settings.binds.longPressTimeout, repeats: false) { [weak self] _ in
                     MainActor.assumeIsolated {
                         guard let self else { return }
                         self.longPressTimers[code] = nil
@@ -232,6 +242,7 @@ final class InputRouter {
     }
 
     private func perform(_ action: BindAction, flags: CGEventFlags) {
+        let before = manager.mode
         currentFlags = flags
         defer { currentFlags = [] }
         switch action {
@@ -239,6 +250,8 @@ final class InputRouter {
         case let .function(id): call(id)
         case let .remap(chord): KeyOutput.tap(chord)
         }
+        // A `once` mode ends after its first action, unless the action went to another mode itself.
+        if modeOptions[before]?.once == true, manager.mode == before { manager.modeBack() }
     }
 
     // MARK: Trackpad swipes with 3 or 4 fingers
@@ -248,6 +261,8 @@ final class InputRouter {
 
     private var fingerGestures = GestureTracker()
     private var swipeFingers: Int?
+    /// The gestures of the swipe that is going on: the built-in sideways ones step aside when the swipe scrolls the strip.
+    private var swipeGestures: [Gesture] = []
     /// A `wm.gesture` took the swipe: the strip does not scroll.
     private var swipeClaimed = false
 
@@ -262,11 +277,13 @@ final class InputRouter {
             case .began(let fingers):
                 swipeFingers = fingers
                 swipeClaimed = false
-                _ = fingerGestures.scroll(dx: 0, dy: 0, modifiers: modifiers, phase: .began, time: time, gestures: gestures, fingers: fingers)
+                swipeGestures = Gesture.effective(
+                    gestures, scrollsStrip: fingers == settings.scrollFingers && manager.focusedWorkspace?.kind == .scrolling)
+                _ = fingerGestures.scroll(dx: 0, dy: 0, modifiers: modifiers, phase: .began, time: time, gestures: swipeGestures, fingers: fingers)
             case .moved(let dx, let dy):
                 guard let fingers = swipeFingers else { continue }
                 let x = dx * Self.pointsPerPad * settings.speed, y = dy * Self.pointsPerPad * settings.speed
-                switch fingerGestures.scroll(dx: x, dy: y, modifiers: modifiers, phase: .changed, time: time, gestures: gestures, fingers: fingers) {
+                switch fingerGestures.scroll(dx: x, dy: y, modifiers: modifiers, phase: .changed, time: time, gestures: swipeGestures, fingers: fingers) {
                 case .consumed: swipeClaimed = true
                 case .fire(let action):
                     swipeClaimed = true

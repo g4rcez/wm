@@ -131,6 +131,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.controller.keyboardsWoke() }
         }
+        controller.watchKeyboards()
         manager.start()
         if !controller.input.start() {
             menu.setError("Cannot listen for keys: check Accessibility permission")
