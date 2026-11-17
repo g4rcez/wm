@@ -20,10 +20,12 @@ public struct Gesture: Sendable, Equatable {
     /// How far the scroll has to go, in points.
     public var threshold: Double
     public var description: String?
+    /// A swipe that wm has without a config (`Gesture.defaults`). `wm.gesture` for the same swipe replaces it.
+    public var isBuiltIn: Bool
 
     public init(
         modifiers: Modifiers = [], fingers: Int? = nil, direction: GestureDirection, action: BindAction, threshold: Double = 100,
-        description: String? = nil
+        description: String? = nil, isBuiltIn: Bool = false
     ) {
         self.modifiers = modifiers
         self.fingers = fingers
@@ -31,6 +33,41 @@ public struct Gesture: Sendable, Equatable {
         self.action = action
         self.threshold = threshold
         self.description = description
+        self.isBuiltIn = isBuiltIn
+    }
+
+    /// The swipe as `wm list binds` shows it, for example `alt-scroll left` or `4-finger up`.
+    public var label: String {
+        (modifiers.names + [fingers.map { "\($0)-finger" } ?? "scroll"]).joined(separator: "-") + " " + direction.rawValue
+    }
+
+    /// The swipes that work without a config. Fingers going left is the next workspace, as the Spaces of macOS do.
+    public static func defaults(fingers: Int) -> [Gesture] {
+        func make(_ direction: GestureDirection, _ command: String, _ description: String) -> Gesture {
+            Gesture(
+                fingers: fingers, direction: direction, action: .command(command), threshold: 300, description: description,
+                isBuiltIn: true)
+        }
+        return [
+            make(.left, "workspace next", "Next workspace"),
+            make(.right, "workspace prev", "Previous workspace"),
+            make(.up, "overview open", "Open the overview"),
+            make(.down, "overview close", "Close the overview"),
+        ]
+    }
+
+    /// The built-in swipes that the user's gestures do not replace.
+    public static func missingDefaults(_ user: [Gesture], fingers: Int) -> [Gesture] {
+        defaults(fingers: fingers).filter { builtIn in
+            !user.contains { $0.modifiers == builtIn.modifiers && $0.fingers == builtIn.fingers && $0.direction == builtIn.direction }
+        }
+    }
+
+    /// The gestures to use for one swipe. On a scrolling workspace the swipe that scrolls the strip keeps its sideways
+    /// movement, so the built-in sideways swipes step aside; a gesture of the user does not.
+    public static func effective(_ gestures: [Gesture], scrollsStrip: Bool) -> [Gesture] {
+        guard scrollsStrip else { return gestures }
+        return gestures.filter { !($0.isBuiltIn && $0.direction.isHorizontal) }
     }
 }
 

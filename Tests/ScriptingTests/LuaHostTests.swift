@@ -273,6 +273,11 @@ struct LuaHostTests {
         ("wm.bind('alt-a', 'x', { description = 5 })", "'description' must be a string"),
         ("wm.bind('alt-a', 'x', 'fast')", "the options must be a table"),
         ("wm.mode('*', {})", "'*' is reserved"),
+        ("wm.mode('back', {})", "'back' is reserved"),
+        ("wm.mode('a', {}, { sticky = true })", "unknown key 'sticky'"),
+        ("wm.mode('a', {}, { once = 'yes' })", "'once' must be true or false"),
+        ("wm.bind('alt-a', 'x', { long_press = 9 })", "'long_press' for 'alt-a' must be between 0.1 and 3 seconds"),
+        ("wm.bind('alt-a', 'x', { long_press = 'long' })", "'long_press' for 'alt-a' must be true, false or a number of seconds"),
     ])
     func bindOptionErrorsNameTheProblem(script: String, expected: String) throws {
         let error = #expect(throws: ConfigError.self) {
@@ -589,11 +594,92 @@ struct LuaHostTests {
         #expect(config.gestures[1].modifiers == .option)
     }
 
-    @Test func theTrackpadIsOffUntilTheConfigSetsIt() throws {
-        let off = try host.load(configURL: dir.write("init.lua", "wm.config { layout = \"tiling\" }"))
-        #expect(off.settings.trackpad == TrackpadSettings())
-        let on = try host.load(configURL: dir.write("init.lua", "wm.config { trackpad = { enabled = true, scroll_fingers = 4, speed = 2 } }"))
-        #expect(on.settings.trackpad == TrackpadSettings(enabled: true, scrollFingers: 4, speed: 2))
+    @Test func theTrackpadIsOnWithFourFingersUntilTheConfigSaysOtherwise() throws {
+        let plain = try host.load(configURL: dir.write("init.lua", "wm.config { layout = \"tiling\" }"))
+        #expect(plain.settings.trackpad == TrackpadSettings(enabled: true, fingers: 4, scrollFingers: 4, speed: 1, warnsWhenMissing: false))
+        let off = try host.load(configURL: dir.write("init.lua", "wm.config { trackpad = { enabled = false } }"))
+        #expect(off.settings.trackpad.enabled == false)
+        let on = try host.load(configURL: dir.write("init.lua", "wm.config { trackpad = { enabled = true, scroll_fingers = 3, speed = 2 } }"))
+        #expect(on.settings.trackpad == TrackpadSettings(enabled: true, fingers: 4, scrollFingers: 3, speed: 2, warnsWhenMissing: true))
+    }
+
+    @Test func specialWorkspacesAreNinetyPercentOfTheScreenWithNoBackdropByDefault() throws {
+        let plain = try host.load(configURL: dir.write("init.lua", "wm.config { layout = \"tiling\" }"))
+        #expect(plain.settings.special == SpecialSettings())
+        #expect(plain.settings.special.size == 0.9)
+        #expect(plain.settings.special.backdrop == .clear)
+        #expect(plain.settings.special.hideOnOtherMonitor == false)
+        let set = try host.load(configURL: dir.write("init.lua", "wm.config { special = { size = 0.7, backdrop = \"#00000066\", hide_on_other_monitor = true } }"))
+        #expect(set.settings.special.size == 0.7)
+        #expect(set.settings.special.backdrop == Color(red: 0, green: 0, blue: 0, alpha: 0.4))
+        #expect(set.settings.special.hideOnOtherMonitor == true)
+    }
+
+    @Test func aModeCanEndAfterOneActionAndSwallowTheKeysItDoesNotBind() throws {
+        let config = try host.load(configURL: dir.write("init.lua", """
+        wm.mode("once", { h = "focus left" }, { once = true })
+        wm.mode("vim", { h = "focus left" }, { swallow = true })
+        wm.mode("plain", { h = "focus left" })
+        """))
+        #expect(config.modeOptions == ["once": ModeOptions(once: true), "vim": ModeOptions(swallow: true)])
+    }
+
+    @Test func aModeThatIsDefinedAgainLosesItsOldOptions() throws {
+        let config = try host.load(configURL: dir.write("init.lua", """
+        wm.mode("vim", { h = "focus left" }, { swallow = true })
+        wm.mode("vim", { h = "focus left" })
+        """))
+        #expect(config.modeOptions == [:])
+    }
+
+    @Test func aLongPressCanNameItsOwnSeconds() throws {
+        let config = try host.load(configURL: dir.write("init.lua", """
+        wm.bind("alt-a", "focus right", { long_press = 0.8 })
+        wm.bind("alt-b", "focus left", { long_press = true })
+        """))
+        let chordA = try parseChord("alt-a"), chordB = try parseChord("alt-b")
+        #expect(config.longPressBinds["main"]?[chordA] == .command("focus right"))
+        #expect(config.longPressTimeouts["main"] == [chordA: 0.8])
+        #expect(config.longPressBinds["main"]?[chordB] == .command("focus left"))
+    }
+
+    @Test func smartGapsAreOffUntilTheConfigSetsThemAndWorkForAWorkspaceToo() throws {
+        let off = try host.load(configURL: dir.write("init.lua", "wm.config { gaps = { inner = 4 } }"))
+        #expect(off.settings.gaps.smart == false)
+        let on = try host.load(configURL: dir.write("init.lua", "wm.config { gaps = { inner = 4, smart = true } }"))
+        #expect(on.settings.gaps.smart == true)
+        let rule = try host.load(configURL: dir.write("init.lua", "wm.workspace('3', { gaps = { smart = true } })"))
+        #expect(rule.workspaceRules["3"] != nil)
+    }
+
+    @Test func theOverviewHasAZoomAGapAndABackdrop() throws {
+        let plain = try host.load(configURL: dir.write("init.lua", "wm.config { layout = \"tiling\" }"))
+        #expect(plain.settings.overview == OverviewSettings())
+        #expect(plain.settings.overview.zoom == 0.5)
+        #expect(plain.settings.overview.gap == 48)
+        let set = try host.load(configURL: dir.write("init.lua", "wm.config { overview = { zoom = 0.4, gap = 20, backdrop = \"#00000080\" } }"))
+        #expect(set.settings.overview.zoom == 0.4)
+        #expect(set.settings.overview.gap == 20)
+        #expect(set.settings.overview.backdrop == Color(red: 0, green: 0, blue: 0, alpha: 128.0 / 255))
+    }
+
+    @Test func everyKeyboardIsEnabledUnlessTheConfigNamesOne() throws {
+        let plain = try host.load(configURL: dir.write("init.lua", "wm.config { layout = \"tiling\" }"))
+        #expect(plain.settings.keyboards == KeyboardSettings())
+        let set = try host.load(configURL: dir.write("init.lua", """
+        wm.config { keyboards = { default = false, ["Apple Internal Keyboard / Trackpad"] = true, ["046D:C52B"] = false } }
+        """))
+        #expect(set.settings.keyboards == KeyboardSettings(
+            defaultEnabled: false, overrides: ["apple internal keyboard / trackpad": true, "046d:c52b": false]))
+    }
+
+    @Test func theFingersOfTheTrackpadAlsoSetTheScrollingFingers() throws {
+        let three = try host.load(configURL: dir.write("init.lua", "wm.config { trackpad = { fingers = 3 } }"))
+        #expect(three.settings.trackpad.fingers == 3)
+        #expect(three.settings.trackpad.scrollFingers == 3)
+        let mixed = try host.load(configURL: dir.write("init.lua", "wm.config { trackpad = { fingers = 3, scroll_fingers = 0 } }"))
+        #expect(mixed.settings.trackpad.fingers == 3)
+        #expect(mixed.settings.trackpad.scrollFingers == 0)
     }
 
     @Test func splitUnderPointerIsOffUntilTheConfigSetsIt() throws {
@@ -829,6 +915,15 @@ struct LuaHostTests {
         ("wm.config { scrolling = { vertical = { foo = 1 } } }", "unknown key 'scrolling.vertical.foo'"),
         ("wm.config { scrolling = { default_column_display = 'accordion' } }", "'scrolling.default_column_display' must be one of"),
         ("wm.config { trackpad = { scroll_fingers = 2 } }", "'trackpad.scroll_fingers' must be 3, 4 or 0"),
+        ("wm.config { trackpad = { fingers = 5 } }", "'trackpad.fingers' must be 3 or 4"),
+        ("wm.config { gaps = { smart = 1 } }", "'gaps.smart' must be true or false"),
+        ("wm.config { overview = { zoom = 0.9 } }", "'overview.zoom'"),
+        ("wm.config { overview = { gap = -1 } }", "'overview.gap'"),
+        ("wm.config { overview = { backdrop = \"dark\" } }", "'overview.backdrop' must be a color"),
+        ("wm.config { keyboards = { default = 'yes' } }", "'keyboards.default' must be true or false"),
+        ("wm.config { keyboards = true }", "'keyboards' must be a table"),
+        ("wm.config { special = { size = 0.2 } }", "'special.size'"),
+        ("wm.config { special = { backdrop = \"red\" } }", "'special.backdrop' must be a color"),
         ("wm.gesture { fingers = 5, direction = 'left', command = 'x' }", "'fingers' must be 3 or 4"),
         ("wm.gesture { direction = 'left', command = 'x' }", "needs 'mods'"),
         ("wm.config { mouse = { move_modifier = 'hyper' } }", "'mouse.move_modifier' unknown modifier 'hyper'"),

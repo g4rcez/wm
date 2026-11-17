@@ -235,6 +235,32 @@ public struct ZenSettings: Sendable, Equatable {
     public init() {}
 }
 
+/// The overview (`wm overview`): all workspaces as small screens, one under the other.
+public struct OverviewSettings: Sendable, Equatable {
+    public static let zoomRange = 0.2...0.75
+    public static let maxGap = 200.0
+    /// A workspace is its screen times this.
+    public var zoom: Double = 0.5
+    /// Points between two workspaces.
+    public var gap: Double = 48
+    /// The dim layer over the screen, behind the workspaces.
+    public var backdrop = Color(red: 0.06, green: 0.06, blue: 0.08, alpha: 0.86)
+    public init() {}
+}
+
+/// Special workspaces (`wm workspace special`).
+public struct SpecialSettings: Sendable, Equatable {
+    public static let minSize = 0.5
+    /// Size of a shown special workspace as a fraction of the work area, `minSize`...1.
+    public var size: Double = 0.9
+    /// A dim layer on the monitor behind a shown special workspace. Clear (the default) is no layer.
+    public var backdrop = Color.clear
+    /// A window of a normal workspace on another monitor that gets the focus hides the special workspace too. By default only
+    /// the special workspace of the monitor of that window hides.
+    public var hideOnOtherMonitor = false
+    public init() {}
+}
+
 public struct BindSettings: Sendable, Equatable {
     /// Seconds a key is held before a `long_press` bind runs.
     public var longPressTimeout: Double = 0.4
@@ -269,15 +295,22 @@ public struct FocusFollowsMouse: Sendable, Equatable {
 
 /// Swipes with 3 or 4 fingers, read from the private MultitouchSupport framework.
 public struct TrackpadSettings: Sendable, Equatable {
-    public var enabled = false
+    public var enabled = true
+    /// The number of fingers (3 or 4) of the built-in swipes: the workspaces and the overview.
+    public var fingers = 4
     /// The number of fingers (3 or 4) whose swipe scrolls the scrolling strip. 0: none.
-    public var scrollFingers = 3
+    public var scrollFingers = 4
     /// Strip points per pad width are multiplied by this.
     public var speed = 1.0
-    public init(enabled: Bool = false, scrollFingers: Int = 3, speed: Double = 1) {
+    /// Tell the user in a notification when the framework or a trackpad is missing. Only when the config turned the
+    /// trackpad on itself: on by default, a Mac without a trackpad only gets a line in the log.
+    public var warnsWhenMissing = false
+    public init(enabled: Bool = true, fingers: Int = 4, scrollFingers: Int = 4, speed: Double = 1, warnsWhenMissing: Bool = false) {
         self.enabled = enabled
+        self.fingers = fingers
         self.scrollFingers = scrollFingers
         self.speed = speed
+        self.warnsWhenMissing = warnsWhenMissing
     }
 }
 
@@ -313,6 +346,9 @@ public struct Settings: Sendable, Equatable {
     public var prefix = PrefixSettings()
     public var binds = BindSettings()
     public var zen = ZenSettings()
+    public var special = SpecialSettings()
+    public var keyboards = KeyboardSettings()
+    public var overview = OverviewSettings()
     public var master = MasterSettings()
     /// Commands a `wm://` URL may run besides the always-allowed ones. `exec` and `reload` are denied by default.
     public var urlAllow: [String] = []

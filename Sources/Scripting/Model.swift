@@ -44,6 +44,19 @@ public struct BindOptions: Sendable, Equatable {
     }
 }
 
+/// The options of a mode, from the third argument of `wm.mode`.
+public struct ModeOptions: Sendable, Equatable {
+    /// After one bind of the mode has run, the mode ends and the mode before it is back (as `mode back`).
+    public var once: Bool
+    /// A key that the mode does not bind is not typed into the app.
+    public var swallow: Bool
+
+    public init(once: Bool = false, swallow: Bool = false) {
+        self.once = once
+        self.swallow = swallow
+    }
+}
+
 /// One bind as `wm list binds` shows it.
 public struct BindRecord: Sendable, Equatable {
     /// The mode name; `*` for a bind that works in every mode.
@@ -180,6 +193,10 @@ public struct LoadedConfig: Sendable {
     public var bindRecords: [BindRecord]
     /// Swipes with a modifier (`wm.gesture`).
     public var gestures: [Gesture]
+    /// The options of the modes that have some (`wm.mode`), by mode name.
+    public var modeOptions: [String: ModeOptions]
+    /// Seconds of the `long_press` binds that name their own, by mode name.
+    public var longPressTimeouts: [String: [Chord: Double]]
     public var rules: [WindowRule]
     /// Layout chosen per workspace with `wm.workspace`; other workspaces use `settings.layout`.
     public var workspaceLayouts: [String: LayoutKind]
@@ -198,8 +215,12 @@ public struct LoadedConfig: Sendable {
         holdBinds: [String: [Chord: BindAction]] = [:],
         noRepeat: [String: Set<Chord>] = [:],
         bindRecords: [BindRecord] = [],
-        gestures: [Gesture] = []
+        gestures: [Gesture] = [],
+        modeOptions: [String: ModeOptions] = [:],
+        longPressTimeouts: [String: [Chord: Double]] = [:]
     ) {
+        self.modeOptions = modeOptions
+        self.longPressTimeouts = longPressTimeouts
         self.settings = settings
         self.binds = binds
         self.rules = rules

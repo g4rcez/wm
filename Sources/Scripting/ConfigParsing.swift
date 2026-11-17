@@ -140,7 +140,7 @@ private func color(_ fields: Fields, _ key: String) throws -> Color? {
 let topLevelConfigKeys = [
     "layout", "workspaces", "gaps", "animations", "border", "focus_follows_mouse", "mouse_follows_focus",
     "start_at_login", "wrap_focus", "mouse", "trackpad", "workspace_back_and_forth", "tiling", "scrolling", "switcher", "prefix", "url",
-    "tab_indicator", "binds", "zen", "master",
+    "tab_indicator", "binds", "zen", "special", "overview", "keyboards", "master",
 ]
 
 /// Applies the keys that are present; keys that are absent keep their value, so two `wm.config` calls merge.
@@ -164,8 +164,17 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
     if let flag = try top.bool("mouse_follows_focus") { settings.mouseFollowsFocus = flag }
     if let flag = try top.bool("start_at_login") { settings.startAtLogin = flag }
     if let flag = try top.bool("wrap_focus") { settings.wrapFocus = flag }
-    if let trackpad = try top.table("trackpad", allowed: ["enabled", "scroll_fingers", "speed"]) {
-        if let flag = try trackpad.bool("enabled") { settings.trackpad.enabled = flag }
+    if let trackpad = try top.table("trackpad", allowed: ["enabled", "fingers", "scroll_fingers", "speed"]) {
+        if let flag = try trackpad.bool("enabled") {
+            settings.trackpad.enabled = flag
+            settings.trackpad.warnsWhenMissing = flag
+        }
+        // `scroll_fingers` follows `fingers` unless the config sets it too.
+        if let count = try trackpad.integer("fingers", min: 0) {
+            guard [3, 4].contains(count) else { throw ConfigError(message: "wm.config: 'trackpad.fingers' must be 3 or 4") }
+            settings.trackpad.fingers = count
+            settings.trackpad.scrollFingers = count
+        }
         if let count = try trackpad.integer("scroll_fingers", min: 0) {
             guard [0, 3, 4].contains(count) else { throw ConfigError(message: "wm.config: 'trackpad.scroll_fingers' must be 3, 4 or 0 (off)") }
             settings.trackpad.scrollFingers = count
@@ -181,8 +190,9 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
     }
     if let flag = try top.bool("workspace_back_and_forth") { settings.workspaceBackAndForth = flag }
 
-    if let gaps = try top.table("gaps", allowed: ["inner", "outer"]) {
+    if let gaps = try top.table("gaps", allowed: ["inner", "outer", "smart"]) {
         if let inner = try gaps.number("inner", min: 0) { settings.gaps.inner = CGFloat(inner) }
+        if let smart = try gaps.bool("smart") { settings.gaps.smart = smart }
         switch gaps.values["outer"] {
         case .number?:
             let outer = CGFloat(try gaps.number("outer", min: 0)!)
@@ -307,6 +317,31 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
         if let count = try master.integer("count", min: 1) { settings.master.count = count }
         if let name = try master.choice("orientation", MasterOrientation.allCases.map(\.rawValue)) { settings.master.orientation = MasterOrientation(rawValue: name)! }
         if let name = try master.choice("new_window", MasterSettings.NewWindow.allCases.map(\.rawValue)) { settings.master.newWindow = MasterSettings.NewWindow(rawValue: name)! }
+    }
+
+    if let entries = top.values["keyboards"] {
+        // Names of keyboards are the keys, so there is no fixed list of fields: `default` and then `["name"] = bool`.
+        guard case .table(let table) = entries else {
+            throw ConfigError(message: "wm.config: 'keyboards' must be a table like { default = true, [\"Keyboard name\"] = false }")
+        }
+        for (key, value) in table.sorted(by: { $0.key < $1.key }) {
+            guard case .bool(let flag) = value else { throw ConfigError(message: "wm.config: 'keyboards.\(key)' must be true or false") }
+            if key == "default" { settings.keyboards.defaultEnabled = flag } else { settings.keyboards.overrides[key.lowercased()] = flag }
+        }
+    }
+
+    if let overview = try top.table("overview", allowed: ["zoom", "gap", "backdrop"]) {
+        if let zoom = try overview.number("zoom", min: OverviewSettings.zoomRange.lowerBound, max: OverviewSettings.zoomRange.upperBound) {
+            settings.overview.zoom = zoom
+        }
+        if let gap = try overview.number("gap", min: 0, max: OverviewSettings.maxGap) { settings.overview.gap = gap }
+        if let backdrop = try color(overview, "backdrop") { settings.overview.backdrop = backdrop }
+    }
+
+    if let special = try top.table("special", allowed: ["size", "backdrop", "hide_on_other_monitor"]) {
+        if let size = try special.number("size", min: SpecialSettings.minSize, max: 1) { settings.special.size = size }
+        if let backdrop = try color(special, "backdrop") { settings.special.backdrop = backdrop }
+        if let flag = try special.bool("hide_on_other_monitor") { settings.special.hideOnOtherMonitor = flag }
     }
 
     if let zen = try top.table("zen", allowed: ["width"]) {

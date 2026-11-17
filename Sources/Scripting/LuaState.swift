@@ -43,10 +43,11 @@ function wm.press(chord)
   return native.dispatch("key press " .. chord, nil)
 end
 
-function wm.mode(name, binds)
+function wm.mode(name, binds, options)
   expect(type(name) == "string" and name ~= "", "wm.mode expects a mode name")
   expect(type(binds) == "table", "wm.mode expects a table of chord = action")
-  done(native.reset_mode(name))
+  expect(options == nil or type(options) == "table", "wm.mode: the options must be a table like { once = true }")
+  done(native.reset_mode(name, options or {}))
   for chord, action in pairs(binds) do
     -- A table is an action with options: { "focus left", description = "...", repeating = false },
     -- or a remap: { remap = "left", description = "..." }.
@@ -161,6 +162,8 @@ final class LuaState {
     fileprivate var noRepeat: [String: Set<Chord>] = [:]
     fileprivate var bindRecords: [BindRecord] = []
     fileprivate var gestures: [Gesture] = []
+    fileprivate var modeOptions: [String: ModeOptions] = [:]
+    fileprivate var longPressTimeouts: [String: [Chord: Double]] = [:]
     fileprivate var rules: [WindowRule] = []
     fileprivate var workspaceLayouts: [String: LayoutKind] = [:]
     fileprivate var workspaceRules: [String: WorkspaceRule] = [:]
@@ -194,7 +197,7 @@ final class LuaState {
             settings: settings, binds: binds, rules: rules, workspaceLayouts: workspaceLayouts, workspaceRules: workspaceRules,
             sequences: sequences,
             releaseBinds: releaseBinds, longPressBinds: longPressBinds, holdBinds: holdBinds, noRepeat: noRepeat, bindRecords: bindRecords,
-            gestures: gestures)
+            gestures: gestures, modeOptions: modeOptions, longPressTimeouts: longPressTimeouts)
     }
 
     func call(ref: Int32) {
@@ -339,6 +342,13 @@ private func functionAction(_ L: OpaquePointer?, at index: Int32, _ state: LuaSt
     return .function(state.functionID(ref: luaL_ref(L, registryIndex)))
 }
 
+extension Gesture {
+    /// The line that `wm list binds` shows for the swipe.
+    public var bindRecord: BindRecord {
+        BindRecord(mode: "gesture", keys: label, trigger: .press, action: action.recordText, options: BindOptions(description: description))
+    }
+}
+
 private extension BindAction {
     /// What `wm list binds` shows: the command, or `function`.
     var recordText: String {
@@ -360,6 +370,7 @@ private func nativeBind(_ L: OpaquePointer?) -> Int32 {
         do { chords = try parseChordSequence(text) } catch { throw ConfigError(message: "mode '\(mode)': \(error)") }
         var options = BindOptions()
         var trigger = BindTrigger.press
+        var longPressTimeout: Double?
         switch lua_type(L, 4) {
         case LUA_TNIL, LUA_TNONE:
             break
@@ -370,7 +381,21 @@ private func nativeBind(_ L: OpaquePointer?) -> Int32 {
             // `submap_universal` is the name that Hyprland uses.
             options.universal = try fields.bool("universal") ?? fields.bool("submap_universal") ?? false
             options.hidden = try fields.bool("hidden") ?? false
-            let release = try fields.bool("release") ?? false, longPress = try fields.bool("long_press") ?? false
+            let release = try fields.bool("release") ?? false
+            // `long_press = 0.8` is a long press that waits 0.8 seconds, whatever `binds.long_press_timeout` says.
+            var longPress = false
+            switch fields.values["long_press"] {
+            case nil: break
+            case .bool(let flag)?: longPress = flag
+            case .number(let seconds)?:
+                guard (0.1...3).contains(seconds) else {
+                    throw ConfigError(message: "mode '\(mode)': 'long_press' for '\(text)' must be between 0.1 and 3 seconds")
+                }
+                longPress = true
+                longPressTimeout = seconds
+            default:
+                throw ConfigError(message: "mode '\(mode)': 'long_press' for '\(text)' must be true, false or a number of seconds")
+            }
             if release && longPress { throw ConfigError(message: "mode '\(mode)': '\(text)' cannot be both 'release' and 'long_press'") }
             trigger = release ? .release : longPress ? .longPress : .press
             if trigger != .press, chords.count > 1 {
@@ -434,6 +459,7 @@ private func nativeBind(_ L: OpaquePointer?) -> Int32 {
             state.releaseBinds[target, default: [:]][chords[0]] = action
         case .longPress:
             state.longPressBinds[target, default: [:]][chords[0]] = action
+            state.longPressTimeouts[target, default: [:]][chords[0]] = longPressTimeout
         }
         // The canonical text, so the label can read the chords back: `alt-h`, `ctrl-p>h`.
         let keys = chords.map(\.description).joined(separator: ">")
@@ -472,11 +498,11 @@ private func nativeGesture(_ L: OpaquePointer?) -> Int32 {
         }
         let description = try fields.string("description")
         state.gestures.removeAll { $0.modifiers == modifiers && $0.fingers == fingers && $0.direction == direction }
-        state.gestures.append(Gesture(modifiers: modifiers, fingers: fingers, direction: direction, action: action, threshold: threshold, description: description))
+        let gesture = Gesture(modifiers: modifiers, fingers: fingers, direction: direction, action: action, threshold: threshold, description: description)
+        state.gestures.append(gesture)
         // `wm list binds` shows it next to the keys.
-        let shown = (modifiers.names + [fingers.map { "\($0)-finger" } ?? "scroll"]).joined(separator: "-") + " " + direction.rawValue
-        state.bindRecords.removeAll { $0.mode == "gesture" && $0.keys == shown }
-        state.bindRecords.append(BindRecord(mode: "gesture", keys: shown, trigger: .press, action: action.recordText, options: BindOptions(description: description)))
+        state.bindRecords.removeAll { $0.mode == "gesture" && $0.keys == gesture.label }
+        state.bindRecords.append(gesture.bindRecord)
     }
 }
 
@@ -484,6 +510,11 @@ private func nativeResetMode(_ L: OpaquePointer?) -> Int32 {
     reply(L, loadingOnly: "wm.mode") { state in
         let mode = readString(L, 1) ?? ""
         if mode == universalMode { throw ConfigError(message: "wm.mode: '*' is reserved for binds with universal = true") }
+        if mode == "back" { throw ConfigError(message: "wm.mode: 'back' is reserved: `mode back` goes to the mode before") }
+        let fields = try Fields(readValue(L, 2), owner: "wm.mode", allowed: ["once", "swallow"])
+        let options = ModeOptions(once: try fields.bool("once") ?? false, swallow: try fields.bool("swallow") ?? false)
+        state.modeOptions[mode] = options == ModeOptions() ? nil : options
+        state.longPressTimeouts[mode] = nil
         state.binds[mode] = [:]
         state.sequences[mode] = nil
         state.releaseBinds[mode] = nil

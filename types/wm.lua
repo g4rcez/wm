@@ -28,12 +28,12 @@
 ---| "focus stack first" | "focus stack last" | "focus stack 1" | "focus stack 2" | "focus stack 3"
 ---| "focus monitor left" | "focus monitor right" | "focus monitor up" | "focus monitor down" | "focus monitor next" | "focus monitor prev" | "focus monitor last"
 ---| "focus monitor main" | "focus monitor secondary" | "focus monitor tertiary"
----| "move left" | "move right" | "move up" | "move down"
+---| "move left" | "move right" | "move up" | "move down" | "move left 100" | "move right 100" | "move up 100" | "move down 100"
 ---| "swap left" | "swap right" | "swap up" | "swap down"
 ---| "resize smart +50" | "resize smart -50" | "resize width +50" | "resize width -50" | "resize height +50" | "resize height -50"
 ---| "workspace back" | "workspace special"
 ---| "workspace move monitor left" | "workspace move monitor right" | "workspace move monitor up" | "workspace move monitor down" | "workspace move monitor next" | "workspace move monitor prev" | "workspace move monitor last"
----| "window close" | "window float" | "window fullscreen" | "window maximize" | "window native-fullscreen"
+---| "window close" | "window float" | "window float on" | "window float off" | "window center" | "window fullscreen" | "window maximize" | "window native-fullscreen"
 ---| "window sticky" | "zen" | "zen on" | "zen off"
 ---| "window snap left" | "window snap right" | "window snap top" | "window snap bottom" | "window snap center"
 ---| "window snap top-left" | "window snap top-right" | "window snap bottom-left" | "window snap bottom-right"
@@ -58,7 +58,7 @@
 ---| "layout tile" | "layout tile 2" | "layout tile 3" | "layout tile 2+1" | "layout tile 1+2" | "layout tile 4" | "layout tile 5" | "layout tile 6" | "layout tile 2/3" | "layout tile 3/4" | "layout tile 1/4" | "layout tile chain"
 ---| "menu" | "palette" | "palette windows" | "palette apps" | "palette commands" | "palette menu" | "palette --cmdtab" | "palette --cmdtab --reverse"
 ---| "switcher" | "switcher next" | "switcher prev" | "switcher commit" | "switcher cancel" | "switcher --all"
----| "overview"
+---| "overview" | "overview open" | "overview close"
 ---| "mode main"
 ---| "pointer window" | "pointer monitor"
 ---| "daemon reload"
@@ -96,6 +96,7 @@
 ---@class (exact) wm.Gaps
 ---@field inner? number Points between windows, >= 0. Default 8.
 ---@field outer? number|wm.GapSides Points between windows and the screen edge, >= 0 (one number: all sides). Default 8.
+---@field smart? boolean A workspace with one tiled window has no gaps. Default false.
 
 ---@class (exact) wm.Animations
 ---@field enabled? boolean Default true.
@@ -205,12 +206,17 @@
 ---@field disable_system_cmd_tab? boolean Turn off the Cmd+Tab and Cmd+Shift+Tab of macOS while wm runs. Default false.
 ---@field capslock? "hyper" Make CapsLock the `hyper` modifier for chords such as `hyper-k`: a tap alone types Esc. wm sets the key mapping of the keyboards (like `hidutil`) while it runs. Default: CapsLock is not changed.
 
+--- The options of a mode (third argument of `wm.mode`).
+---@class (exact) wm.ModeOptions
+---@field once? boolean The mode ends after the first bind of it has run; the mode before it is back (`mode back`).
+---@field swallow? boolean A key that the mode does not bind is not typed into the app. Default false.
+
 --- The options of a bind (third argument of `wm.bind`, or a table with the action first in `wm.mode`).
 ---@class (exact) wm.BindOptions
 ---@field description? string Text for `wm list binds` and the key panel.
 ---@field repeating? boolean `false`: run once per press. `true`: a bind that runs for each repeat of the held key (with a plain bind on the same chord, that one runs only on the press). Without it a held key repeats the action.
 ---@field release? boolean Run when the key comes up. Not for sequences.
----@field long_press? boolean Run when the key is held (`binds.long_press_timeout`). Not for sequences.
+---@field long_press? boolean|number Run when the key is held (`binds.long_press_timeout`); a number is the seconds to wait for this bind, 0.1 to 3. Not for sequences.
 ---@field universal? boolean The bind works in every mode.
 ---@field submap_universal? boolean The same as `universal` (the name that Hyprland uses).
 ---@field hidden? boolean Leave the key out of the key panel.
@@ -218,7 +224,7 @@
 --- A swipe with modifiers: a two-finger scroll that goes `threshold` points in one direction runs the command, once.
 ---@class (exact) wm.Gesture
 ---@field mods? string One or more of alt, shift, ctrl, cmd: "alt", "alt+shift". Needed unless `fingers` is set.
----@field fingers? 3|4 A swipe on the trackpad with this many fingers. Needs `trackpad = { enabled = true }`.
+---@field fingers? 3|4 A swipe on the trackpad with this many fingers. Needs the trackpad on (the default). Replaces the built-in swipe for the same fingers and direction.
 ---@field direction wm.GestureDirection With natural scrolling, the direction of your fingers.
 ---@field command wm.Command|fun()
 ---@field threshold? number Points, 10 to 2000. Default 100.
@@ -233,9 +239,25 @@
 ---@field allow? string[] Commands that `wm://` URLs may run besides the default ones. `exec`, `daemon` and `subscribe` are blocked by default.
 
 ---@class (exact) wm.TrackpadConfig
----@field enabled? boolean Read the trackpad for swipes with 3 or 4 fingers (a private macOS framework). Default false.
----@field scroll_fingers? integer The swipe with this many fingers (3 or 4) scrolls the scrolling strip; 0 turns that off. Default 3.
+---@field enabled? boolean Read the trackpad for swipes with 3 or 4 fingers (a private macOS framework). Default true. `true` in the config also shows a notification when there is no trackpad; `false` turns the built-in swipes off.
+---@field fingers? 3|4 Fingers of the built-in swipes: left is `workspace next`, right is `workspace prev`, up is `overview open`, down is `overview close`. Default 4.
+---@field scroll_fingers? integer The swipe with this many fingers (3 or 4) scrolls the scrolling strip; 0 turns that off. Default: the value of `fingers`.
 ---@field speed? number How far a swipe moves the strip, 0.1 to 10. Default 1.
+
+--- The keys are `default` (what a keyboard that is not named gets, true if missing), the name of a keyboard, or its `vendor:product`
+--- in hex (`wm query keyboards` shows both). A keyboard that wm manages gets CapsLock as the hyper key (`binds.capslock`), also when it
+--- connects later; one that it does not manage keeps its CapsLock. The id wins over the name. The match ignores case.
+---@alias wm.KeyboardsConfig table<string, boolean>
+
+---@class (exact) wm.OverviewConfig
+---@field zoom? number A workspace is drawn as its screen times this, 0.2 to 0.75. Default 0.5.
+---@field gap? number Points between two workspaces, 0 to 200. Default 48.
+---@field backdrop? wm.Color The dim layer behind the workspaces. Default "#0f0f14db".
+
+---@class (exact) wm.SpecialConfig
+---@field size? number Size of a shown special workspace as a fraction of the work area, 0.5 to 1. Default 0.9.
+---@field backdrop? wm.Color A dim layer on the monitor behind a shown special workspace, for example "#00000066". Default "" (none).
+---@field hide_on_other_monitor? boolean A window of a normal workspace on another monitor that gets the focus hides the special workspace too. Default false.
 
 ---@class (exact) wm.MouseConfig
 ---@field move_modifier? string Hold these modifiers (for example "alt") and drag with the left button to move a window. Off by default.
@@ -266,6 +288,9 @@
 ---@field prefix? wm.PrefixConfig Key sequences such as `ctrl-p>h`.
 ---@field binds? wm.BindsConfig
 ---@field zen? wm.ZenConfig The zen mode: the focused window alone, centered.
+---@field keyboards? wm.KeyboardsConfig Which keyboards wm manages: `{ default = true, ["Keyboard name"] = false, ["046d:c52b"] = true }`. See `wm query keyboards`.
+---@field overview? wm.OverviewConfig The overview (`wm overview`): all workspaces, one under the other.
+---@field special? wm.SpecialConfig Special workspaces (`workspace special`): size, dim backdrop, when they hide.
 ---@field master? wm.MasterConfig The `master` layout.
 ---@field url? wm.UrlConfig
 
@@ -323,6 +348,10 @@
 ---| "window_open"
 ---| "window_close"
 ---| "window_focus"
+---| "window_title"
+---| "window_floating"
+---| "window_fullscreen"
+---| "window_moved"
 ---| "workspace_changed"
 ---| "special_changed"
 ---| "monitor_changed"
@@ -339,6 +368,9 @@
 ---@field previous? string
 ---@field monitor? integer
 ---@field visible? boolean
+---@field floating? boolean
+---@field fullscreen? boolean
+---@field native? boolean
 ---@field layout? wm.Layout
 ---@field mode? string
 
@@ -356,6 +388,25 @@
 ---@field app string
 ---@field title string
 
+---@class wm.WindowTitleEvent
+---@field id integer
+---@field app string
+---@field title string The new title.
+
+---@class wm.WindowFloatingEvent
+---@field id integer
+---@field floating boolean
+
+---@class wm.WindowFullscreenEvent
+---@field id integer
+---@field fullscreen boolean
+---@field native boolean `true`: the macOS fullscreen (`window native-fullscreen`); `false`: `window fullscreen`.
+
+---@class wm.WindowMovedEvent
+---@field id integer
+---@field workspace string The workspace that the window is on now.
+---@field previous string
+
 ---@class wm.WorkspaceChangedEvent
 ---@field workspace string
 ---@field previous string
@@ -365,6 +416,18 @@
 ---@field workspace string Name of the special workspace.
 ---@field monitor integer
 ---@field visible boolean
+
+---@class wm.Keyboard
+---@field name string The name that the keyboard tells (`Product`). Use it in `keyboards = { ["name"] = false }`.
+---@field manufacturer? string
+---@field id string `vendor:product` in hex, for example "046d:c52b". A built-in keyboard has no ids ("0000:0000").
+---@field vendor_id integer
+---@field product_id integer
+---@field location_id integer
+---@field transport string For example "USB", "Bluetooth", "FIFO" (the built-in keyboard) or "SPI".
+---@field built_in boolean
+---@field enabled boolean wm manages it: the config does not turn it off.
+---@field hyper boolean CapsLock is mapped to F18 on this keyboard now (the hyper key).
 
 ---@class wm.MonitorChangedEvent
 ---@field monitor integer
@@ -473,9 +536,10 @@ function wm.press(chord) end
 --- A key is a chord or a key sequence; an action can be a table `{ "command", description = "...", hidden = true }`,
 --- or a remap `{ remap = "left", description = "..." }`.
 --- The key panel lists the binds of the active mode. Only while the config file loads.
----@param name string
+---@param name string Not `*` and not `back`.
 ---@param binds table<wm.Chord, wm.Action|table>
-function wm.mode(name, binds) end
+---@param options? wm.ModeOptions
+function wm.mode(name, binds, options) end
 
 --- Runs a command when you swipe with modifiers held. Only while the config file loads.
 ---@param spec wm.Gesture
@@ -497,6 +561,14 @@ function wm.workspace(name, spec) end
 ---@overload fun(event: "window_close", filter: wm.EventFilter, handler: fun(e: wm.WindowCloseEvent))
 ---@overload fun(event: "window_focus", handler: fun(e: wm.WindowFocusEvent))
 ---@overload fun(event: "window_focus", filter: wm.EventFilter, handler: fun(e: wm.WindowFocusEvent))
+---@overload fun(event: "window_title", handler: fun(e: wm.WindowTitleEvent))
+---@overload fun(event: "window_title", filter: wm.EventFilter, handler: fun(e: wm.WindowTitleEvent))
+---@overload fun(event: "window_floating", handler: fun(e: wm.WindowFloatingEvent))
+---@overload fun(event: "window_floating", filter: wm.EventFilter, handler: fun(e: wm.WindowFloatingEvent))
+---@overload fun(event: "window_fullscreen", handler: fun(e: wm.WindowFullscreenEvent))
+---@overload fun(event: "window_fullscreen", filter: wm.EventFilter, handler: fun(e: wm.WindowFullscreenEvent))
+---@overload fun(event: "window_moved", handler: fun(e: wm.WindowMovedEvent))
+---@overload fun(event: "window_moved", filter: wm.EventFilter, handler: fun(e: wm.WindowMovedEvent))
 ---@overload fun(event: "workspace_changed", handler: fun(e: wm.WorkspaceChangedEvent))
 ---@overload fun(event: "workspace_changed", filter: wm.EventFilter, handler: fun(e: wm.WorkspaceChangedEvent))
 ---@overload fun(event: "special_changed", handler: fun(e: wm.SpecialChangedEvent))
@@ -528,7 +600,8 @@ function wm.dispatch(command, options) end
 ---@overload fun(kind: "monitors"): wm.Monitor[]
 ---@overload fun(kind: "monitor"): wm.Monitor?
 ---@overload fun(kind: "memory"): wm.MemorizedWindow[]
----@param kind "windows"|"focused"|"workspaces"|"monitors"|"monitor"|"memory"
+---@overload fun(kind: "keyboards"): wm.Keyboard[]
+---@param kind "windows"|"focused"|"workspaces"|"monitors"|"monitor"|"memory"|"keyboards"
 ---@return table?
 function wm.query(kind) end
 
