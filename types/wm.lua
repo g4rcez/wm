@@ -3,8 +3,8 @@
 -- diagnostics for `~/.config/wm/init.lua`. wm never loads this file: it is only a description of the API.
 -- Keep it in step with Sources/Scripting (ConfigParsing.swift, LuaState.swift, Chord.swift) and Sources/App.
 
----@alias wm.Layout "tiling"|"scrolling"
----@alias wm.WorkspaceMode "emulated"|"native"
+---@alias wm.Layout "tiling"|"scrolling"|"master"
+---@alias wm.WorkspaceMode "emulated"
 ---@alias wm.CenterMode "never"|"always"|"on-overflow"
 ---@alias wm.Side "left"|"right"
 ---@alias wm.Orientation "horizontal"|"vertical"
@@ -23,26 +23,41 @@
 ---| "focus left" | "focus right" | "focus up" | "focus down"
 ---| "focus left --wrap" | "focus right --wrap" | "focus up --wrap" | "focus down --wrap"
 ---| "focus back" | "focus layer" | "focus layer floating" | "focus layer tiling"
----| "focus monitor left" | "focus monitor right" | "focus monitor up" | "focus monitor down" | "focus monitor next" | "focus monitor prev"
+---| "focus next" | "focus prev" | "focus next --wrap" | "focus prev --wrap"
+---| "focus column first" | "focus column last" | "focus column 1" | "focus column 2" | "focus column 3"
+---| "focus stack first" | "focus stack last" | "focus stack 1" | "focus stack 2" | "focus stack 3"
+---| "focus monitor left" | "focus monitor right" | "focus monitor up" | "focus monitor down" | "focus monitor next" | "focus monitor prev" | "focus monitor last"
+---| "focus monitor main" | "focus monitor secondary" | "focus monitor tertiary"
 ---| "move left" | "move right" | "move up" | "move down"
 ---| "swap left" | "swap right" | "swap up" | "swap down"
 ---| "resize smart +50" | "resize smart -50" | "resize width +50" | "resize width -50" | "resize height +50" | "resize height -50"
----| "workspace back" | "workspace special" | "workspace row up" | "workspace row down"
----| "window close" | "window float" | "window fullscreen" | "window maximize"
----| "window send monitor left" | "window send monitor right" | "window send monitor up" | "window send monitor down" | "window send monitor next" | "window send monitor prev"
----| "window send row up" | "window send row down"
+---| "workspace back" | "workspace special"
+---| "workspace move monitor left" | "workspace move monitor right" | "workspace move monitor up" | "workspace move monitor down" | "workspace move monitor next" | "workspace move monitor prev" | "workspace move monitor last"
+---| "window close" | "window float" | "window fullscreen" | "window maximize" | "window native-fullscreen"
+---| "window sticky" | "zen" | "zen on" | "zen off"
+---| "window snap left" | "window snap right" | "window snap top" | "window snap bottom" | "window snap center"
+---| "window snap top-left" | "window snap top-right" | "window snap bottom-left" | "window snap bottom-right"
+---| "window raise-floating" | "window rescue" | "window unmark" | "window remember" | "window remember --title"
+---| "window forget" | "window forget --title"
+---| "window send monitor left" | "window send monitor right" | "window send monitor up" | "window send monitor down" | "window send monitor next" | "window send monitor prev" | "window send monitor last"
+---| "window send monitor main" | "window send monitor secondary" | "window send monitor tertiary"
 ---| "window send strip horizontal" | "window send strip vertical"
----| "layout set tiling" | "layout set scrolling"
+---| "layout set tiling" | "layout set scrolling" | "layout set master"
+---| "layout master promote" | "layout master count +1" | "layout master count -1" | "layout master ratio +0.05" | "layout master ratio -0.05"
+---| "layout master orientation" | "layout master orientation left" | "layout master orientation right" | "layout master orientation top"
+---| "layout master orientation bottom" | "layout master orientation center"
 ---| "layout balance" | "layout flip" | "layout rotate cw" | "layout rotate ccw"
 ---| "layout split toggle" | "layout split swap"
 ---| "layout column width cycle" | "layout column match" | "layout column center" | "layout column center-visible"
----| "layout stack join" | "layout stack leave" | "layout stack tabs" | "layout stack equalize" | "layout stack height cycle"
+---| "layout column move first" | "layout column move last" | "layout column expand"
+---| "layout stack join" | "layout stack join right" | "layout stack leave left" | "layout stack leave" | "layout stack tabs" | "layout stack equalize" | "layout stack height cycle"
 ---| "layout preselect left" | "layout preselect right" | "layout preselect up" | "layout preselect down"
 ---| "layout split root" | "layout split ratio +0.1" | "layout split ratio -0.1"
 ---| "window pseudo"
 ---| "workspace next" | "workspace prev" | "workspace empty" | "window send workspace next" | "window send workspace prev" | "window send workspace empty"
 ---| "layout tile" | "layout tile 2" | "layout tile 3" | "layout tile 2+1" | "layout tile 1+2" | "layout tile 4" | "layout tile 5" | "layout tile 6" | "layout tile 2/3" | "layout tile 3/4" | "layout tile 1/4" | "layout tile chain"
----| "switcher" | "switcher next" | "switcher prev" | "switcher commit" | "switcher cancel"
+---| "menu" | "palette" | "palette windows" | "palette apps" | "palette commands" | "palette menu" | "palette --cmdtab" | "palette --cmdtab --reverse"
+---| "switcher" | "switcher next" | "switcher prev" | "switcher commit" | "switcher cancel" | "switcher --all"
 ---| "overview"
 ---| "mode main"
 ---| "pointer window" | "pointer monitor"
@@ -98,7 +113,8 @@
 ---@field name string What `layout tile <name>` takes. No spaces, not "chain", unique in its list.
 ---@field key? string One key a-z or 0-9 (not "c") that picks it in the picker. Unique in its list.
 ---@field title? string Text in the menu bar menu. Default: the name.
----@field cells number[][] Two or more `{ x, y, width, height }`, each 0 to 1.
+---@field cells number[][] Two or more `{ x, y, width, height }`, each 0 to 1. With `area`, one cell `{ 0, 0, 1, 1 }` is also valid (tiling layout only).
+---@field area? number[] `{ x, y, width, height }`, each 0 to 1: the part of the screen that the cells fill. Default the whole screen. A template with one cell and a smaller area (`wm.templates.centered`) keeps the windows as they are and lays them out inside the area.
 
 --- The built-in templates, to put in a `templates` list.
 ---@class wm.BuiltInTemplates
@@ -112,10 +128,13 @@
 ---@field two_thirds wm.Template
 ---@field three_quarters wm.Template
 ---@field one_quarter wm.Template
+---@field centered wm.Template The windows share the middle two thirds of the width (tiling layout only).
 
 ---@class (exact) wm.TilingConfig
 ---@field split_ratio? number Share of the cell that the first window gets, 0.1 to 0.9. Default 0.5.
 ---@field preserve_split? boolean Keep the orientation of a split when its sibling closes. Default true.
+---@field smart_split? boolean A new window splits the tile on the side that the mouse pointer is nearest to. Default false.
+---@field split_under_pointer? boolean A new window splits the tile under the mouse pointer (not the focused one), on the side nearest the pointer. Default false.
 ---@field force_split? "second"|"first" Where a new window goes in the split of the window it splits: "second" (right or bottom) or "first". Default "second".
 ---@field split_width_multiplier? number 0.1 to 3. A cell this many times wider than tall splits side by side, so an ultrawide screen shows more columns before stacking. Default 1.
 ---@field templates? wm.Template[] The patterns that the picker and the menu bar list for this layout, instead of the built-in ones. Not empty. `layout tile <name>` still takes a built-in name that is not in the list.
@@ -131,6 +150,9 @@
 ---@field center? wm.CenterMode When to center the focused column. Default "on-overflow".
 ---@field always_center_single_column? boolean A lone column sits in the middle, even with `center = "never"`. Default false.
 ---@field default_column_display? wm.ColumnDisplay "tabbed" makes every new column a tab stack. Default "normal".
+---@field orientation? "horizontal"|"vertical"|"auto" The way the strip runs: columns side by side ("horizontal", the default), rows one under the other ("vertical"), or "vertical" on a screen that is taller than it is wide ("auto").
+---@field single_window_fit? "keep"|"fill" A lone column fills the screen ("fill", the default) or keeps its width ("keep").
+---@field visible_columns? integer With 2 or more columns but fewer than this number, the columns grow in proportion to fill the screen. 0 is off (the default).
 ---@field preset_heights? number[] Window heights in a stack as fractions of the column, 0.1 to 0.9, not empty. `layout stack height cycle` walks this list. Default { 0.33, 0.5, 0.66 }.
 ---@field sliver_width? number Points of an off-screen column that stay on screen, >= 0. Default 8.
 ---@field sliver_height? number Height fraction of an off-screen column, 0.05 to 1. Default 0.9.
@@ -169,21 +191,33 @@
 ---@field foreground? wm.Color Default "#d6dff5".
 ---@field accent? wm.Color Color of the mode chip (drawn at 40% opacity). Default "#89b4fa".
 
+---@class (exact) wm.MasterConfig
+---@field ratio? number Share of the screen that the master area takes: 0.1 to 0.9. Default 0.55.
+---@field count? integer How many windows are masters. Default 1.
+---@field orientation? "left"|"right"|"top"|"bottom"|"center" Where the master area is. `center`: in the middle, with the stack on both sides. Default "left".
+---@field new_window? "stack"|"master" Where a new window goes: the top of the stack (default) or the master.
+
+---@class (exact) wm.ZenConfig
+---@field width? number Width of the window in the zen mode (`wm zen`), as a fraction of the work area: 0.3 to 1. Default 0.7.
+
 ---@class (exact) wm.BindsConfig
 ---@field long_press_timeout? number Seconds a key is held for a `long_press` bind, 0.1 to 3. Default 0.4.
+---@field disable_system_cmd_tab? boolean Turn off the Cmd+Tab and Cmd+Shift+Tab of macOS while wm runs. Default false.
 
 --- The options of a bind (third argument of `wm.bind`, or a table with the action first in `wm.mode`).
 ---@class (exact) wm.BindOptions
 ---@field description? string Text for `wm list binds` and the key panel.
----@field repeating? boolean `false`: run once per press. Without it a held key repeats the action.
+---@field repeating? boolean `false`: run once per press. `true`: a bind that runs for each repeat of the held key (with a plain bind on the same chord, that one runs only on the press). Without it a held key repeats the action.
 ---@field release? boolean Run when the key comes up. Not for sequences.
 ---@field long_press? boolean Run when the key is held (`binds.long_press_timeout`). Not for sequences.
 ---@field universal? boolean The bind works in every mode.
+---@field submap_universal? boolean The same as `universal` (the name that Hyprland uses).
 ---@field hidden? boolean Leave the key out of the key panel.
 
 --- A swipe with modifiers: a two-finger scroll that goes `threshold` points in one direction runs the command, once.
 ---@class (exact) wm.Gesture
----@field mods string One or more of alt, shift, ctrl, cmd: "alt", "alt+shift".
+---@field mods? string One or more of alt, shift, ctrl, cmd: "alt", "alt+shift". Needed unless `fingers` is set.
+---@field fingers? 3|4 A swipe on the trackpad with this many fingers. Needs `trackpad = { enabled = true }`.
 ---@field direction wm.GestureDirection With natural scrolling, the direction of your fingers.
 ---@field command wm.Command|fun()
 ---@field threshold? number Points, 10 to 2000. Default 100.
@@ -197,23 +231,41 @@
 ---@class (exact) wm.UrlConfig
 ---@field allow? string[] Commands that `wm://` URLs may run besides the default ones. `exec`, `daemon` and `subscribe` are blocked by default.
 
+---@class (exact) wm.TrackpadConfig
+---@field enabled? boolean Read the trackpad for swipes with 3 or 4 fingers (a private macOS framework). Default false.
+---@field scroll_fingers? integer The swipe with this many fingers (3 or 4) scrolls the scrolling strip; 0 turns that off. Default 3.
+---@field speed? number How far a swipe moves the strip, 0.1 to 10. Default 1.
+
+---@class (exact) wm.MouseConfig
+---@field move_modifier? string Hold these modifiers (for example "alt") and drag with the left button to move a window. Off by default.
+---@field resize_modifier? string Hold these modifiers and drag with the right button to resize a window. Off by default.
+
+---@class (exact) wm.FocusFollowsMouse
+---@field enabled? boolean Keeps its value when missing.
+---@field only_fully_visible? boolean The pointer focuses only windows that are fully on screen. Default false.
+
 --- Every key is optional. Two `wm.config` calls merge: a key that is absent keeps its value. An unknown key is an error.
 ---@class (exact) wm.Config
 ---@field layout? wm.Layout Default layout of a workspace. Default "tiling".
----@field workspaces? wm.WorkspaceMode "emulated" (wm hides windows) or "native" (macOS desktops). Default "emulated".
+---@field workspaces? wm.WorkspaceMode Kept for old configs. The only mode is "emulated" (wm hides windows); "native" was removed.
 ---@field gaps? wm.Gaps
 ---@field animations? wm.Animations
 ---@field border? wm.Border
----@field focus_follows_mouse? boolean Default false.
+---@field focus_follows_mouse? boolean|wm.FocusFollowsMouse Default false. A table can limit it to windows that are fully on screen.
 ---@field mouse_follows_focus? boolean Default false.
 ---@field start_at_login? boolean Only when running as wm.app. Default false.
+---@field trackpad? wm.TrackpadConfig Swipes with 3 or 4 fingers.
+---@field mouse? wm.MouseConfig Move and resize windows with a modifier and the mouse.
 ---@field wrap_focus? boolean `focus <dir>` wraps around at the edge. Default false.
+---@field workspace_back_and_forth? boolean `workspace N` while N is shown goes back to the previous workspace. Default false.
 ---@field tiling? wm.TilingConfig
 ---@field scrolling? wm.ScrollingConfig
 ---@field tab_indicator? wm.TabIndicatorConfig The tabs of a tabbed column.
 ---@field switcher? wm.SwitcherConfig The Alt+Tab window switcher.
 ---@field prefix? wm.PrefixConfig Key sequences such as `ctrl-p>h`.
 ---@field binds? wm.BindsConfig
+---@field zen? wm.ZenConfig The zen mode: the focused window alone, centered.
+---@field master? wm.MasterConfig The `master` layout.
 ---@field url? wm.UrlConfig
 
 -- wm.rule, wm.workspace ------------------------------------------------------------------------------------------
@@ -229,7 +281,7 @@
 ---@field center? boolean Center the window. Default false.
 ---@field maximize? boolean Open the window maximized.
 ---@field width? number Column width of the window in the scrolling layout, a fraction of the screen, 0.05 to 1.
----@field monitor? string|integer Open on the workspace that this monitor shows: its number (1 is the leftmost) or part of its name. `workspace` wins when both are set.
+---@field monitor? string|integer Open on the workspace that this monitor shows: a role (`main`, `secondary`, `tertiary`), its number (1 is the leftmost) or part of its name. `workspace` wins when both are set.
 ---@field focus? boolean `false`: the window opens without taking the focus.
 ---@field run? wm.Command|wm.Command[] Commands that run after the other actions.
 ---@field stop? boolean `false` lets later rules add to this one. Default true.
@@ -237,7 +289,7 @@
 --- Needs at least one field.
 ---@class (exact) wm.WorkspaceSpec
 ---@field layout? wm.Layout
----@field monitor? string|integer Binds the workspace to a monitor: its number (1 is the leftmost) or part of its name. Showing it shows it there.
+---@field monitor? string|integer Binds the workspace to a monitor: a role (`main`, `secondary`, `tertiary`), its number (1 is the leftmost) or part of its name. Showing it shows it there.
 ---@field default? boolean With `monitor`: the monitor starts with this workspace.
 ---@field gaps? wm.Gaps Gaps of this workspace only.
 ---@field border? boolean `false` hides the focus border on this workspace.
@@ -248,12 +300,17 @@
 ---@field split_ratio? number
 ---@field preserve_split? boolean
 ---@field force_split? "second"|"first"
+---@field smart_split? boolean
+---@field split_under_pointer? boolean
 ---@field split_width_multiplier? number
 ---@field presets? number[]
 ---@field default_width? number
 ---@field center? wm.CenterMode
 ---@field always_center_single_column? boolean
 ---@field default_column_display? wm.ColumnDisplay
+---@field orientation? "horizontal"|"vertical"|"auto"
+---@field single_window_fit? "keep"|"fill"
+---@field visible_columns? integer
 ---@field preset_heights? number[]
 ---@field sliver_width? number
 ---@field sliver_height? number
@@ -310,6 +367,8 @@
 
 ---@class wm.MonitorChangedEvent
 ---@field monitor integer
+---@field name string Name of the monitor that has the focus now.
+---@field workspace string Workspace on that monitor.
 
 ---@class wm.LayoutChangedEvent
 ---@field workspace string
@@ -336,8 +395,10 @@
 ---@field title string
 ---@field workspace string
 ---@field floating boolean
+---@field sticky boolean Shown on every workspace of its monitor (`window sticky`).
 ---@field maximized boolean
 ---@field focused boolean
+---@field marks string[] Names given with `window mark`.
 ---@field frame wm.Rect
 
 ---@class wm.Workspace
@@ -350,11 +411,30 @@
 ---@class wm.Monitor
 ---@field id integer
 ---@field name string
+---@field index integer Position from the left, starting at 1 (the number that a monitor selector takes).
+---@field role? "main"|"secondary"|"tertiary" The role that a monitor selector takes; `nil` for a fourth monitor or more.
+---@field main boolean The monitor with the menu bar.
 ---@field workspace string Workspace on this monitor.
 ---@field special? string Special workspace shown here.
 ---@field focused boolean
 ---@field frame wm.Rect
 ---@field work_area wm.Rect
+
+--- A window that `wm window remember` kept.
+---@class wm.MemorizedWindow
+---@field app string Bundle id.
+---@field name string Name of the app.
+---@field title? string Only for an entry made with `--title`.
+---@field workspace string
+---@field monitor? string Name of the monitor that showed the workspace.
+---@field mode "floating"|"maximized"|"pseudo"|"tiled"
+---@field floating boolean
+---@field maximized boolean
+---@field frame? table `{ x, y, width, height }` as fractions of the work area (floating windows).
+---@field column_width? number Scrolling layout: fraction of the zone.
+---@field strip? wm.Orientation
+---@field marks string[]
+---@field sticky? boolean
 
 -- API ------------------------------------------------------------------------------------------------------------
 
@@ -419,7 +499,7 @@ function wm.on(event, filter, handler) end
 
 --- Runs a wm command, like `wm <command>` in a shell.
 ---@param command wm.Command
----@param options? { window: integer|string } `window`: the command acts on this window: an id, or "focused", "app:<name>", "title:<regex>", "pid:<n>".
+---@param options? { window: integer|string } `window`: the command acts on this window: an id, or "focused", "app:<name>", "title:<regex>", "mark:<name>", "pid:<n>".
 ---@return string? stdout nil when the command failed.
 ---@return string? stderr Only when the command failed.
 function wm.dispatch(command, options) end
@@ -429,7 +509,9 @@ function wm.dispatch(command, options) end
 ---@overload fun(kind: "focused"): wm.Window?
 ---@overload fun(kind: "workspaces"): wm.Workspace[]
 ---@overload fun(kind: "monitors"): wm.Monitor[]
----@param kind "windows"|"focused"|"workspaces"|"monitors"
+---@overload fun(kind: "monitor"): wm.Monitor?
+---@overload fun(kind: "memory"): wm.MemorizedWindow[]
+---@param kind "windows"|"focused"|"workspaces"|"monitors"|"monitor"|"memory"
 ---@return table?
 function wm.query(kind) end
 
