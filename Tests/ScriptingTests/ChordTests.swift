@@ -68,4 +68,23 @@ struct ScreenshotShortcutTests {
     func otherChordsAreNot(text: String) throws {
         #expect(!(try parseChord(text).isScreenshotShortcut))
     }
+
+    @Test func hyperIsAModifierOfAChord() throws {
+        #expect(try parseChord("hyper-k") == Chord(modifiers: [.hyper], key: "k"))
+        #expect(try parseChord("Hyper+shift-4") == Chord(modifiers: [.hyper, .shift], key: "4"))
+        #expect(try parseChord("hyper-k").description == "hyper-k")
+        #expect(try parseChord("cmd-hyper-k").description == "hyper-cmd-k")
+    }
+
+    @Test func hyperIsNotAModifierOfAGestureOrTheMouse() {
+        let error = #expect(throws: ChordError.self) { try parseModifiers("hyper") }
+        #expect(error?.message.contains("unknown modifier 'hyper'") == true)
+    }
+
+    @Test func mediaKeysAreOnlyForKeysThatWmTypes() throws {
+        #expect(try parseChord("play", allowMedia: true) == Chord(modifiers: [], key: "play"))
+        #expect(try parseChord("volume_up", allowMedia: true) == Chord(modifiers: [], key: "volume_up"))
+        let error = #expect(throws: ChordError.self) { try parseChord("play") }
+        #expect(error?.message.contains("unknown key 'play'") == true)
+    }
 }

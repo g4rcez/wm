@@ -9,6 +9,10 @@ struct ChordSequenceTests {
         #expect(try parseChordSequence("alt-h") == [Chord(modifiers: [.option], key: "h")])
     }
 
+    @Test func aSequenceCanStartWithTheHyperKey() throws {
+        #expect(try parseChordSequence("hyper-w>1") == [Chord(modifiers: [.hyper], key: "w"), Chord(modifiers: [], key: "1")])
+    }
+
     @Test func twoSteps() throws {
         #expect(try parseChordSequence("ctrl-p>h") == [Chord(modifiers: [.control], key: "p"), Chord(modifiers: [], key: "h")])
     }

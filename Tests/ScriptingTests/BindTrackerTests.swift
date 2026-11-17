@@ -95,4 +95,33 @@ struct BindTrackerTests {
         var tracker = BindTracker()
         #expect(tracker.longPressElapsed(keyCode: 9) == [])
     }
+
+    // MARK: Remaps
+
+    private let up = Chord(modifiers: [], key: "up")
+
+    @Test func aRemapTypesTheTargetKeyDownRepeatingAndUp() {
+        var tracker = BindTracker()
+        let lookup = BindLookup(press: .remap(up))
+        #expect(tracker.keyDown(keyCode: 40, isRepeat: false, lookup: lookup) == (true, [.remapDown(up, isRepeat: false)]))
+        #expect(tracker.keyDown(keyCode: 40, isRepeat: true, lookup: lookup) == (true, [.remapDown(up, isRepeat: true)]))
+        #expect(tracker.keyUp(keyCode: 40) == (true, [.remapUp(up)]))
+        // A second key up has nothing left to release.
+        #expect(tracker.keyUp(keyCode: 40) == (false, []))
+    }
+
+    @Test func aRemapThatDoesNotRepeatTypesTheKeyOnce() {
+        var tracker = BindTracker()
+        let lookup = BindLookup(press: .remap(up), noRepeat: true)
+        _ = tracker.keyDown(keyCode: 40, isRepeat: false, lookup: lookup)
+        #expect(tracker.keyDown(keyCode: 40, isRepeat: true, lookup: lookup) == (true, []))
+        #expect(tracker.keyUp(keyCode: 40) == (true, [.remapUp(up)]))
+    }
+
+    @Test func theKeyUpFollowsTheRemapThatWentDownEvenWhenTheBindsChange() {
+        var tracker = BindTracker()
+        _ = tracker.keyDown(keyCode: 40, isRepeat: false, lookup: BindLookup(press: .remap(up)))
+        // The key comes up when another lookup would apply (the hyper key was released first): it still types the up of the remap.
+        #expect(tracker.keyUp(keyCode: 40) == (true, [.remapUp(up)]))
+    }
 }

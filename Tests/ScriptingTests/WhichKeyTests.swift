@@ -27,29 +27,29 @@ struct WhichKeyTests {
             record("main", "alt-b", "focus up", trigger: .hold),
         ]
         #expect(WhichKey.entries(mode: "main", pending: [], records: records) == [
-            LabelEntry(key: "⌥A", text: "focus left"),
-            LabelEntry(key: "⌥B", text: "focus up"),
+            LabelEntry(key: "⌥a", text: "focus left"),
+            LabelEntry(key: "⌥b", text: "focus up"),
         ])
     }
 
     @Test func aModeListsItsOwnKeysInAFixedOrder() {
         #expect(WhichKey.entries(mode: "resize", pending: [], records: resize) == [
-            LabelEntry(key: "H", text: "Wider"),
-            LabelEntry(key: "L", text: "resize width -50"),
+            LabelEntry(key: "h", text: "Wider"),
+            LabelEntry(key: "l", text: "resize width -50"),
             LabelEntry(key: "esc", text: "exit"),
         ])
     }
 
     @Test func universalBindsAreInEveryMode() {
         let records = resize + [record(universalMode, "alt-q", "window close", description: "Close")]
-        #expect(WhichKey.entries(mode: "resize", pending: [], records: records).map(\.key) == ["H", "L", "⌥Q", "esc"])
-        #expect(WhichKey.entries(mode: "main", pending: [], records: records).map(\.key) == ["⌥R", "⌥Q"].sorted())
+        #expect(WhichKey.entries(mode: "resize", pending: [], records: records).map(\.key) == ["h", "l", "⌥q", "esc"])
+        #expect(WhichKey.entries(mode: "main", pending: [], records: records).map(\.key) == ["⌥q", "⌥r"])
     }
 
     @Test func aLongCommandIsCut() {
         let records = [record("m", "a", "layout column width cycle then something longer")]
         #expect(WhichKey.entries(mode: "m", pending: [], records: records) == [
-            LabelEntry(key: "A", text: "layout column width cycle t…"),
+            LabelEntry(key: "a", text: "layout column width cycle t…"),
         ])
     }
 
@@ -64,13 +64,13 @@ struct WhichKeyTests {
         ]
         let prefix = try parseChord("alt-space")
         #expect(WhichKey.entries(mode: "main", pending: [prefix], records: records) == [
-            LabelEntry(key: "H", text: "focus left"),
-            LabelEntry(key: "L", text: "Right"),
-            LabelEntry(key: "W", text: "…"),
+            LabelEntry(key: "h", text: "focus left"),
+            LabelEntry(key: "l", text: "Right"),
+            LabelEntry(key: "w", text: "…"),
         ])
         #expect(WhichKey.entries(mode: "main", pending: [prefix, try parseChord("w")], records: records) == [
-            LabelEntry(key: "N", text: "workspace next"),
-            LabelEntry(key: "P", text: "workspace prev"),
+            LabelEntry(key: "n", text: "workspace next"),
+            LabelEntry(key: "p", text: "workspace prev"),
         ])
     }
 
@@ -78,10 +78,23 @@ struct WhichKeyTests {
         #expect(WhichKey.entries(mode: "empty", pending: [], records: resize) == [])
     }
 
-    @Test func chordsAreDrawnWithSymbolsAndCapitalLetters() throws {
-        #expect(WhichKey.display(try parseChord("ctrl-alt-shift-cmd-k")) == "⌃⌥⇧⌘K")
+    @Test func chordsAreDrawnWithSymbolsAndTheLetterAsItWasWritten() throws {
+        #expect(WhichKey.display(try parseChord("ctrl-alt-shift-cmd-k")) == "⌃⌥⇧⌘k")
+        #expect(WhichKey.display(try parseChord("hyper-w")) == "✦w")
+        #expect(WhichKey.display(try parseChord("shift-y")) == "⇧y")
         #expect(WhichKey.display(try parseChord("esc")) == "esc")
-        #expect(WhichKey.display(try parseChord("space")) == "space")
         #expect(WhichKey.display(try parseChord("2")) == "2")
+        #expect(WhichKey.display(try parseChord("f5")) == "f5")
+    }
+
+    @Test(arguments: [
+        ("leftsquarebracket", "["), ("rightsquarebracket", "]"), ("comma", ","), ("period", "."), ("minus", "-"), ("equal", "="),
+        ("slash", "/"), ("backslash", "\\"), ("semicolon", ";"), ("quote", "'"), ("backtick", "`"),
+        ("left", "←"), ("right", "→"), ("up", "↑"), ("down", "↓"),
+        ("space", "␣"), ("tab", "⇥"), ("enter", "↩"), ("backspace", "⌫"), ("delete", "⌦"), ("pageup", "⇞"), ("pagedown", "⇟"),
+    ])
+    func namedKeysAreDrawnAsGlyphs(name: String, glyph: String) throws {
+        #expect(WhichKey.display(try parseChord(name)) == glyph)
+        #expect(WhichKey.display(try parseChord("cmd-" + name)) == "⌘" + glyph)
     }
 }

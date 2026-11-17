@@ -50,6 +50,9 @@ struct PillLayoutTests {
         #expect(PillLayout.list(count: 4, maxRows: 10) == PillLayout.Grid(rows: 4, columns: 1, visible: 4, truncated: false, columnMajor: true))
         #expect(PillLayout.list(count: 5, maxRows: 3) == PillLayout.Grid(rows: 3, columns: 2, visible: 5, truncated: false, columnMajor: true))
         #expect(PillLayout.list(count: 0, maxRows: 3).visible == 0)
+        // The columns have the same height: 44 keys with room for 26 rows are 2 columns of 22, not 26 and 18.
+        #expect(PillLayout.list(count: 44, maxRows: 26) == PillLayout.Grid(rows: 22, columns: 2, visible: 44, truncated: false, columnMajor: true))
+        #expect(PillLayout.list(count: 7, maxRows: 0) == PillLayout.Grid(rows: 1, columns: 7, visible: 7, truncated: false, columnMajor: true))
     }
 
     @Test func aListIsFilledDownTheColumnsAndAGridAcrossTheRows() {

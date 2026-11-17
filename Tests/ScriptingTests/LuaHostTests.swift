@@ -334,6 +334,47 @@ struct LuaHostTests {
         #expect(error?.message.contains("'binds.long_press_timeout' must be between 0.1 and 3") == true)
     }
 
+    @Test func theCapsLockCanBeTheHyperKey() throws {
+        let off = try host.load(configURL: dir.write("init.lua", "wm.config { binds = { long_press_timeout = 0.5 } }"))
+        #expect(off.settings.binds.capsLockHyper == false)
+        let on = try host.load(configURL: dir.write("init.lua", "wm.config { binds = { capslock = 'hyper' } }"))
+        #expect(on.settings.binds.capsLockHyper == true)
+        let error = #expect(throws: ConfigError.self) {
+            try host.load(configURL: dir.write("init.lua", "wm.config { binds = { capslock = 'escape' } }"))
+        }
+        #expect(error?.message.contains("'binds.capslock' must be one of \"hyper\"") == true)
+    }
+
+    @Test func aRemapIsABindThatTypesAnotherKey() throws {
+        let config = try host.load(configURL: dir.write("init.lua", """
+        wm.remap("hyper-k", "up", { description = "Up" })
+        wm.remap("hyper-4", "cmd-right")
+        wm.remap("hyper-s", "play")
+        wm.mode("vim", { h = { remap = "left", description = "Left" }, w = { remap = "alt-right" }, esc = "mode main" })
+        """))
+        #expect(config.binds["main"]?[try parseChord("hyper-k")] == .remap(Chord(modifiers: [], key: "up")))
+        #expect(config.binds["main"]?[try parseChord("hyper-4")] == .remap(Chord(modifiers: [.command], key: "right")))
+        #expect(config.binds["main"]?[try parseChord("hyper-s")] == .remap(Chord(modifiers: [], key: "play")))
+        #expect(config.binds["vim"]?[try parseChord("h")] == .remap(Chord(modifiers: [], key: "left")))
+        #expect(config.binds["vim"]?[try parseChord("w")] == .remap(Chord(modifiers: [.option], key: "right")))
+        #expect(config.bindRecords.contains { $0.keys == "hyper-k" && $0.action == "remap up" && $0.options.description == "Up" })
+    }
+
+    @Test(arguments: [
+        ("wm.remap('hyper-k', 'nokey')", "unknown key 'nokey'"),
+        ("wm.remap('hyper-k', 'hyper-up')", "'hyper' is not a key that wm can type"),
+        ("wm.remap('hyper-k>j', 'up')", "is a remap; it needs a single chord"),
+        ("wm.remap('hyper-k', 'up', { release = true })", "is a remap; it needs a single chord"),
+        ("wm.remap('hyper-k', 'up', { repeating = true })", "is a remap; it needs a single chord"),
+        ("wm.remap('hyper-k', 5)", "wm.remap expects the key to type"),
+    ])
+    func aWrongRemapIsAConfigError(script: String, expected: String) throws {
+        let error = #expect(throws: ConfigError.self) {
+            try host.load(configURL: dir.write("init.lua", script))
+        }
+        #expect(error?.message.contains(expected) == true)
+    }
+
     @Test func theMasterTableSetsTheLayoutOptions() throws {
         let config = try host.load(configURL: dir.write("init.lua", """
         wm.config { layout = "master", master = { ratio = 0.6, count = 2, orientation = "center", new_window = "master" } }
