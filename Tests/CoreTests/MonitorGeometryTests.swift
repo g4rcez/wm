@@ -55,21 +55,66 @@ struct MonitorGeometryTests {
         #expect(MonitorGeometry.hiddenCorner(of: frames) == CGPoint(x: 4071, y: 1439))
     }
 
-    @Test func nativeDesktopNamesHavePrefixOnlyWithSeveralDisplays() {
-        #expect(NativeWorkspaceName.desktops(displayNumber: 1, displayCount: 1, desktopCount: 3) == ["1", "2", "3"])
-        #expect(NativeWorkspaceName.desktops(displayNumber: 2, displayCount: 2, desktopCount: 2) == ["2.1", "2.2"])
+    private let area = CGRect(x: 0, y: 25, width: 1920, height: 1055)
+
+    @Test func aWindowMostlyOutsideComesBackInsideTheArea() {
+        let frame = CGRect(x: 1900, y: 100, width: 400, height: 300)
+        #expect(MonitorGeometry.rescued(frame, in: area) == CGRect(x: 1520, y: 100, width: 400, height: 300))
     }
 
-    @Test func virtualRowNames() {
-        #expect(NativeWorkspaceName.row(of: "2", 1) == "2")
-        #expect(NativeWorkspaceName.row(of: "2", 3) == "2/3")
-        #expect(NativeWorkspaceName.row(of: "2.1", 2) == "2.1/2")
+    @Test func aWindowThatIsHalfInsideStaysWhereItIs() {
+        #expect(MonitorGeometry.rescued(CGRect(x: 1720, y: 100, width: 400, height: 300), in: area) == nil)
+        #expect(MonitorGeometry.rescued(CGRect(x: 100, y: 100, width: 400, height: 300), in: area) == nil)
     }
 
-    @Test func desktopAndRowAreRecoveredFromAName() {
-        #expect(NativeWorkspaceName.desktop(of: "2/3") == "2")
-        #expect(NativeWorkspaceName.rowNumber(of: "2/3") == 3)
-        #expect(NativeWorkspaceName.desktop(of: "2.1") == "2.1")
-        #expect(NativeWorkspaceName.rowNumber(of: "2.1") == 1)
+    @Test func aWindowLargerThanTheAreaIsCutDownToIt() {
+        let frame = CGRect(x: 5000, y: 5000, width: 3000, height: 2000)
+        #expect(MonitorGeometry.rescued(frame, in: area) == CGRect(x: 0, y: 25, width: 1920, height: 1055))
+    }
+
+    @Test func clampedMovesAWindowTheShortestWayInside() {
+        #expect(MonitorGeometry.clamped(CGRect(x: -50, y: 2000, width: 400, height: 300), in: area) == CGRect(x: 0, y: 780, width: 400, height: 300))
+    }
+
+    @Test func aWindowKeepsItsSizeAndItsRelativePlaceOnAnotherMonitor() {
+        let old = CGRect(x: 0, y: 0, width: 1000, height: 800)
+        let new = CGRect(x: 1000, y: 0, width: 2000, height: 1600)
+        #expect(MonitorGeometry.translated(CGRect(x: 100, y: 100, width: 400, height: 300), from: old, to: new) == CGRect(x: 1200, y: 200, width: 400, height: 300))
+    }
+
+    @Test func aWindowIsCutDownToASmallerMonitor() {
+        let old = CGRect(x: 0, y: 0, width: 2000, height: 1600)
+        let new = CGRect(x: 2000, y: 0, width: 1000, height: 800)
+        #expect(MonitorGeometry.translated(CGRect(x: 0, y: 0, width: 1500, height: 1000), from: old, to: new) == CGRect(x: 2000, y: 0, width: 1000, height: 800))
+    }
+
+    // MARK: mouse drags
+
+    @Test func aDragTakesTheEdgesOnTheSideOfThePointer() {
+        let frame = CGRect(x: 100, y: 100, width: 400, height: 300)
+        let topLeft = MonitorGeometry.nearestEdges(of: frame, to: CGPoint(x: 150, y: 120))
+        #expect(topLeft.horizontal == .left)
+        #expect(topLeft.vertical == .up)
+        let bottomRight = MonitorGeometry.nearestEdges(of: frame, to: CGPoint(x: 450, y: 380))
+        #expect(bottomRight.horizontal == .right)
+        #expect(bottomRight.vertical == .down)
+    }
+
+    @Test func draggingTheRightAndBottomEdgesGrowsTheWindow() {
+        let frame = CGRect(x: 100, y: 100, width: 400, height: 300)
+        let grown = MonitorGeometry.resized(frame, edges: (.right, .down), by: CGPoint(x: 50, y: 20), minimum: CGSize(width: 120, height: 80))
+        #expect(grown == CGRect(x: 100, y: 100, width: 450, height: 320))
+    }
+
+    @Test func draggingTheLeftAndTopEdgesKeepsTheOppositeEdgesInPlace() {
+        let frame = CGRect(x: 100, y: 100, width: 400, height: 300)
+        let grown = MonitorGeometry.resized(frame, edges: (.left, .up), by: CGPoint(x: -50, y: -20), minimum: CGSize(width: 120, height: 80))
+        #expect(grown == CGRect(x: 50, y: 80, width: 450, height: 320))
+    }
+
+    @Test func aWindowStopsShrinkingAtTheMinimumSize() {
+        let frame = CGRect(x: 100, y: 100, width: 400, height: 300)
+        let small = MonitorGeometry.resized(frame, edges: (.left, .down), by: CGPoint(x: 900, y: -900), minimum: CGSize(width: 120, height: 80))
+        #expect(small == CGRect(x: 380, y: 100, width: 120, height: 80))
     }
 }

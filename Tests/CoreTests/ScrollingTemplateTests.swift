@@ -8,7 +8,12 @@ struct ScrollingTemplateTests {
 
     // A reference type, because #expect cannot call mutating methods on a value.
     private final class Box {
-        var engine = ScrollingEngine(settings: Settings())
+        // These tests are about widths; a lone column fills by default.
+        var engine = ScrollingEngine(settings: {
+            var settings = Settings()
+            settings.scrolling.singleWindowFit = .keep
+            return settings
+        }())
         var windows: [WindowID] { engine.windows }
         func remove(_ window: WindowID) { engine.remove(window) }
         func templateError(_ template: SplitTemplate, focused: WindowID?) -> String? {
@@ -154,7 +159,7 @@ struct ScrollingTemplateTests {
     @Test func stackingAndTabsDoNotApplyInsideATemplate() {
         let engine = engine([1, 2, 3])
         _ = engine.perform(.applyTemplate(.three), focused: 1, in: context)
-        #expect(!engine.perform(.unstack, focused: 1, in: context))
+        #expect(!engine.perform(.unstack(.right), focused: 1, in: context))
         #expect(!engine.perform(.toggleTabs, focused: 1, in: context))
         #expect(!engine.perform(.equalizeStack, focused: 1, in: context))
     }

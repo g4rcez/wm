@@ -56,3 +56,16 @@ struct ChordTests {
         #expect(try parseChord(expected) == parseChord(text))
     }
 }
+
+@Suite("screenshot shortcuts")
+struct ScreenshotShortcutTests {
+    @Test(arguments: ["cmd-shift-3", "cmd-shift-4", "cmd-shift-5", "cmd-shift-6", "cmd-ctrl-shift-4"])
+    func macOSScreenshotShortcutsAreRecognized(text: String) throws {
+        #expect(try parseChord(text).isScreenshotShortcut)
+    }
+
+    @Test(arguments: ["cmd-4", "shift-4", "cmd-shift-2", "cmd-shift-h", "cmd-alt-shift-4", "alt-shift-4"])
+    func otherChordsAreNot(text: String) throws {
+        #expect(!(try parseChord(text).isScreenshotShortcut))
+    }
+}

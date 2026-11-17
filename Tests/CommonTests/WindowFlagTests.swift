@@ -35,7 +35,7 @@ struct WindowFlagTests {
     }
 
     @Test func rejectsAWordThatIsNeitherAnIdNorASelector() {
-        #expect(throws: WindowFlagError(message: "--window needs a window id, or app:<name>, title:<regex>, pid:<n>, focused, got 'abc'")) {
+        #expect(throws: WindowFlagError(message: "--window needs a window id, or app:<name>, title:<regex>, mark:<name>, pid:<n>, focused, got 'abc'")) {
             _ = try parseWindowFlag(["--window", "abc", "close"])
         }
     }
@@ -48,9 +48,10 @@ struct WindowFlagTests {
         #expect(try parseWindowFlag(["window", "close", "--window=title:^Inbox"]).selector == "title:^Inbox")
         #expect(try parseWindowFlag(["--window=focused", "window", "close"]).selector == "focused")
         #expect(try parseWindowFlag(["--window", "pid:412", "window", "close"]).selector == "pid:412")
+        #expect(try parseWindowFlag(["--window", "mark:mail", "window", "close"]).selector == "mark:mail")
     }
 
-    @Test(arguments: ["app:", "title:", "pid:", "pid:abc", "class:x", "FOCUSED", ""])
+    @Test(arguments: ["app:", "title:", "mark:", "pid:", "pid:abc", "class:x", "FOCUSED", ""])
     func rejectsABrokenSelector(text: String) {
         #expect(!isWindowSelector(text))
     }
@@ -59,7 +60,7 @@ struct WindowFlagTests {
         let usage = WindowFlagError(message: "usage: wm --window <window> <command> [args...]")
         #expect(throws: usage) { _ = try parseWindowFlag(["--window", "5"]) }
         #expect(throws: usage) { _ = try parseWindowFlag(["--window=5"]) }
-        let needs = WindowFlagError(message: "--window needs a window id, or app:<name>, title:<regex>, pid:<n>, focused")
+        let needs = WindowFlagError(message: "--window needs a window id, or app:<name>, title:<regex>, mark:<name>, pid:<n>, focused")
         #expect(throws: needs) { _ = try parseWindowFlag(["--window"]) }
         #expect(throws: needs) { _ = try parseWindowFlag(["close", "--window"]) }
     }

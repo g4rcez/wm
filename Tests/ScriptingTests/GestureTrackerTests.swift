@@ -61,4 +61,26 @@ struct GestureTrackerTests {
         #expect(tracker.scroll(dx: -150, dy: 0, modifiers: .option, phase: .none, time: 0.1, gestures: gestures) == .consumed)
         #expect(tracker.scroll(dx: -150, dy: 0, modifiers: .option, phase: .none, time: 1, gestures: gestures) == .fire(.command("workspace prev")))
     }
+
+    // MARK: Fingers
+
+    @Test func aSwipeWithFingersFiresAGestureForThatNumberOfFingers() {
+        var tracker = GestureTracker()
+        let gestures = [Gesture(fingers: 3, direction: .left, action: .command("workspace prev"), threshold: 100)]
+        #expect(tracker.scroll(dx: -60, dy: 0, modifiers: [], phase: .changed, time: 0, gestures: gestures, fingers: 3) == .consumed)
+        #expect(tracker.scroll(dx: -60, dy: 0, modifiers: [], phase: .changed, time: 0.01, gestures: gestures, fingers: 3) == .fire(.command("workspace prev")))
+    }
+
+    @Test func aSwipeWithAnotherNumberOfFingersIsNotTheGesturesAndNeitherIsAScroll() {
+        var tracker = GestureTracker()
+        let gestures = [Gesture(fingers: 3, direction: .left, action: .command("workspace prev"))]
+        #expect(tracker.scroll(dx: -200, dy: 0, modifiers: [], phase: .changed, time: 0, gestures: gestures, fingers: 4) == .ignored)
+        #expect(tracker.scroll(dx: -200, dy: 0, modifiers: [], phase: .changed, time: 0.01, gestures: gestures) == .ignored)
+    }
+
+    @Test func aModifierGestureDoesNotTakeAFingerSwipe() {
+        var tracker = GestureTracker()
+        let gestures = [Gesture(modifiers: .option, direction: .left, action: .command("workspace prev"))]
+        #expect(tracker.scroll(dx: -200, dy: 0, modifiers: [], phase: .changed, time: 0, gestures: gestures, fingers: 3) == .ignored)
+    }
 }

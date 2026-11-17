@@ -12,6 +12,7 @@ private func source() -> CompletionSource {
     source.windows = { [LiveWindow(id: 71, app: "Writeme", title: "Notes"), LiveWindow(id: 55, app: "Telegram", title: "")] }
     source.workspaces = { ["1", "2", "special:term", "special"] }
     source.modes = { ["main", "resize"] }
+    source.marks = { ["mail", "term"] }
     return source
 }
 
@@ -24,26 +25,25 @@ struct CompletionTests {
     }
 
     @Test func aCommandWithSubcommandsAndADirectionCompletesBoth() {
-        #expect(words(complete(["focus", ""])) == ["back", "window", "monitor", "layer", "left", "right", "up", "down"])
+        #expect(words(complete(["focus", ""])) == ["back", "next", "prev", "mark", "app", "column", "stack", "window", "monitor", "layer", "left", "right", "up", "down"])
     }
 
     @Test func aGroupCompletesItsSubcommandsWithTheirSummary() {
         #expect(complete(["window", "send", ""]) == .candidates([
             CompletionCandidate("workspace", "Send the window to a workspace; --stay keeps the view."),
             CompletionCandidate("monitor", "Send the window to another monitor and follow it."),
-            CompletionCandidate("row", "Send the window to a virtual row (native workspaces)."),
             CompletionCandidate("strip", "Move the window to the other strip (scrolling)."),
         ]))
     }
 
     @Test func aPlaceholderIsNotACompletion() {
         // `<name|back>` completes `back`, never the word `name`; `<0.1-0.9|+n|-n>` completes nothing.
-        #expect(words(complete(["workspace", ""])) == ["special", "row", "back", "next", "prev", "empty"])
+        #expect(words(complete(["workspace", ""])) == ["move", "special", "back", "next", "prev", "empty"])
         #expect(words(complete(["layout", "split", "ratio", ""])) == [])
     }
 
     @Test func optionsComeFromTheCommandAndFromEveryCommand() {
-        #expect(words(complete(["window", "send", "workspace", "3", "--"])) == ["--stay", "--tile", "--window", "--json", "--verbose", "--help"])
+        #expect(words(complete(["window", "send", "workspace", "3", "--"])) == ["--stay", "--tile", "--column", "--window", "--json", "--verbose", "--help"])
     }
 
     @Test func onlyTheFirstArgumentCompletes() {
@@ -51,7 +51,7 @@ struct CompletionTests {
     }
 
     @Test func theWindowOptionTakesItsValueOutOfTheCommandPath() {
-        #expect(words(complete(["--window", "focused", "layout", "column", ""])) == ["width", "match", "center", "center-visible"])
+        #expect(words(complete(["--window", "focused", "layout", "column", ""])) == ["width", "match", "expand", "center", "center-visible", "move"])
     }
 
     @Test func execCompletesACommandThenFiles() {
@@ -70,8 +70,18 @@ struct CompletionTests {
         #expect(words(complete(["--window", ""], source: source())) == ["focused", "55", "71", "app:Telegram", "app:Writeme"])
     }
 
+    @Test func focusMarkCompletesTheMarksOfTheRunningWindows() {
+        #expect(words(complete(["focus", "mark", ""], source: source())) == ["mail", "term"])
+        #expect(words(complete(["window", "unmark", ""], source: source())) == ["mail", "term"])
+    }
+
+    @Test func marksComeFromTheListOfWindows() {
+        let json = Data(#"[{"id":1,"marks":["term","mail"]},{"id":2,"marks":["mail"]},{"id":3,"marks":[]}]"#.utf8)
+        #expect(parseLiveMarks(json) == ["mail", "term"])
+    }
+
     @Test func workspaceCompletesTheExistingWorkspacesButNotTheSpecialOnes() {
-        #expect(words(complete(["workspace", ""], source: source())) == ["special", "row", "back", "next", "prev", "empty", "1", "2"])
+        #expect(words(complete(["workspace", ""], source: source())) == ["move", "special", "back", "next", "prev", "empty", "1", "2"])
         #expect(words(complete(["workspace", "special", ""], source: source())) == ["term"])
     }
 
@@ -81,7 +91,7 @@ struct CompletionTests {
 
     @Test func withoutTheDaemonOnlyTheFixedWordsComplete() {
         #expect(words(complete(["focus", "window", ""])) == [])
-        #expect(words(complete(["workspace", ""])) == ["special", "row", "back", "next", "prev", "empty"])
+        #expect(words(complete(["workspace", ""])) == ["move", "special", "back", "next", "prev", "empty"])
     }
 
     @Test func theOutputHasOneCandidatePerLine() {

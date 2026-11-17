@@ -20,6 +20,18 @@ struct WhichKeyTests {
         ]
     }
 
+    @Test func aHoldBindShowsOnceAndOnlyWhenTheKeyHasNoPlainBind() {
+        let records = [
+            record("main", "alt-a", "focus left"),
+            record("main", "alt-a", "focus right", trigger: .hold),
+            record("main", "alt-b", "focus up", trigger: .hold),
+        ]
+        #expect(WhichKey.entries(mode: "main", pending: [], records: records) == [
+            LabelEntry(key: "⌥A", text: "focus left"),
+            LabelEntry(key: "⌥B", text: "focus up"),
+        ])
+    }
+
     @Test func aModeListsItsOwnKeysInAFixedOrder() {
         #expect(WhichKey.entries(mode: "resize", pending: [], records: resize) == [
             LabelEntry(key: "H", text: "Wider"),

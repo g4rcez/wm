@@ -129,4 +129,45 @@ struct DwindleExtrasTests {
         let moved = engine.perform(.moveToRoot, focused: 1, in: context)
         #expect(!moved)
     }
+
+    // MARK: smart split
+
+    @Test func smartSplitPicksTheSideThePointerIsNearest() {
+        let frame = CGRect(x: 0, y: 0, width: 1000, height: 800)
+        #expect(smartSplitSide(of: frame, at: CGPoint(x: 100, y: 400)) == .left)
+        #expect(smartSplitSide(of: frame, at: CGPoint(x: 900, y: 400)) == .right)
+        #expect(smartSplitSide(of: frame, at: CGPoint(x: 500, y: 40)) == .up)
+        #expect(smartSplitSide(of: frame, at: CGPoint(x: 500, y: 760)) == .down)
+    }
+
+    @Test func aCornerGoesToTheSideWithTheLongerRun() {
+        let frame = CGRect(x: 0, y: 0, width: 1000, height: 800)
+        #expect(smartSplitSide(of: frame, at: CGPoint(x: 10, y: 300)) == .left)
+        #expect(smartSplitSide(of: frame, at: CGPoint(x: 400, y: 790)) == .down)
+    }
+
+    @Test func aPreselectedSideIsReadableUntilTheNextWindowTakesIt() {
+        var engine = DwindleEngine(settings: Settings())
+        engine.insert(1, after: nil)
+        #expect(engine.preselection == nil)
+        _ = engine.perform(.preselect(.left), focused: 1, in: LayoutContext(viewport: CGRect(x: 0, y: 0, width: 1000, height: 800)))
+        #expect(engine.preselection == .left)
+        engine.insert(2, after: 1)
+        #expect(engine.preselection == nil)
+        #expect(engine.windows == [2, 1])
+    }
+
+    // MARK: split under the pointer
+
+    @Test func theWindowUnderThePointerIsTheOneWhoseFrameContainsIt() {
+        let frames: [WindowID: CGRect] = [1: CGRect(x: 0, y: 0, width: 500, height: 600), 2: CGRect(x: 500, y: 0, width: 500, height: 600)]
+        #expect(windowUnder(CGPoint(x: 700, y: 300), in: frames) == 2)
+        #expect(windowUnder(CGPoint(x: 100, y: 300), in: frames) == 1)
+        #expect(windowUnder(CGPoint(x: 1200, y: 300), in: frames) == nil)
+    }
+
+    @Test func onASharedEdgeTheLowestIdWins() {
+        let frames: [WindowID: CGRect] = [4: CGRect(x: 0, y: 0, width: 500, height: 600), 3: CGRect(x: 500, y: 0, width: 500, height: 600)]
+        #expect(windowUnder(CGPoint(x: 500, y: 300), in: frames) == 3)
+    }
 }

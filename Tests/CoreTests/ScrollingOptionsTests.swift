@@ -9,6 +9,7 @@ struct ScrollingOptionsTests {
 
     private func engine(_ count: WindowID, _ configure: (inout Settings) -> Void = { _ in }) -> ScrollingEngine {
         var settings = Settings()
+        settings.scrolling.singleWindowFit = .keep  // these tests are about widths; a lone column fills by default
         configure(&settings)
         var engine = ScrollingEngine(settings: settings)
         for id in 1...count { engine.insert(id, after: id == 1 ? nil : id - 1) }
@@ -35,14 +36,14 @@ struct ScrollingOptionsTests {
 
     @Test func aNewColumnIsNormalByDefault() {
         var engine = engine(2)
-        let joined = engine.perform(.stack, focused: 2, in: context)
+        let joined = engine.perform(.stack(.left), focused: 2, in: context)
         #expect(joined)
         #expect(engine.tabs(of: 1) == nil)
     }
 
     @Test func aNewColumnCanBeTabbedByDefault() {
         var engine = engine(2) { $0.scrolling.defaultColumnDisplay = .tabbed }
-        let joined = engine.perform(.stack, focused: 2, in: context)
+        let joined = engine.perform(.stack(.left), focused: 2, in: context)
         #expect(joined)
         #expect(engine.tabs(of: 1) == [1, 2])
         #expect(engine.tabs(of: 2) == [1, 2])
@@ -61,8 +62,8 @@ struct ScrollingOptionsTests {
     // Three windows in one column of height 800.
     private func stack(_ configure: (inout Settings) -> Void = { _ in }) -> ScrollingEngine {
         var engine = engine(3, configure)
-        _ = engine.perform(.stack, focused: 2, in: context)
-        _ = engine.perform(.stack, focused: 3, in: context)
+        _ = engine.perform(.stack(.left), focused: 2, in: context)
+        _ = engine.perform(.stack(.left), focused: 3, in: context)
         return engine
     }
 

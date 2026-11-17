@@ -37,7 +37,7 @@ struct RuntimeInputTests {
         ("--workspace", "exec: --workspace needs a value"),
         ("--width 2 foo", "exec: --width must be between 0.05 and 1"),
         ("--size 5 foo", "exec: --size needs <width>,<height>"),
-        ("--layout grid foo", "exec: --layout must be scrolling or tiling"),
+        ("--layout grid foo", "exec: --layout must be scrolling, tiling or master"),
     ])
     func badExecOptionsAreErrors(text: String, expected: String) {
         let error = #expect(throws: ConfigError.self) { _ = try parseExecRule(text) }

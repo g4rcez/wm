@@ -242,4 +242,21 @@ struct WindowHintsTests {
         hints.deleteLast()
         #expect(hints.typed == "")
     }
+
+    @Test func aGridPutsTheTilesInRowsInTheOrderGiven() {
+        let grid = Miniature.grid([7, 8, 9], tile: CGSize(width: 100, height: 60), columns: 2, spacing: 10)
+        #expect(grid.frames == [
+            7: CGRect(x: 0, y: 0, width: 100, height: 60),
+            8: CGRect(x: 110, y: 0, width: 100, height: 60),
+            9: CGRect(x: 0, y: 70, width: 100, height: 60),
+        ])
+        #expect(grid.viewports == [])
+    }
+
+    @Test func aGridSelectsTheSecondMostRecentWindowFirst() {
+        let grid = Miniature.grid([7, 8, 9], tile: CGSize(width: 100, height: 60), columns: 3)
+        let model = SwitcherModel(overview: grid, floating: [:], mru: [7, 8, 9], focused: 7)
+        #expect(model.selected == 8)
+        #expect(model.order == [7, 8, 9])
+    }
 }

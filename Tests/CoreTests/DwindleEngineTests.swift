@@ -298,7 +298,7 @@ struct DwindleEngineTests {
     @Test func commandsForOtherLayoutsAreIgnored() {
         var engine = threeWindows()
         #expect(engine.perform(.columnWidth(.cycle), focused: 1, in: context) == false)
-        #expect(engine.perform(.stack, focused: 1, in: context) == false)
+        #expect(engine.perform(.stack(.left), focused: 1, in: context) == false)
     }
 
     @Test func commandsNeedAFocusedWindowOfTheLayout() {

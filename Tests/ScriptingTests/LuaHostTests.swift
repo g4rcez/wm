@@ -124,7 +124,7 @@ struct LuaHostTests {
         #expect(settings.border.radius == 12)
         #expect(settings.border.active == Color(red: 137.0 / 255, green: 180.0 / 255, blue: 250.0 / 255))
         #expect(settings.border.inactive == Color(red: 0, green: 0, blue: 0, alpha: 0))
-        #expect(settings.focusFollowsMouse == true)
+        #expect(settings.focusFollowsMouse.enabled == true)
         #expect(settings.tabIndicator.enabled == false)
         #expect(settings.tabIndicator.position == .right)
         #expect(settings.tabIndicator.size == 8)
@@ -218,6 +218,45 @@ struct LuaHostTests {
         #expect(config.bindRecords.count == 2)
     }
 
+    @Test(arguments: [
+        """
+        wm.bind("alt-a", "focus left")
+        wm.bind("alt-a", "focus right", { repeating = true })
+        """,
+        """
+        wm.bind("alt-a", "focus right", { repeating = true })
+        wm.bind("alt-a", "focus left")
+        """,
+    ])
+    func aPlainBindAndARepeatingBindShareAChordInAnyOrder(script: String) throws {
+        let config = try host.load(configURL: dir.write("init.lua", script))
+        let a = try parseChord("alt-a")
+        #expect(config.binds["main"]?[a] == .command("focus left"))
+        #expect(config.holdBinds["main"]?[a] == .command("focus right"))
+        #expect(Set(config.bindRecords.map(\.trigger)) == [.press, .hold])
+    }
+
+    @Test func aRepeatingBindAloneRunsOnPressAndOnRepeats() throws {
+        let config = try host.load(configURL: dir.write("init.lua", """
+        wm.bind("alt-a", "focus right", { repeating = true })
+        wm.bind("alt-b>c", "focus up", { repeating = true })
+        """))
+        let a = try parseChord("alt-a")
+        #expect(config.binds["main"]?[a] == .command("focus right"))
+        #expect(config.holdBinds["main"]?[a] == .command("focus right"))
+        #expect(config.bindRecords.first?.trigger == .hold)
+        // On a sequence the option has no effect, as before.
+        #expect(config.holdBinds["main"]?[try parseChord("alt-b")] == nil)
+        #expect(config.sequences["main"]?[[try parseChord("alt-b"), try parseChord("c")]] == .command("focus up"))
+    }
+
+    @Test func theHyprlandNameOfUniversalWorks() throws {
+        let config = try host.load(configURL: dir.write("init.lua", """
+        wm.bind("alt-a", "focus left", { submap_universal = true })
+        """))
+        #expect(config.binds[universalMode]?[try parseChord("alt-a")] == .command("focus left"))
+    }
+
     @Test func bindingTheSameKeyAgainReplacesItsRecord() throws {
         let config = try host.load(configURL: dir.write("init.lua", """
         wm.bind("alt-a", "focus left")
@@ -276,7 +315,7 @@ struct LuaHostTests {
         ("wm.gesture { mods = '', direction = 'left', command = 'x' }", "needs at least one modifier"),
         ("wm.gesture { mods = 'alt', direction = 'left', command = '  ' }", "'command' must not be empty"),
         ("wm.gesture { mods = 'alt', direction = 'left', command = 'x', threshold = 1 }", "'threshold' must be between 10 and 2000"),
-        ("wm.gesture { mods = 'alt', direction = 'left', command = 'x', fingers = 3 }", "unknown key 'fingers'"),
+        ("wm.gesture { mods = 'alt', direction = 'left', command = 'x', touches = 3 }", "unknown key 'touches'"),
         ("wm.gesture('alt')", "wm.gesture expects a table"),
     ])
     func gestureErrorsNameTheProblem(script: String, expected: String) throws {
@@ -293,6 +332,63 @@ struct LuaHostTests {
             try host.load(configURL: dir.write("init.lua", "wm.config { binds = { long_press_timeout = 9 } }"))
         }
         #expect(error?.message.contains("'binds.long_press_timeout' must be between 0.1 and 3") == true)
+    }
+
+    @Test func theMasterTableSetsTheLayoutOptions() throws {
+        let config = try host.load(configURL: dir.write("init.lua", """
+        wm.config { layout = "master", master = { ratio = 0.6, count = 2, orientation = "center", new_window = "master" } }
+        """))
+        #expect(config.settings.layout == .master)
+        #expect(config.settings.master.ratio == 0.6)
+        #expect(config.settings.master.count == 2)
+        #expect(config.settings.master.orientation == .center)
+        #expect(config.settings.master.newWindow == .master)
+        let defaults = try host.load(configURL: dir.write("init.lua", "wm.config { layout = 'tiling' }"))
+        #expect(defaults.settings.master == MasterSettings())
+    }
+
+    @Test(arguments: [
+        ("wm.config { master = { ratio = 0.95 } }", "'master.ratio' must be between 0.1 and 0.9"),
+        ("wm.config { master = { count = 0 } }", "'master.count' must be a whole number, at least 1"),
+        ("wm.config { master = { orientation = 'diagonal' } }", "'master.orientation' must be one of"),
+        ("wm.config { master = { new_window = 'bottom' } }", "'master.new_window' must be one of"),
+        ("wm.config { master = { size = 1 } }", "unknown key 'master.size'"),
+    ])
+    func masterOptionErrorsNameTheKey(script: String, expected: String) {
+        let error = #expect(throws: ConfigError.self) { try host.load(configURL: dir.write("init.lua", script)) }
+        #expect(error?.message.contains(expected) == true)
+    }
+
+    @Test func aWorkspaceCanUseTheMasterLayoutWithItsOwnOptions() throws {
+        let config = try host.load(configURL: dir.write("init.lua", """
+        wm.workspace("code", { layout = "master", layout_options = { master_ratio = 0.7, master_orientation = "right" } })
+        """))
+        #expect(config.workspaceLayouts["code"] == .master)
+        var settings = Settings()
+        try applyWorkspaceOverrides(try #require(config.workspaceRules["code"]?.overrides), to: &settings)
+        #expect(settings.master.ratio == 0.7)
+        #expect(settings.master.orientation == .right)
+    }
+
+    @Test func zenSettingsSetTheWidthAndCheckIt() throws {
+        let config = try host.load(configURL: dir.write("init.lua", "wm.config { zen = { width = 0.6 } }"))
+        #expect(config.settings.zen.width == 0.6)
+        #expect(try host.load(configURL: dir.write("init.lua", "wm.config { layout = 'tiling' }")).settings.zen.width == 0.7)
+        let low = #expect(throws: ConfigError.self) {
+            try host.load(configURL: dir.write("init.lua", "wm.config { zen = { width = 0.1 } }"))
+        }
+        #expect(low?.message.contains("'zen.width' must be between 0.3 and 1") == true)
+    }
+
+    @Test func bindSettingsCanTurnOffTheSystemCmdTab() throws {
+        let off = try host.load(configURL: dir.write("init.lua", "wm.config { binds = { long_press_timeout = 0.5 } }"))
+        #expect(off.settings.binds.disableSystemCmdTab == false)
+        let on = try host.load(configURL: dir.write("init.lua", "wm.config { binds = { disable_system_cmd_tab = true } }"))
+        #expect(on.settings.binds.disableSystemCmdTab == true)
+        let error = #expect(throws: ConfigError.self) {
+            try host.load(configURL: dir.write("init.lua", "wm.config { binds = { disable_system_cmd_tab = 'yes' } }"))
+        }
+        #expect(error?.message.contains("'binds.disable_system_cmd_tab' must be true or false") == true)
     }
 
     @Test(arguments: ["top-left", "top-center", "top-right", "center", "bottom-left", "bottom-center", "bottom-right"])
@@ -399,6 +495,91 @@ struct LuaHostTests {
 
         #expect(config.settings.layout == .scrolling)
         #expect(config.settings.gaps == Gaps(inner: 4, outer: 2))
+    }
+
+    @Test func workspaceBackAndForthIsOffUntilTheConfigSetsIt() throws {
+        let off = try host.load(configURL: dir.write("init.lua", "wm.config { layout = \"tiling\" }"))
+        #expect(off.settings.workspaceBackAndForth == false)
+
+        let on = try host.load(configURL: dir.write("init.lua", "wm.config { workspace_back_and_forth = true }"))
+        #expect(on.settings.workspaceBackAndForth == true)
+    }
+
+    @Test func scrollingFillOptionsLoadFromTheConfigAndFromAWorkspaceRule() throws {
+        let config = try host.load(configURL: dir.write("init.lua", """
+        wm.config { scrolling = { single_window_fit = "fill", visible_columns = 3, orientation = "auto" } }
+        wm.workspace("code", { layout = "scrolling", layout_options = { single_window_fit = "keep", visible_columns = 2 } })
+        """))
+        #expect(config.settings.scrolling.singleWindowFit == .fill)
+        #expect(config.settings.scrolling.visibleColumns == 3)
+        #expect(config.settings.scrolling.orientation == .auto)
+
+        var other = Settings()
+        try applyWorkspaceOverrides(try #require(config.workspaceRules["code"]?.overrides), to: &other)
+        #expect(other.scrolling.singleWindowFit == .keep)
+        #expect(other.scrolling.visibleColumns == 2)
+    }
+
+    @Test func focusFollowsMouseTakesATrueOrATable() throws {
+        let flag = try host.load(configURL: dir.write("init.lua", "wm.config { focus_follows_mouse = true }"))
+        #expect(flag.settings.focusFollowsMouse == FocusFollowsMouse(enabled: true, onlyFullyVisible: false))
+
+        let table = try host.load(configURL: dir.write("init.lua", "wm.config { focus_follows_mouse = { enabled = true, only_fully_visible = true } }"))
+        #expect(table.settings.focusFollowsMouse == FocusFollowsMouse(enabled: true, onlyFullyVisible: true))
+    }
+
+    @Test func theMouseModifiersAreOffUntilTheConfigSetsThem() throws {
+        let off = try host.load(configURL: dir.write("init.lua", "wm.config { layout = \"tiling\" }"))
+        #expect(off.settings.mouse == MouseSettings())
+
+        let on = try host.load(configURL: dir.write("init.lua", "wm.config { mouse = { move_modifier = \"alt\", resize_modifier = \"alt+shift\" } }"))
+        #expect(on.settings.mouse == MouseSettings(moveModifier: "alt", resizeModifier: "alt+shift"))
+    }
+
+    @Test func aGestureCanNameTheNumberOfFingersInsteadOfAModifier() throws {
+        let config = try host.load(configURL: dir.write("init.lua", """
+        wm.gesture { fingers = 3, direction = "left", command = "workspace prev" }
+        wm.gesture { mods = "alt", fingers = 4, direction = "up", command = "overview", threshold = 200 }
+        """))
+        #expect(config.gestures.count == 2)
+        #expect(config.gestures[0].fingers == 3)
+        #expect(config.gestures[0].modifiers == [])
+        #expect(config.gestures[1].fingers == 4)
+        #expect(config.gestures[1].modifiers == .option)
+    }
+
+    @Test func theTrackpadIsOffUntilTheConfigSetsIt() throws {
+        let off = try host.load(configURL: dir.write("init.lua", "wm.config { layout = \"tiling\" }"))
+        #expect(off.settings.trackpad == TrackpadSettings())
+        let on = try host.load(configURL: dir.write("init.lua", "wm.config { trackpad = { enabled = true, scroll_fingers = 4, speed = 2 } }"))
+        #expect(on.settings.trackpad == TrackpadSettings(enabled: true, scrollFingers: 4, speed: 2))
+    }
+
+    @Test func splitUnderPointerIsOffUntilTheConfigSetsIt() throws {
+        let off = try host.load(configURL: dir.write("init.lua", "wm.config { tiling = { smart_split = true } }"))
+        #expect(off.settings.tiling.splitUnderPointer == false)
+        let on = try host.load(configURL: dir.write("init.lua", "wm.config { tiling = { split_under_pointer = true } }"))
+        #expect(on.settings.tiling.splitUnderPointer == true)
+        #expect(on.settings.tiling.smartSplit == false)
+    }
+
+    @Test func smartSplitIsOffUntilTheConfigSetsIt() throws {
+        let off = try host.load(configURL: dir.write("init.lua", "wm.config { tiling = { split_ratio = 0.6 } }"))
+        #expect(off.settings.tiling.smartSplit == false)
+        let on = try host.load(configURL: dir.write("init.lua", "wm.config { tiling = { smart_split = true } }"))
+        #expect(on.settings.tiling.smartSplit == true)
+    }
+
+    @Test func aWorkspaceAndARuleCanNameAMonitorByRole() throws {
+        let config = try host.load(configURL: dir.write("init.lua", """
+        wm.workspace("web", { monitor = "main", default = true })
+        wm.workspace("chat", { monitor = "secondary" })
+        wm.rule { app = "com.apple.Notes", monitor = "tertiary" }
+        """))
+
+        #expect(config.workspaceRules["web"]?.monitor == "main")
+        #expect(config.workspaceRules["chat"]?.monitor == "secondary")
+        #expect(config.rules.first?.monitor == "tertiary")
     }
 
     @Test func workspacesCanHaveTheirOwnLayout() throws {
@@ -598,7 +779,7 @@ struct LuaHostTests {
         ("wm.config { border = { active = '#12345' } }", "'border.active' must be a color"),
         ("wm.config { layout = 'dwindle' }", "'layout' must be one of"),
         ("wm.config { dwindle = {} }", "unknown key 'dwindle'"),
-        ("wm.config { master = {} }", "unknown key 'master'"),
+        ("wm.config { layoutz = {} }", "unknown key 'layoutz'"),
         ("wm.config { tree = {} }", "unknown key 'tree'"),
         ("wm.config { tiling = { split_ratio = 2 } }", "'tiling.split_ratio' must be between 0.1 and 0.9"),
         ("wm.config { animations = { enabled = 'yes' } }", "'animations.enabled' must be true or false"),
@@ -606,6 +787,14 @@ struct LuaHostTests {
         ("wm.config { scrolling = { vertical = { width = 0.95 } } }", "'scrolling.vertical.width' must be between 0.1 and 0.9"),
         ("wm.config { scrolling = { vertical = { foo = 1 } } }", "unknown key 'scrolling.vertical.foo'"),
         ("wm.config { scrolling = { default_column_display = 'accordion' } }", "'scrolling.default_column_display' must be one of"),
+        ("wm.config { trackpad = { scroll_fingers = 2 } }", "'trackpad.scroll_fingers' must be 3, 4 or 0"),
+        ("wm.gesture { fingers = 5, direction = 'left', command = 'x' }", "'fingers' must be 3 or 4"),
+        ("wm.gesture { direction = 'left', command = 'x' }", "needs 'mods'"),
+        ("wm.config { mouse = { move_modifier = 'hyper' } }", "'mouse.move_modifier' unknown modifier 'hyper'"),
+        ("wm.config { mouse = { drag = 'alt' } }", "unknown key 'mouse.drag'"),
+        ("wm.config { focus_follows_mouse = { only = true } }", "unknown key 'focus_follows_mouse.only'"),
+        ("wm.config { scrolling = { orientation = 'diagonal' } }", "'scrolling.orientation' must be one of"),
+        ("wm.config { scrolling = { single_window_fit = 'stretch' } }", "'scrolling.single_window_fit' must be one of"),
         ("wm.config { scrolling = { always_center_single_column = 'yes' } }", "'scrolling.always_center_single_column' must be true or false"),
         ("wm.config { scrolling = { preset_heights = {} } }", "'scrolling.preset_heights' must not be empty"),
         ("wm.config { scrolling = { preset_heights = { 1 } } }", "'scrolling.preset_heights'"),
@@ -697,10 +886,34 @@ struct LuaHostTests {
 
     // MARK: Tile templates
 
+    @Test func theCenteredTemplateAndACustomAreaCanBeListed() throws {
+        let config = try host.load(configURL: dir.write("init.lua", """
+        wm.config { tiling = { templates = {
+          wm.templates.two,
+          wm.templates.centered,
+          { name = "wide", key = "y", cells = { { 0, 0, 1, 1 } }, area = { 0.1, 0, 0.8, 1 } },
+        } } }
+        """))
+        #expect(config.settings.tiling.templates.map(\.name) == ["2", "center", "wide"])
+        #expect(config.settings.tiling.templates[1] == .centered)
+        #expect(config.settings.tiling.templates[2].area == CGRect(x: 0.1, y: 0, width: 0.8, height: 1))
+    }
+
+    @Test func aBadTemplateAreaNamesItsPath() {
+        let error = #expect(throws: ConfigError.self) {
+            try host.load(configURL: dir.write("init.lua", "wm.config { tiling = { templates = { { name = 'x', cells = { {0,0,1,1} }, area = { 0, 0, 1 } } } } }"))
+        }
+        #expect(error?.message.contains("'tiling.templates[1].area' must be { x, y, width, height }, four numbers") == true)
+        let outside = #expect(throws: ConfigError.self) {
+            try host.load(configURL: dir.write("init.lua", "wm.config { tiling = { templates = { { name = 'x', cells = { {0,0,1,1} }, area = { 0.5, 0, 0.8, 1 } } } } }"))
+        }
+        #expect(outside?.message.contains("'tiling.templates[1].area' is not valid: the area needs a positive size") == true)
+    }
+
     @Test func templatesStayBuiltInWhenTheConfigHasNone() throws {
         let config = try host.load(configURL: dir.write("init.lua", "wm.config { layout = 'scrolling' }"))
 
-        #expect(config.settings.tiling.templates == SplitTemplate.allCases)
+        #expect(config.settings.tiling.templates == SplitTemplate.tilingCases)
         #expect(config.settings.scrolling.templates == SplitTemplate.allCases)
     }
 

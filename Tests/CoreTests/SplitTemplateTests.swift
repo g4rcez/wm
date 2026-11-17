@@ -77,6 +77,34 @@ struct SplitTemplateTests {
         }
     }
 
+    @Test func theCenteredFrameHasAValidShapeAndIsBuiltInForTiling() {
+        #expect(SplitTemplate.shapeError(SplitTemplate.centered.cells, area: SplitTemplate.centered.area) == nil)
+        #expect(SplitTemplate.centered.isFrame)
+        #expect(SplitTemplate.builtIn(named: "center") == .centered)
+        #expect(SplitTemplate.tilingCases.last == .centered)
+        #expect(!SplitTemplate.allCases.contains(.centered))
+    }
+
+    @Test func aFrameNeedsOneUnitCellAndASmallerArea() {
+        let unit = CGRect(x: 0, y: 0, width: 1, height: 1)
+        let middle = CGRect(x: 0.2, y: 0, width: 0.6, height: 1)
+        #expect(SplitTemplate.shapeError([unit], area: middle) == nil)
+        #expect(SplitTemplate.shapeError([unit]) == "a template needs at least two cells")
+        #expect(SplitTemplate.shapeError([CGRect(x: 0, y: 0, width: 0.5, height: 1)], area: middle)
+            == "a template with one cell and an area needs the cell { 0, 0, 1, 1 }")
+        #expect(SplitTemplate.shapeError([unit], area: CGRect(x: 0.5, y: 0, width: 0.8, height: 1))
+            == "the area needs a positive size and must stay inside 0 to 1")
+    }
+
+    @Test func aTemplateKeepsItsAreaThroughJSONAndAnOldOneHasNone() throws {
+        let data = try JSONEncoder().encode(SplitTemplate.centered)
+        #expect(try JSONDecoder().decode(SplitTemplate.self, from: data) == .centered)
+        var object = try #require(JSONSerialization.jsonObject(with: try JSONEncoder().encode(SplitTemplate.two)) as? [String: Any])
+        object["area"] = nil
+        let old = try JSONDecoder().decode(SplitTemplate.self, from: try JSONSerialization.data(withJSONObject: object))
+        #expect(old.area == CGRect(x: 0, y: 0, width: 1, height: 1))
+    }
+
     @Test func shapeErrorsNameTheProblem() {
         let left = CGRect(x: 0, y: 0, width: 0.5, height: 1)
         #expect(SplitTemplate.shapeError([left]) == "a template needs at least two cells")

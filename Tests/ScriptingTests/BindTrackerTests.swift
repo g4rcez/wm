@@ -14,6 +14,28 @@ struct BindTrackerTests {
         #expect(tracker.keyUp(keyCode: 4) == (false, []))
     }
 
+    @Test func aHoldBindRunsOnRepeatsAndThePressBindOnlyWhenTheKeyGoesDown() {
+        var tracker = BindTracker()
+        let lookup = BindLookup(press: a, hold: b)
+        #expect(tracker.keyDown(keyCode: 4, isRepeat: false, lookup: lookup) == (true, [.run(a)]))
+        #expect(tracker.keyDown(keyCode: 4, isRepeat: true, lookup: lookup) == (true, [.run(b)]))
+        #expect(tracker.keyDown(keyCode: 4, isRepeat: true, lookup: lookup) == (true, [.run(b)]))
+    }
+
+    @Test func aHoldBindStillWinsOverANoRepeatPressBind() {
+        var tracker = BindTracker()
+        let lookup = BindLookup(press: a, hold: b, noRepeat: true)
+        #expect(tracker.keyDown(keyCode: 4, isRepeat: true, lookup: lookup) == (true, [.run(b)]))
+    }
+
+    @Test func aHoldBindWorksWithAReleaseBind() {
+        var tracker = BindTracker()
+        let lookup = BindLookup(press: a, release: c, hold: b)
+        #expect(tracker.keyDown(keyCode: 4, isRepeat: false, lookup: lookup) == (true, [.run(a)]))
+        #expect(tracker.keyDown(keyCode: 4, isRepeat: true, lookup: lookup) == (true, [.run(b)]))
+        #expect(tracker.keyUp(keyCode: 4) == (true, [.run(c)]))
+    }
+
     @Test func aBindThatDoesNotRepeatRunsOncePerPress() {
         var tracker = BindTracker()
         let lookup = BindLookup(press: a, noRepeat: true)

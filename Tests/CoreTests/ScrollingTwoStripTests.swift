@@ -36,6 +36,7 @@ struct ScrollingTwoStripTests {
 
     private func settings(side: Direction = .right) -> Settings {
         var settings = Settings()
+        settings.scrolling.singleWindowFit = .keep  // these tests are about widths; a lone column fills by default
         settings.scrolling.vertical.side = side
         return settings
     }
@@ -261,7 +262,7 @@ struct ScrollingTwoStripTests {
     @Test func crossingPicksTheWindowWithTheLargestOverlap() {
         // Column 2 is a stack of 2 and 3 (400 high each); rows 10 and 11 are 400 high each.
         let workspace = workspace(columns: [1, 2, 3], rows: [10, 11])
-        _ = workspace.perform(.stack, focused: 3, in: context)
+        _ = workspace.perform(.stack(.left), focused: 3, in: context)
         #expect(workspace.neighbor(of: 2, .right, wrap: false, in: context) == 10)
         #expect(workspace.neighbor(of: 3, .right, wrap: false, in: context) == 11)
         #expect(workspace.neighbor(of: 10, .left, wrap: false, in: context) == 2)
@@ -288,7 +289,7 @@ struct ScrollingTwoStripTests {
 
     @Test func leftAndRightInsideARowWithTwoWindowsStayInTheRowUntilTheEdge() {
         let workspace = workspace(columns: [1], rows: [10, 11])
-        _ = workspace.perform(.stack, focused: 11, in: context)
+        _ = workspace.perform(.stack(.left), focused: 11, in: context)
         #expect(workspace.neighbor(of: 10, .right, wrap: false, in: context) == 11)
         #expect(workspace.neighbor(of: 11, .left, wrap: false, in: context) == 10)
         #expect(workspace.neighbor(of: 10, .left, wrap: false, in: context) == 1)
@@ -350,7 +351,7 @@ struct ScrollingTwoStripTests {
         #expect(workspace.perform(.move(.down), focused: 10, in: context))
         #expect(workspace.windows == [1, 11, 10])
         #expect(!workspace.perform(.move(.down), focused: 10, in: context))
-        _ = workspace.perform(.stack, focused: 10, in: context)
+        _ = workspace.perform(.stack(.left), focused: 10, in: context)
         #expect(workspace.windows == [1, 11, 10])
         #expect(workspace.perform(.move(.left), focused: 10, in: context))
         #expect(workspace.windows == [1, 10, 11])
@@ -422,7 +423,7 @@ struct ScrollingTwoStripTests {
 
     @Test func draggingTheDividerInsideARowMovesWidthBetweenItsTwoWindows() {
         let workspace = workspace(columns: [1], rows: [10, 11])
-        _ = workspace.perform(.stack, focused: 11, in: context)
+        _ = workspace.perform(.stack(.left), focused: 11, in: context)
         #expect(workspace.perform(.resizeEdge(.right, 125), focused: 10, in: context))
         #expect(workspace.frames(in: context, focused: 10) == [
             1: CGRect(x: 0, y: 0, width: 375, height: 800),
@@ -450,14 +451,14 @@ struct ScrollingTwoStripTests {
 
     @Test func stackInTheVerticalStripJoinsTheRowAboveAndUnstackPullsItOutBelow() {
         let workspace = workspace(columns: [1], rows: [10, 11])
-        #expect(workspace.perform(.stack, focused: 11, in: context))
+        #expect(workspace.perform(.stack(.left), focused: 11, in: context))
         #expect(workspace.frames(in: context, focused: 10) == [
             1: CGRect(x: 0, y: 0, width: 375, height: 800),
             10: CGRect(x: 750, y: 0, width: 125, height: 400),
             11: CGRect(x: 875, y: 0, width: 125, height: 400),
         ])
-        #expect(!workspace.perform(.stack, focused: 10, in: context))
-        #expect(workspace.perform(.unstack, focused: 11, in: context))
+        #expect(!workspace.perform(.stack(.left), focused: 10, in: context))
+        #expect(workspace.perform(.unstack(.right), focused: 11, in: context))
         #expect(workspace.frames(in: context, focused: 10)[11] == CGRect(x: 750, y: 400, width: 250, height: 400))
     }
 
@@ -492,7 +493,7 @@ struct ScrollingTwoStripTests {
 
     @Test func rotateClockwiseThenCounterclockwiseIsTheIdentity() {
         let workspace = workspace(columns: [1, 2, 3], rows: [10, 11])
-        _ = workspace.perform(.stack, focused: 3, in: context)
+        _ = workspace.perform(.stack(.left), focused: 3, in: context)
         let before = workspace.frames(in: context, focused: 1)
         #expect(workspace.perform(.rotate(clockwise: true), focused: 1, in: context))
         #expect(workspace.perform(.rotate(clockwise: false), focused: 1, in: context))
@@ -502,7 +503,7 @@ struct ScrollingTwoStripTests {
 
     @Test func rotateKeepsEachStackShareWithItsSlot() {
         let workspace = workspace(columns: [1, 2, 3])
-        _ = workspace.perform(.stack, focused: 3, in: context)
+        _ = workspace.perform(.stack(.left), focused: 3, in: context)
         _ = workspace.perform(.resize(.height, 80), focused: 2, in: context)
         #expect(workspace.perform(.rotate(clockwise: true), focused: 1, in: context))
         #expect(workspace.windows == [3, 1, 2])

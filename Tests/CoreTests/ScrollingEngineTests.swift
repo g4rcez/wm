@@ -28,6 +28,7 @@ struct ScrollingEngineTests {
 
     private func engine(_ ids: [WindowID], center: CenterMode = .onOverflow, presets: [Double]? = nil) -> Strip {
         var settings = Settings()
+        settings.scrolling.singleWindowFit = .keep  // these tests are about widths; a lone column fills by default
         settings.scrolling.center = center
         if let presets { settings.scrolling.presets = presets }
         var engine = ScrollingEngine(settings: settings)
@@ -163,7 +164,7 @@ struct ScrollingEngineTests {
 
     @Test func stackedWindowsShareTheColumnHeight() {
         let engine = engine([1, 2])
-        #expect(engine.perform(.stack, focused: 2, in: context))
+        #expect(engine.perform(.stack(.left), focused: 2, in: context))
         #expect(engine.frames(in: context, focused: 1) == [
             1: CGRect(x: 0, y: 0, width: 500, height: 400),
             2: CGRect(x: 0, y: 400, width: 500, height: 400),
@@ -172,7 +173,7 @@ struct ScrollingEngineTests {
 
     @Test func parkedStackKeepsItsStackHeights() {
         let engine = engine([1, 2, 3, 4])
-        _ = engine.perform(.stack, focused: 2, in: context)
+        _ = engine.perform(.stack(.left), focused: 2, in: context)
         #expect(engine.frames(in: context, focused: 4) == [
             1: CGRect(x: -492, y: 0, width: 500, height: 400),
             2: CGRect(x: -492, y: 400, width: 500, height: 400),
@@ -183,7 +184,7 @@ struct ScrollingEngineTests {
 
     @Test func tabbedColumnGivesEveryWindowTheFullFrame() {
         let engine = engine([1, 2, 3])
-        _ = engine.perform(.stack, focused: 2, in: context)
+        _ = engine.perform(.stack(.left), focused: 2, in: context)
         #expect(engine.perform(.toggleTabs, focused: 1, in: context))
         #expect(engine.frames(in: context, focused: 1) == [
             1: CGRect(x: 0, y: 0, width: 500, height: 800),
@@ -194,7 +195,7 @@ struct ScrollingEngineTests {
 
     @Test func togglingTabsTwiceRestoresTheStack() {
         let engine = engine([1, 2])
-        _ = engine.perform(.stack, focused: 2, in: context)
+        _ = engine.perform(.stack(.left), focused: 2, in: context)
         _ = engine.perform(.toggleTabs, focused: 1, in: context)
         _ = engine.perform(.toggleTabs, focused: 1, in: context)
         #expect(engine.frames(in: context, focused: 1)[2] == CGRect(x: 0, y: 400, width: 500, height: 400))
@@ -211,14 +212,14 @@ struct ScrollingEngineTests {
 
     @Test func maximizeShowsAStackedWindowAtTheFullHeight() {
         let engine = engine([1, 2])
-        _ = engine.perform(.stack, focused: 2, in: context)
+        _ = engine.perform(.stack(.left), focused: 2, in: context)
         #expect(engine.perform(.maximize, focused: 2, in: context))
         #expect(engine.frames(in: context, focused: 2)[2] == CGRect(x: 0, y: 0, width: 1000, height: 800))
     }
 
     @Test func maximizeTwiceRestoresSizeAndStack() {
         let engine = engine([1, 2])
-        _ = engine.perform(.stack, focused: 2, in: context)
+        _ = engine.perform(.stack(.left), focused: 2, in: context)
         let before = engine.frames(in: context, focused: 2)
         _ = engine.perform(.maximize, focused: 2, in: context)
         _ = engine.perform(.maximize, focused: 2, in: context)
@@ -272,7 +273,7 @@ struct ScrollingEngineTests {
 
     @Test func removeFromAStackKeepsTheColumnAndGivesTheHeightToTheRest() {
         let engine = engine([1, 2, 3])
-        _ = engine.perform(.stack, focused: 2, in: context)
+        _ = engine.perform(.stack(.left), focused: 2, in: context)
         engine.remove(2)
         #expect(engine.frames(in: context, focused: 1)[1] == CGRect(x: 0, y: 0, width: 500, height: 800))
         #expect(engine.windows == [1, 3])
@@ -303,7 +304,7 @@ struct ScrollingEngineTests {
 
     @Test func moveVerticallyReordersTheStack() {
         let engine = engine([1, 2])
-        _ = engine.perform(.stack, focused: 2, in: context)
+        _ = engine.perform(.stack(.left), focused: 2, in: context)
         #expect(engine.perform(.move(.up), focused: 2, in: context))
         #expect(engine.windows == [2, 1])
         #expect(!engine.perform(.move(.up), focused: 2, in: context))
@@ -336,7 +337,7 @@ struct ScrollingEngineTests {
 
     @Test func resizeHeightShiftsHeightToTheNeighbour() {
         let engine = engine([1, 2])
-        _ = engine.perform(.stack, focused: 2, in: context)
+        _ = engine.perform(.stack(.left), focused: 2, in: context)
         #expect(engine.perform(.resize(.height, 80), focused: 1, in: context))
         #expect(engine.frames(in: context, focused: 1) == [
             1: CGRect(x: 0, y: 0, width: 500, height: 480),
@@ -346,7 +347,7 @@ struct ScrollingEngineTests {
 
     @Test func resizeHeightOfTheLastWindowTakesFromTheOneAbove() {
         let engine = engine([1, 2])
-        _ = engine.perform(.stack, focused: 2, in: context)
+        _ = engine.perform(.stack(.left), focused: 2, in: context)
         #expect(engine.perform(.resize(.height, 80), focused: 2, in: context))
         #expect(engine.frames(in: context, focused: 1) == [
             1: CGRect(x: 0, y: 0, width: 500, height: 320),
@@ -356,7 +357,7 @@ struct ScrollingEngineTests {
 
     @Test func resizeHeightKeepsTenPercentForTheNeighbour() {
         let engine = engine([1, 2])
-        _ = engine.perform(.stack, focused: 2, in: context)
+        _ = engine.perform(.stack(.left), focused: 2, in: context)
         #expect(engine.perform(.resize(.height, 10000), focused: 1, in: context))
         #expect(engine.frames(in: context, focused: 1) == [
             1: CGRect(x: 0, y: 0, width: 500, height: 720),
@@ -371,7 +372,7 @@ struct ScrollingEngineTests {
 
     @Test func balanceFitsEveryColumnOnScreenAndKeepsStackHeights() {
         let engine = engine([1, 2, 3, 4])
-        _ = engine.perform(.stack, focused: 3, in: context)
+        _ = engine.perform(.stack(.left), focused: 3, in: context)
         _ = engine.perform(.resize(.height, 80), focused: 2, in: context)
         _ = engine.perform(.columnWidth(.fraction(0.9)), focused: 1, in: context)
         #expect(engine.perform(.balance, focused: 1, in: context))
@@ -420,7 +421,7 @@ struct ScrollingEngineTests {
 
     @Test func equalizeStackEvensOnlyTheFocusedStack() {
         let engine = engine([1, 2, 3])
-        _ = engine.perform(.stack, focused: 2, in: context)
+        _ = engine.perform(.stack(.left), focused: 2, in: context)
         _ = engine.perform(.resize(.height, 80), focused: 1, in: context)
         #expect(engine.perform(.equalizeStack, focused: 1, in: context))
         let frames = engine.frames(in: context, focused: 1)
@@ -448,7 +449,7 @@ struct ScrollingEngineTests {
 
     @Test func draggingTheDividerInsideAStackMovesHeightBetweenTheTwoWindows() {
         let engine = engine([1, 2])
-        _ = engine.perform(.stack, focused: 2, in: context)
+        _ = engine.perform(.stack(.left), focused: 2, in: context)
         #expect(engine.perform(.resizeEdge(.down, 80), focused: 1, in: context))
         #expect(engine.frames(in: context, focused: 1) == [
             1: CGRect(x: 0, y: 0, width: 500, height: 480),
@@ -460,7 +461,7 @@ struct ScrollingEngineTests {
 
     @Test func topOfTheFirstWindowAndBottomOfTheLastHaveNoDivider() {
         let engine = engine([1, 2])
-        _ = engine.perform(.stack, focused: 2, in: context)
+        _ = engine.perform(.stack(.left), focused: 2, in: context)
         #expect(!engine.perform(.resizeEdge(.up, 50), focused: 1, in: context))
         #expect(!engine.perform(.resizeEdge(.down, 50), focused: 2, in: context))
         #expect(!engine.perform(.resizeEdge(.right, 0), focused: 1, in: context))
@@ -486,7 +487,7 @@ struct ScrollingEngineTests {
 
     @Test func stackMovesTheWindowToTheBottomOfTheLeftColumn() {
         let engine = engine([1, 2, 3])
-        #expect(engine.perform(.stack, focused: 3, in: context))
+        #expect(engine.perform(.stack(.left), focused: 3, in: context))
         #expect(engine.windows == [1, 2, 3])
         #expect(engine.frames(in: context, focused: 3) == [
             1: CGRect(x: 0, y: 0, width: 500, height: 800),
@@ -497,13 +498,13 @@ struct ScrollingEngineTests {
 
     @Test func stackInTheFirstColumnDoesNothing() {
         let engine = engine([1, 2])
-        #expect(!engine.perform(.stack, focused: 1, in: context))
+        #expect(!engine.perform(.stack(.left), focused: 1, in: context))
     }
 
     @Test func unstackPutsTheWindowInItsOwnColumnOnTheRight() {
         let engine = engine([1, 2, 3])
-        _ = engine.perform(.stack, focused: 2, in: context)
-        #expect(engine.perform(.unstack, focused: 1, in: context))
+        _ = engine.perform(.stack(.left), focused: 2, in: context)
+        #expect(engine.perform(.unstack(.right), focused: 1, in: context))
         #expect(engine.windows == [2, 1, 3])
         #expect(engine.frames(in: context, focused: 2) == [
             2: CGRect(x: 0, y: 0, width: 500, height: 800),
@@ -514,7 +515,7 @@ struct ScrollingEngineTests {
 
     @Test func unstackOfASingleWindowColumnDoesNothing() {
         let engine = engine([1, 2])
-        #expect(!engine.perform(.unstack, focused: 1, in: context))
+        #expect(!engine.perform(.unstack(.right), focused: 1, in: context))
     }
 
     @Test func centreIsOneShot() {
@@ -564,8 +565,8 @@ struct ScrollingEngineTests {
     // Columns: [1, 2] [3] [4, 5]
     private func neighborEngine() -> Strip {
         let engine = engine([1, 2, 3, 4, 5])
-        _ = engine.perform(.stack, focused: 2, in: context)
-        _ = engine.perform(.stack, focused: 5, in: context)
+        _ = engine.perform(.stack(.left), focused: 2, in: context)
+        _ = engine.perform(.stack(.left), focused: 5, in: context)
         return engine
     }
 
@@ -621,7 +622,7 @@ struct ScrollingEngineTests {
 
     @Test func settleReturnsTheFirstWindowOfAStackedColumn() {
         let engine = engine([1, 2, 3, 4], center: .never)
-        _ = engine.perform(.stack, focused: 3, in: context)
+        _ = engine.perform(.stack(.left), focused: 3, in: context)
         _ = engine.frames(in: context, focused: 1)
         _ = engine.perform(.scroll(300), focused: 1, in: context)
         #expect(engine.settle(in: context) == 2)
@@ -647,7 +648,7 @@ struct ScrollingEngineTests {
     @Test func gapsApplyBetweenStackedWindows() {
         let gapped = LayoutContext(viewport: CGRect(x: 0, y: 0, width: 1000, height: 800), gaps: Gaps(inner: 10, outer: 20))
         let engine = engine([1, 2])
-        _ = engine.perform(.stack, focused: 2, in: gapped)
+        _ = engine.perform(.stack(.left), focused: 2, in: gapped)
         #expect(engine.frames(in: gapped, focused: 1) == [
             1: CGRect(x: 20, y: 20, width: 475, height: 375),
             2: CGRect(x: 20, y: 405, width: 475, height: 375),
