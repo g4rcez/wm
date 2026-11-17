@@ -366,6 +366,8 @@ wm.mode("vim", {
 - `wm.remap(chord, key [, options])` types `key` when `chord` is pressed. Modifiers that are held besides the ones of
   `chord` go with it: after `wm.remap("hyper-h", "left")`, `hyper-shift-h` types `shift-left`. In `wm.mode`, a remap is the
   table `{ remap = "left" }`. A remap takes a single chord, not a sequence.
+  A remap is the first thing that happens to a key, so it works in every place, also in the palette, the window switcher and
+  the template picker: `hyper-j` → `down` moves their selection. A hyper chord with no remap and no bind types nothing there.
 - `wm.press(key)` (and `wm key press <key>`) types a key now. `key` is a chord such as `cmd-shift-4`, or a media key:
   `volume_up`, `volume_down`, `mute`, `play`, `next`, `previous`, `brightness_up`, `brightness_down`.
 - `wm key send` types into one app and works for a background app. `key press` types for the system. Secure Keyboard Entry
@@ -783,7 +785,7 @@ palette and goes on to the app. wm swallows Tab and the arrow keys while this pa
 open on top of it. (The normal palette passes every key to its text field.)
 
 The panel takes the keyboard without making wm the active app, so the menu items belong to the app you came from.
-While the palette is open no key bind runs.
+While the palette is open no key bind runs. Remaps still do: `wm.remap("hyper-j", "down")` moves the selection.
 
 ## Menu Anywhere
 
