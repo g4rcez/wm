@@ -1,42 +1,36 @@
+import CoreServices
 import Foundation
 
-/// Calls `onChange` (debounced) when the config file or its folder changes. Editors save by replacing the
-/// file, so the folder is watched too and the file watch is re-armed after each change.
+/// Calls `onChange` (debounced) when a file changes anywhere in the config folder, including its subfolders, so
+/// edits to modules loaded with `require` reload the config too. FSEvents sees atomic saves (rename over the file).
 final class ConfigWatcher: @unchecked Sendable {
-    private let fileURL: URL
     private let onChange: @Sendable () -> Void
     private let queue = DispatchQueue(label: "wm.config-watch")
-    private var sources: [any DispatchSourceFileSystemObject] = []
-    private var pending: DispatchWorkItem?
+    private var stream: FSEventStreamRef?
 
     init(fileURL: URL, onChange: @escaping @Sendable () -> Void) {
-        self.fileURL = fileURL
         self.onChange = onChange
-        queue.async { [self] in arm() }
+        let folder = fileURL.deletingLastPathComponent().resolvingSymlinksInPath().path
+        var context = FSEventStreamContext(
+            version: 0, info: Unmanaged.passUnretained(self).toOpaque(), retain: nil, release: nil, copyDescription: nil
+        )
+        let callback: FSEventStreamCallback = { _, info, _, _, _, _ in
+            Unmanaged<ConfigWatcher>.fromOpaque(info!).takeUnretainedValue().onChange()
+        }
+        // The latency (seconds) merges a burst of saves into one callback.
+        guard let stream = FSEventStreamCreate(
+            nil, callback, &context, [folder] as CFArray, FSEventStreamEventId(kFSEventStreamEventIdSinceNow), 0.25,
+            FSEventStreamCreateFlags(kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagNoDefer)
+        ) else { return }
+        self.stream = stream
+        FSEventStreamSetDispatchQueue(stream, queue)
+        FSEventStreamStart(stream)
     }
 
-    private func arm() {
-        sources.forEach { $0.cancel() }
-        sources = [fileURL, fileURL.deletingLastPathComponent()].compactMap { url in
-            let descriptor = open(url.path, O_EVTONLY)
-            guard descriptor >= 0 else { return nil }
-            let source = DispatchSource.makeFileSystemObjectSource(
-                fileDescriptor: descriptor, eventMask: [.write, .extend, .delete, .rename], queue: queue
-            )
-            source.setEventHandler { [weak self] in self?.changed() }
-            source.setCancelHandler { close(descriptor) }
-            source.resume()
-            return source
-        }
-    }
-
-    private func changed() {
-        pending?.cancel()
-        let work = DispatchWorkItem { [self] in
-            arm()
-            onChange()
-        }
-        pending = work
-        queue.asyncAfter(deadline: .now() + 0.25, execute: work)
+    deinit {
+        guard let stream else { return }
+        FSEventStreamStop(stream)
+        FSEventStreamInvalidate(stream)
+        FSEventStreamRelease(stream)
     }
 }
