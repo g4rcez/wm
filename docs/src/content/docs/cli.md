@@ -34,9 +34,9 @@ CONFIG           init <osx|windows|i3|hyprland|niri> [--mod=<alt|cmd|ctrl|hyper>
 SHELL            completion <zsh|bash>
 ```
 
-`wm doctor` checks the config, the daemon, Accessibility, the key tap and Screen Recording, and prints a hint for each check that is
+`wm doctor` checks the config, `shortcuts.toml` (errors, and binds that `init.lua` replaces), the daemon, Accessibility, the key tap and Screen Recording, and prints a hint for each check that is
 not ok. It exits with 1 when a check failed, and `--json` prints the checks for scripts. `wm config check [path]` loads a
-config file in a new Lua state without applying it, and prints the first error with its line. Neither needs the daemon. In
+config file in a new Lua state without applying it, and prints the first error with its line. It also prints a `warn:` line for each bind that `init.lua` and `shortcuts.toml` both make. Neither needs the daemon. In
 `config check`, `wm.exec` and `wm.dispatch` do nothing and `wm.query` finds nothing, so a config that needs a query result while
 it loads fails there.
 

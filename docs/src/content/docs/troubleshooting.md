@@ -19,6 +19,8 @@ and says what to do for each one that is not ok. `wm config check` loads the con
 - **The switcher shows icons and not pictures.** Grant Screen Recording, or set `switcher = { thumbnails = false }`.
 - **A window hides behind others, or stays out of the layout.** Some windows (dialogs, palettes) float by design. Use
   `wm window float` to toggle one, or add a rule.
+- **A shortcut that I made in the Shortcuts window does nothing.** `wm doctor` says why in its `shortcuts` line: `init.lua` does
+  not call `wm.shortcuts()`, `init.lua` binds the same keys later (it wins), or `shortcuts.toml` has an error with its line.
 - **My config has an error.** The old config stays active. The message is in the menu bar, in the output of
   `wm daemon reload` and in `wm logs`.
 - **wm and another window manager fight.** Quit the other one. Quitting wm puts every hidden window back on screen.

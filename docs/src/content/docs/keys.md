@@ -41,6 +41,13 @@ wm.bind("alt-space>l", "resize width +50")
 In one mode, a chord cannot be a bind by itself and also the start of a sequence, and a sequence cannot be the start of a
 longer one (`a>b` and `a>b>c`). Both are config errors. `wm.bind("cmd-h", "")` with an empty string swallows a key.
 
+## Shortcuts window and shortcuts.toml
+
+You can also keep binds in `shortcuts.toml` and manage them from the **Shortcuts…** item of the menu bar menu: add, edit and
+delete, with the keys checked before the file is saved. Type the keys or press **Record** and press them, `hyper` too. `wm.shortcuts()` in `init.lua` binds them, and a `wm.bind` for the
+same keys that comes after it wins. `wm doctor` lists those conflicts. The format and the rules are in
+[shortcuts.toml](/docs/config#shortcutstoml).
+
 ## The hyper key, remaps and typing keys
 
 With `wm.config { binds = { capslock = "hyper" } }` CapsLock becomes the `hyper` modifier: hold it with a key to make a

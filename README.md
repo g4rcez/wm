@@ -85,6 +85,10 @@ wm has no default key bindings. Until you bind keys in `init.lua`, it only react
 - **Key panel** (like which-key.nvim). It lists the keys that you can press in a mode or after a prefix.
   See [Key panel and bind options](https://wm.garcez.dev/docs/key-panel).
 - **Bind options:** `description`, `repeating`, `release`, `long_press` and `universal`.
+- **Shortcuts window:** the menu bar item **Shortcuts…** adds, edits and deletes binds (type the keys or record them), and
+  saves them in `shortcuts.toml`.
+  `init.lua` loads the file with `wm.shortcuts()`, so you can use the window, Lua, or both. `wm doctor` reports errors in
+  the file and binds that `init.lua` replaces. See [shortcuts.toml](https://wm.garcez.dev/docs/config#shortcutstoml).
 - **Hyper key and remaps:** CapsLock becomes `hyper` (Esc when tapped alone), `wm.remap` types other keys, and `wm.press`
   sends keys and media keys. wm can also [replace a Karabiner-Elements setup](https://wm.garcez.dev/docs/karabiner) built
   around a hyper key.
@@ -149,7 +153,8 @@ See [Sticky windows and zen mode](https://wm.garcez.dev/docs/sticky-zen).
 ### Editor and shell support
 
 - **Lua autocomplete:** `wm lsp --write` sets up [lua-language-server](https://luals.github.io/) for `init.lua`, with
-  completion, hover help and warnings for the whole API. See [Lua API](https://wm.garcez.dev/docs/lua-api).
+  completion, hover help and warnings for the whole API. See [Lua API](https://wm.garcez.dev/docs/lua-api). It also sets up
+  [Taplo](https://taplo.tamasfe.dev/) for `shortcuts.toml`.
 - **Shell completion** for zsh and bash: `eval "$(wm completion zsh)"`.
 
 ## Install

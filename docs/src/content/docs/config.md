@@ -49,3 +49,41 @@ wm.config {
   url       = { allow = {} },          -- extra commands that wm:// URLs may run
 }
 ```
+
+## shortcuts.toml
+
+`shortcuts.toml` sits next to `init.lua` and holds binds as data, so the **Shortcuts…** window of the menu bar menu can add,
+edit and delete them. The starter configs of `wm init` have the line `wm.shortcuts()` near the top, which binds every entry of
+the file. You choose the mode: use only `init.lua` (delete that line), only the window (keep `init.lua` small), or both.
+
+```toml
+[[shortcut]]
+keys = "alt-h"                 # a chord, or a sequence: "ctrl-p>h"
+action = "focus left"          # a wm command; use `remap = "left"` to type a key instead
+description = "Focus left"
+
+[[shortcut]]
+keys = "alt-r"
+mode = "resize"                # default: main
+action = "mode main"
+long_press = 0.8               # also: release, repeating, universal, hidden
+```
+
+Each `[[shortcut]]` is one `wm.bind` (or `wm.remap`) call, with the same options. The file takes strings, booleans and
+numbers, nothing more. An error stops the config load and names the line (`shortcuts.toml line 3: ...`). The window rewrites the
+file, so it drops the comments.
+
+In the window, the form for a shortcut asks for the keys, the action and a description. The rarely used options (when it runs,
+the mode, every mode, hidden) are behind **More options**. For the keys you can type them (`alt-h`, `ctrl-p>h`) or press
+**Record** and press them: the daemon reads the keys, so a key that a bind uses (`alt-h`) is recorded and does not run. A
+recording ends with Esc, with the **Stop** button, or when no key comes for a moment after the first one, so a sequence
+needs its next key in time (or type it). Recording needs Accessibility (the key tap); a few macOS system shortcuts never
+reach wm, so type those. With **Type key**, Record fills the key that the shortcut types.
+
+The action field suggests the wm commands as you type: `foc` offers `focus`, and `layout set ` offers `scrolling`, `tiling` and `master`
+(the same words as the shell completion). Tab or Return takes the suggestion. The list has the fixed words only: it does not know
+the names of your modes or workspaces.
+
+When `init.lua` and the file bind the same keys, the later bind wins. With `wm.shortcuts()` at the top, `init.lua` wins. Move
+the line to the end to let the file win. `wm doctor` lists every such pair as a conflict, and warns when `shortcuts.toml` exists
+and `init.lua` never calls `wm.shortcuts()`. An `init.lua` from before this feature does not have the line: add it yourself.

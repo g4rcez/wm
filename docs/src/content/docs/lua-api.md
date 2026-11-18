@@ -4,7 +4,7 @@ description: "wm.config, wm.bind, wm.on, wm.dispatch, wm.query and the rest, wit
 group: Reference
 order: 2
 ---
-`wm.config`, `wm.bind`, `wm.remap`, `wm.mode`, `wm.gesture`, `wm.rule`, `wm.workspace`, `wm.profile`, `wm.on`, `wm.dispatch`, `wm.query`,
+`wm.config`, `wm.bind`, `wm.remap`, `wm.shortcuts`, `wm.mode`, `wm.gesture`, `wm.rule`, `wm.workspace`, `wm.profile`, `wm.on`, `wm.dispatch`, `wm.query`,
 `wm.exec`, `wm.press`, `wm.log` and `wm.version`.
 
 - `wm.dispatch(command [, { window = id or selector }])` runs a command. It returns stdout, or `nil, stderr` when the
@@ -41,9 +41,11 @@ order: 2
   ```lua
   wm.dispatch("exec --float --center --size 0.5,0.5 -- /Applications/kitty.app/Contents/MacOS/kitty -e htop")
   ```
+- `wm.shortcuts()` binds the `[[shortcut]]` entries of `shortcuts.toml`, the file that the Shortcuts window writes. See
+  [shortcuts.toml](/docs/config#shortcutstoml). A `wm.bind` for the same keys after the call replaces the shortcut.
 - `wm.press(key)` types a key now (`"play"`, `"cmd-shift-4"`), and `wm.remap(chord, key)` makes a chord type another key. See
   [The hyper key, remaps and typing keys](/docs/keys#the-hyper-key-remaps-and-typing-keys).
-- `wm.config`, `wm.bind`, `wm.remap`, `wm.mode`, `wm.gesture`, `wm.rule`, `wm.workspace` and `wm.profile` work only while the config file
+- `wm.config`, `wm.bind`, `wm.remap`, `wm.shortcuts`, `wm.mode`, `wm.gesture`, `wm.rule`, `wm.workspace` and `wm.profile` work only while the config file
   loads (not inside a bind or an event handler). `wm.dispatch`, `wm.exec`, `wm.press`, `wm.query`, `wm.log` and `wm.on` work
   everywhere. A function bind or handler runs on its own thread, so a slow one never blocks the keyboard; one that runs
   longer than 2 seconds is stopped. `wm.log` writes to `wm logs`, a script that fails too (source `lua`).
@@ -81,6 +83,14 @@ wm lsp --write    # saves it next to your config, as ~/.config/wm/.luarc.json
 Open `init.lua` and the editor does the rest. LuaLS finds the file because it sits in the folder of `init.lua`. If you
 move `wm.app`, run `wm lsp --write --force` again, because the path of the stubs changes. If you work on wm itself, you
 can point `workspace.library` at the `types` folder of the repository instead.
+
+`wm lsp --write` also writes a `.taplo.toml` next to your config. It points [Taplo](https://taplo.tamasfe.dev/) (the
+TOML server of the "Even Better TOML" extension) at `types/shortcuts.schema.json`, so `shortcuts.toml` gets completion, hover
+help and a warning for an unknown key, for a missing `keys`, and for a shortcut that has both `action` and `remap` (or
+neither). If a `.taplo.toml` is already there, the command prints the rule to add instead of replacing the file, unless you use
+`--force`. `--force` replaces both `.luarc.json` and `.taplo.toml`. See [shortcuts.toml](/docs/config#shortcutstoml).
+
+`wm.shortcuts()` has a stub too, so LuaLS completes it and shows its help.
 
 Some examples of what you get: completion for `wm.config { ... }` keys and values (`layout = "` offers `scrolling` and
 `tiling`), the command strings of `wm.bind`, the fields of `wm.rule`, the event names of `wm.on` with the fields of each
