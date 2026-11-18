@@ -17,7 +17,7 @@ let package = Package(
         .target(name: "Platform", dependencies: ["Core", "PrivateApi"]),
         .target(name: "Scripting", dependencies: ["CLua", "Core"]),
         .executableTarget(name: "App", dependencies: ["Common", "Core", "Platform", "Scripting"]),
-        .executableTarget(name: "Cli", dependencies: ["Common"]),
+        .executableTarget(name: "Cli", dependencies: ["Common", "Scripting"]),
         .testTarget(name: "CommonTests", dependencies: ["Common"]),
         .testTarget(name: "CoreTests", dependencies: ["Core"]),
         .testTarget(name: "ScriptingTests", dependencies: ["Scripting", "Core", "Common"]),
