@@ -138,6 +138,18 @@ extension WindowManager {
         return ok()
     }
 
+    /// `window swipe <direction>`: what a swipe on the title bar does. A floating window snaps to a half (left, right) or fills the
+    /// screen (up). A tiled window moves in its layout (left, right) or is maximized (up). Down minimizes either one.
+    private func swipe(_ id: WindowID, _ direction: Direction) -> ServerAnswer {
+        guard let managed = windows[id] else { return fail("there is no focused window") }
+        switch direction {
+        case .down: return windowCommand(["minimize"], [], id)
+        case .up: return windowCommand([managed.floating ? "fullscreen" : "maximize"], [], id)
+        case .left, .right:
+            return managed.floating ? snap(id, direction == .left ? .left : .right) : moveDirection(direction, target: id, step: 40)
+        }
+    }
+
     /// `window snap <place>`: the window floats into that part of the work area (inside the outer gaps). The same place again goes
     /// on to the next size (half, a third, two thirds). A tiled window floats first.
     private func snap(_ id: WindowID, _ place: SnapPlace) -> ServerAnswer {
@@ -282,6 +294,14 @@ extension WindowManager {
         case "close":
             watcher(for: managed.info.pid)?.close(id)
             return ok()
+        case "minimize":
+            watcher(for: managed.info.pid)?.minimize(id)
+            return ok()
+        case "swipe":
+            guard let direction = words.dropFirst().first.flatMap(Direction.init(rawValue:)) else {
+                return fail("window swipe needs a direction", 2, usage: "window swipe", hint: "left, right, up or down")
+            }
+            return swipe(id, direction)
         case "float":
             let on: Bool
             switch words.dropFirst().first {
@@ -693,8 +713,20 @@ extension WindowManager {
 
     /// The tile templates of the layout of the window's workspace (the focused workspace without a window), as the config lists them.
     func templates(of id: WindowID?) -> [SplitTemplate] {
-        let kind = id.flatMap { windows[$0] }.map { workspace($0.workspace).kind } ?? focusedWorkspace?.kind ?? settings.layout
-        return settings.templates(for: kind)
+        let kind = layoutKind(of: id)
+        return settings.templates(for: kind) + (kind == .tiling ? customTemplates : [])
+    }
+
+    func layoutKind(of id: WindowID?) -> LayoutKind {
+        id.flatMap { windows[$0] }.map { workspace($0.workspace).kind } ?? focusedWorkspace?.kind ?? settings.layout
+    }
+
+    /// Keeps a frame that the user drew, so `layout tile <name>` and the picker find it after a restart.
+    func remember(frame: SplitTemplate) {
+        customTemplates = CustomTemplates.adding(frame, to: customTemplates)
+        do { try CustomTemplates.write(customTemplates, to: StateStore.templatesURL) } catch {
+            Log.write(.warn, "cannot save \(StateStore.templatesURL.path): \(error)", source: "templates", prefix: "wmd")
+        }
     }
 
     /// The template of the window's block, for the picker's first selection.

@@ -1,5 +1,6 @@
 import Common
 import Foundation
+import Scripting
 
 import Darwin
 
@@ -77,7 +78,7 @@ if arguments == ["version"] || arguments == ["--version"] {
 if let first = arguments.first, !commandNames.contains(first) {
     die("unknown command '\(first)'", hint: unknownCommandHint(first) ?? "run `wm help` to see the commands", code: 2)
 }
-let localCommands = [["daemon", "start"], ["daemon", "stop"], ["subscribe"], ["logs"], ["pick"], ["init"]]
+let localCommands = [["daemon", "start"], ["daemon", "stop"], ["subscribe"], ["logs"], ["pick"], ["init"], ["config", "check"], ["doctor"]]
 if windowId != nil || windowSelector != nil, localCommands.contains(where: { Array(arguments.prefix($0.count)) == $0 }) {
     die("--window does not apply to '\(arguments.prefix(2).filter { !$0.hasPrefix("--") }.joined(separator: " "))'", code: 2)
 }
@@ -203,6 +204,62 @@ if arguments.first == "init" {
         die("cannot write \(config.path): \(error)")
     }
     exit(0)
+}
+
+if arguments.first == "config" {
+    guard arguments.count <= 3, arguments.count >= 2, arguments[1] == "check" else {
+        die("expected `check [path]`", hint: "usage: wm config check [path]", code: 2)
+    }
+    let url = arguments.count == 3 ? URL(fileURLWithPath: arguments[2]) : defaultConfigURL()
+    switch checkConfig(at: url) {
+    case .success(let summary):
+        print("ok: \(url.path) (\(summary.binds) binds)")
+        exit(0)
+    case .failure(let error):
+        die(error.message)
+    }
+}
+
+if arguments.first == "doctor" {
+    let flags = Set(arguments.dropFirst())
+    if let unknown = flags.subtracting(["--json"]).sorted().first {
+        die("unknown option \(unknown)", hint: "usage: wm doctor [--json]", code: 2)
+    }
+    var checks: [DoctorCheck] = []
+    let config = defaultConfigURL()
+    if !FileManager.default.fileExists(atPath: config.path) {
+        checks.append(DoctorCheck("config", .warn, "no config at \(config.path): wm has no key binds", hint: "run `wm init <osx|windows|i3|hyprland|niri>`"))
+    } else {
+        switch checkConfig(at: config) {
+        case .success(let summary): checks.append(DoctorCheck("config", .ok, "\(config.path) (\(summary.binds) binds)"))
+        case .failure(let error): checks.append(DoctorCheck("config", .fail, error.message, hint: "fix the line, then save: wm loads the file again"))
+        }
+    }
+    if let answer = try? sendRequest(ClientRequest(args: ["version"]), timeoutSeconds: 2), answer.exitCode == 0 {
+        // "wm 0.1.0 (Lua 5.4)": the daemon may be an older build than this `wm`.
+        let running = answer.stdout.split(separator: " ").dropFirst().first.map(String.init) ?? "?"
+        checks.append(
+            running == wmVersion
+                ? DoctorCheck("daemon", .ok, "runs, version \(running)")
+                : DoctorCheck("daemon", .warn, "runs version \(running), and this wm is \(wmVersion)", hint: "run `wm daemon stop`, then `wm daemon start`"))
+        if let facts = try? sendRequest(ClientRequest(args: ["doctor"]), timeoutSeconds: 2),
+           let decoded = try? JSONDecoder().decode(DoctorFacts.self, from: Data(facts.stdout.utf8)) {
+            checks += daemonChecks(decoded)
+        } else {
+            checks.append(DoctorCheck("permissions", .warn, "the daemon did not answer the checks", hint: "it may be older than this wm: run `wm daemon stop`, then `wm daemon start`"))
+        }
+    } else {
+        checks.append(DoctorCheck("daemon", .fail, "wm does not run", hint: "run `wm daemon start`"))
+        checks.append(DoctorCheck("permissions", .skip, "they need the daemon"))
+    }
+    if flags.contains("--json") {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        print(String(decoding: (try? encoder.encode(checks)) ?? Data("[]".utf8), as: UTF8.self))
+    } else {
+        print(renderDoctor(checks), terminator: "")
+    }
+    exit(doctorExitCode(checks))
 }
 
 if arguments == ["daemon", "start"] {

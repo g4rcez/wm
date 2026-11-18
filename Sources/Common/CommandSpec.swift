@@ -102,6 +102,14 @@ public let commandSections: [CommandSection] = [
             "window snap", "<place>", "", "Float the window into a part of the screen.",
             details: "`place` is left, right, top, bottom, top-left, top-right, bottom-left, bottom-right or center. The window floats (a tiled window\nfirst) and fills that part of the work area inside the gaps. The same place again goes on to the next size: half, a third, two thirds\n(center: 60%, 80%, 40%).",
             example: "wm window snap left"),
+        CommandSpec(
+            "window minimize", "", "", "Minimize the window.",
+            details: "It sets the minimized state of the window, as the yellow button does. A minimized window has no place in the layout.",
+            example: "wm window minimize"),
+        CommandSpec(
+            "window swipe", "<left|right|up|down>", "", "What a swipe on the title bar does.",
+            details: "A floating window snaps to the left or right half (`window snap`), or fills the screen (up, `window fullscreen`). A tiled\nwindow moves in its layout (`move`), or is maximized (up, `window maximize`). Down minimizes both. The built-in title bar\ngestures run this command; see `trackpad.title_bar`.",
+            example: "wm window swipe left"),
         CommandSpec("window fullscreen", "", "", "Fill the work area with no gaps, or go back."),
         CommandSpec("window maximize", "", "", "Fill the work area inside the gaps, or go back."),
         CommandSpec("window raise-floating", "", "", "Bring the floating windows to the front."),
@@ -289,6 +297,14 @@ public let commandSections: [CommandSection] = [
             "daemon reload", "", "", "Load the config again.",
             details: "Reads init.lua again. A value that `wm set` changed goes back to what the config says.",
             example: "wm daemon reload"),
+        CommandSpec(
+            "doctor", "", "[--json]", "Check the config, the daemon and the permissions.",
+            details: "One line for each check: ok, warn, fail or skip, and a hint when it is not ok. It exits with 1 when a check\nfailed (a warning is not a failure). It works without the daemon: the checks that need it are skipped.",
+            example: "wm doctor"),
+        CommandSpec(
+            "config check", "[path]", "", "Load the config without applying it.",
+            details: "Runs the config file (default: the config path, see ENVIRONMENT) in a new Lua state. Nothing is applied and nothing\nstarts: wm.exec and wm.dispatch do nothing, and wm.query finds nothing. A script that needs a query result at load time\nfails here. It prints the error with the file and the line, and exits with 1. It works without the daemon.",
+            example: "wm config check ~/dotfiles/wm/init.lua"),
         CommandSpec(
             "lsp", "", "[--write] [--force]", "Set up autocomplete for init.lua in your editor.",
             details: "Prints the folder of the type stubs and the .luarc.json that lua-language-server needs. --write saves it next to\nthe config file; --force replaces a .luarc.json that is already there. It works without the daemon.",

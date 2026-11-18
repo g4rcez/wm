@@ -9,6 +9,7 @@ final class MenuBar: NSObject, NSMenuDelegate {
     private let errorItem = NSMenuItem()
     private let workspaceItem = NSMenuItem()
     private let reload: () -> Void
+    private let setup: () -> Void
     private let tile: (String) -> Void
     /// The tile templates to list, as the config gives them for the layout in focus.
     private let templates: () -> [SplitTemplate]
@@ -19,8 +20,9 @@ final class MenuBar: NSObject, NSMenuDelegate {
     /// The active binding mode, or `nil` in `main`.
     private var modeShown: String?
 
-    init(configFolder: URL, reload: @escaping () -> Void, templates: @escaping () -> [SplitTemplate], tile: @escaping (String) -> Void) {
+    init(configFolder: URL, reload: @escaping () -> Void, setup: @escaping () -> Void, templates: @escaping () -> [SplitTemplate], tile: @escaping (String) -> Void) {
         self.reload = reload
+        self.setup = setup
         self.templates = templates
         self.tile = tile
         self.configFolder = configFolder
@@ -41,6 +43,9 @@ final class MenuBar: NSObject, NSMenuDelegate {
         let reloadItem = NSMenuItem(title: "Reload Config", action: #selector(reloadConfig), keyEquivalent: "r")
         reloadItem.target = self
         menu.addItem(reloadItem)
+        let setupItem = NSMenuItem(title: "Setup…", action: #selector(openSetup), keyEquivalent: "")
+        setupItem.target = self
+        menu.addItem(setupItem)
         let folderItem = NSMenuItem(title: "Open Config Folder", action: #selector(openFolder), keyEquivalent: "")
         folderItem.target = self
         menu.addItem(folderItem)
@@ -132,5 +137,6 @@ final class MenuBar: NSObject, NSMenuDelegate {
     }
 
     @objc private func reloadConfig() { reload() }
+    @objc private func openSetup() { setup() }
     @objc private func openFolder() { NSWorkspace.shared.open(configFolder) }
 }

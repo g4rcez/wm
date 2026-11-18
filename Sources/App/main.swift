@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menu: MenuBar!
     private var watcher: ConfigWatcher?
     private var permissionTimer: Timer?
+    private var setup: OnboardingWindow?
     private let prefixLabel = PrefixLabel()
     /// The steps of a sequence that waits for its next key; the label lists the keys that can follow while it waits.
     private var pendingSteps: [Chord]?
@@ -26,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu = MenuBar(
             configFolder: configURL.deletingLastPathComponent(),
             reload: { [controller] in Task.detached { _ = controller!.reload() } },
+            setup: { [weak self] in self?.showSetup() },
             templates: { [manager] in manager.templates(of: manager.focused) },
             tile: { [controller] name in Task.detached { _ = controller!.run(["layout", "tile", name]) } }
         )
@@ -71,7 +73,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task.detached { _ = controller!.reload() }
         }
         Task.detached { [controller] in _ = controller!.reload(notify: false) }
-        awaitAccessibility()
+        // wm moves no window until the user has pressed Start in the setup window, once.
+        if Onboarding.isDone() {
+            awaitAccessibility()
+        } else {
+            menu.setError("Finish the setup: wm moves no window yet")
+            showSetup()
+        }
+    }
+
+    /// The setup window. Before the first Start it is the gate; after it, the menu item opens it to look at the setup again.
+    private func showSetup() {
+        if setup == nil {
+            let configURL = defaultConfigURL()
+            setup = OnboardingWindow(configURL: configURL) { [weak self] in
+                guard let self else { return }
+                do {
+                    try Onboarding.markDone()
+                } catch {
+                    Log.write(.error, "cannot write the setup marker: \(error)", source: "daemon")
+                }
+                menu.setError(nil)
+                // A config that the window wrote may be there before the watcher sees the folder.
+                Task.detached { [controller] in _ = controller!.reload() }
+                awaitAccessibility()
+            }
+        }
+        setup?.show(gated: !Onboarding.isDone())
     }
 
     /// What the label shows: a message from `wm notify`, else the sequence that waits for its next key, else the binding
@@ -133,7 +161,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         controller.watchKeyboards()
         manager.start()
-        if !controller.input.start() {
+        controller.keyTapRunning = controller.input.start()
+        if !controller.keyTapRunning {
             menu.setError("Cannot listen for keys: check Accessibility permission")
         }
     }
