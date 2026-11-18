@@ -4,7 +4,11 @@ description: "A small init.lua to start from: gaps, a border, vim-style focus ke
 group: Start
 order: 3
 ---
-Create `~/.config/wm/init.lua`. This is a small config to start from:
+To start from the keys of another system, run `wm init <osx|windows|i3|hyprland|niri>`. It asks for the main modifier
+(`alt`, `cmd`, `ctrl` or `hyper`; `--mod=alt` skips the question) and writes `~/.config/wm/init.lua`. When that file exists,
+`wm init` prints the template and leaves the file alone; `--force` replaces it.
+
+Or create `~/.config/wm/init.lua` by hand. This is a small config to start from:
 
 ```lua
 wm.config {

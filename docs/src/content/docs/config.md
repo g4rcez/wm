@@ -12,7 +12,7 @@ For a whole file, see the [author's configuration](https://github.com/g4rcez/dot
 wm.config {
   layout = "tiling",                   -- scrolling | tiling | master
   gaps = { inner = 8, outer = 8, smart = false },  -- outer can also be { top=, right=, bottom=, left= }; smart: no gaps around a lone tiled window
-  animations = { enabled = true, rate = 14 },  -- rate: spring stiffness; a long move ends in about 10 / rate seconds
+  animations = { enabled = true, fps = 120 },  -- fps: frames per second, 30-240; the display caps it (60 Hz screen: 60)
   border = { enabled = true, width = 2, radius = 10, active = "#89b4fa", inactive = "#00000000" },
   focus_follows_mouse = false,         -- or { enabled = true, only_fully_visible = true }: only windows that are fully on screen
   mouse_follows_focus = false,

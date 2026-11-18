@@ -28,6 +28,7 @@ INTERFACE        switcher | overview | palette | menu | mode <name|back> | point
 INSPECT          list [windows|workspaces|monitors|keyboards|memory|binds] | query [what] | subscribe [--snapshot] [event ...] | logs [-n count] [-f] [-o otel|json]
 DAEMON           daemon start | stop | status | reload | version
 EDITOR           lsp [--write] [--force]
+CONFIG           init <osx|windows|i3|hyprland|niri> [--mod=<alt|cmd|ctrl|hyper>] [--force]
 SHELL            completion <zsh|bash>
 ```
 
