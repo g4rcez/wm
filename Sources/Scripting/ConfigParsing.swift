@@ -165,7 +165,7 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
     if let flag = try top.bool("mouse_follows_focus") { settings.mouseFollowsFocus = flag }
     if let flag = try top.bool("start_at_login") { settings.startAtLogin = flag }
     if let flag = try top.bool("wrap_focus") { settings.wrapFocus = flag }
-    if let trackpad = try top.table("trackpad", allowed: ["enabled", "fingers", "scroll_fingers", "speed"]) {
+    if let trackpad = try top.table("trackpad", allowed: ["enabled", "fingers", "scroll_fingers", "speed", "title_bar", "title_bar_height", "pinch"]) {
         if let flag = try trackpad.bool("enabled") {
             settings.trackpad.enabled = flag
             settings.trackpad.warnsWhenMissing = flag
@@ -181,6 +181,9 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
             settings.trackpad.scrollFingers = count
         }
         if let speed = try trackpad.number("speed", min: 0.1, max: 10) { settings.trackpad.speed = speed }
+        if let flag = try trackpad.bool("title_bar") { settings.trackpad.titleBar = flag }
+        if let height = try trackpad.number("title_bar_height", min: 10, max: 200) { settings.trackpad.titleBarHeight = height }
+        if let flag = try trackpad.bool("pinch") { settings.trackpad.pinch = flag }
     }
     if let mouse = try top.table("mouse", allowed: ["move_modifier", "resize_modifier"]) {
         for (key, assign) in [("move_modifier", \MouseSettings.moveModifier), ("resize_modifier", \MouseSettings.resizeModifier)] {
@@ -470,18 +473,24 @@ func parseWorkspaceRule(name: String, _ value: LuaValue) throws -> WorkspaceRule
 
 func parseRule(_ value: LuaValue) throws -> WindowRule {
     let fields = try Fields(value, owner: "wm.rule", allowed: [
-        "name", "app", "title", "float", "workspace", "layout", "size", "center", "run", "stop",
+        "name", "app", "title", "role", "subrole", "identifier", "float", "workspace", "layout", "size", "center", "run", "stop",
         "maximize", "width", "monitor", "focus",
     ])
     var rule = WindowRule()
     rule.name = try fields.string("name")
     rule.app = try fields.string("app")
     rule.title = try fields.string("title")
-    guard rule.app != nil || rule.title != nil else {
-        throw ConfigError(message: "wm.rule: needs at least one match field ('app' or 'title')")
+    rule.role = try fields.string("role")
+    rule.subrole = try fields.string("subrole")
+    rule.identifier = try fields.string("identifier")
+    guard rule.app != nil || rule.title != nil || rule.role != nil || rule.subrole != nil || rule.identifier != nil else {
+        throw ConfigError(
+            message: "wm.rule: needs at least one match field ('app', 'title', 'role', 'subrole' or 'identifier')")
     }
-    if let title = rule.title, (try? NSRegularExpression(pattern: title)) == nil {
-        throw ConfigError(message: "wm.rule: 'title' is not a valid regular expression: \(title)")
+    for (field, pattern) in [("title", rule.title), ("identifier", rule.identifier)] {
+        if let pattern, (try? NSRegularExpression(pattern: pattern)) == nil {
+            throw ConfigError(message: "wm.rule: '\(field)' is not a valid regular expression: \(pattern)")
+        }
     }
     rule.float = try fields.bool("float")
     rule.workspace = try fields.numberOrString("workspace", min: 0)

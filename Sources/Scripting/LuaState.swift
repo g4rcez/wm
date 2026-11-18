@@ -11,6 +11,8 @@ private let deadlineKey = "wm.deadline"
 private let prelude = """
 local native, version, templates = ...
 local wm = { version = version, templates = templates }
+-- True once the config file has run (`wm.floating._install` sets it): `wm.profile` is for the config only.
+local configLoaded = false
 
 local function expect(ok, message)
   if not ok then error(message, 3) end
@@ -172,6 +174,7 @@ end
 
 -- Runs when the config file has run (the app calls it): adds the default rules that are still on.
 function wm.floating._install()
+  configLoaded = true
   if not wm.floating.enabled then return end
   local known = {}
   for _, rule in ipairs(wm.floating.defaultRules) do
@@ -187,6 +190,71 @@ function wm.floating._install()
   end
   for _, rule in ipairs(wm.floating.defaultRules) do
     if not (type(rule) == "table" and rule.name ~= nil and wm.floating.disabled[rule.name]) then wm.rule(rule) end
+  end
+end
+
+-- Display profiles: `wm.profile(name, { monitors = { "DELL", "main" }, apply = function(monitors) ... end })`. A profile fits when the
+-- number of connected monitors equals the number of selectors and every selector names a different monitor (a role, a number from
+-- the left or part of the name, as in `wm.rule`). The first profile that fits, in the order of the calls, runs `apply` when the
+-- displays change and when the config loads. It does not run again while it is the one that fits.
+local profiles, appliedProfile = {}, nil
+
+local function monitorMatches(selector, monitor)
+  local text = tostring(selector):lower()
+  if text == "main" or text == "secondary" or text == "tertiary" then return monitor.role == text end
+  if text:match("^%d+$") then return tonumber(text) == monitor.index end
+  return tostring(monitor.name):lower():find(text, 1, true) ~= nil
+end
+
+local function profileFits(profile, monitors)
+  if #monitors ~= #profile.monitors then return false end
+  local used = {}
+  local function assign(i)
+    if i > #profile.monitors then return true end
+    for position, monitor in ipairs(monitors) do
+      if not used[position] and monitorMatches(profile.monitors[i], monitor) then
+        used[position] = true
+        if assign(i + 1) then return true end
+        used[position] = false
+      end
+    end
+    return false
+  end
+  return assign(1)
+end
+
+local function applyProfile()
+  local monitors = native.query("monitors")
+  if type(monitors) ~= "table" then return end
+  for _, profile in ipairs(profiles) do
+    if profileFits(profile, monitors) then
+      if profile.name ~= appliedProfile then
+        appliedProfile = profile.name
+        profile.apply(monitors)
+      end
+      return
+    end
+  end
+  appliedProfile = nil
+end
+
+function wm.profile(name, spec)
+  expect(not configLoaded, "wm.profile can only be called while the config file loads")
+  expect(type(name) == "string" and name ~= "", "wm.profile expects a profile name")
+  expect(type(spec) == "table", "wm.profile expects a table like { monitors = { 'main' }, apply = function(monitors) end }")
+  expect(type(spec.monitors) == "table" and #spec.monitors > 0, "wm.profile '" .. name .. "': 'monitors' must be a list of selectors")
+  for _, selector in ipairs(spec.monitors) do
+    expect(type(selector) == "string" or type(selector) == "number",
+      "wm.profile '" .. name .. "': a monitor selector is a role, a number or part of a name")
+  end
+  expect(type(spec.apply) == "function", "wm.profile '" .. name .. "': 'apply' must be a function")
+  for _, profile in ipairs(profiles) do
+    expect(profile.name ~= name, "wm.profile '" .. name .. "' is already defined")
+  end
+  profiles[#profiles + 1] = { name = name, monitors = spec.monitors, apply = spec.apply }
+  if #profiles == 1 then
+    wm.on("displays_changed", applyProfile)
+    wm.on("config_reloaded", applyProfile)
   end
 end
 
@@ -365,6 +433,9 @@ private let builtInTemplates: LuaValue = {
         ("two", .two), ("three", .three), ("four", .four), ("five", .five), ("six", .six),
         ("stack_left", .stackLeft), ("stack_right", .stackRight),
         ("two_thirds", .twoThirds), ("three_quarters", .threeQuarters), ("one_quarter", .oneQuarter),
+        ("two_rows", .twoRows), ("two_thirds_tall", .twoThirdsTall), ("three_rows", .threeRows),
+        ("one_over_two", .oneOverTwo), ("two_over_one", .twoOverOne), ("sidebars", .sidebars),
+        ("corner_top_left", .cornerTopLeft), ("corner_bottom_left", .cornerBottomLeft),
         ("centered", .centered),
     ]
     return .table(Dictionary(uniqueKeysWithValues: templates.map { id, template in
@@ -546,20 +617,26 @@ private func nativeBind(_ L: OpaquePointer?) -> Int32 {
 
 private func nativeGesture(_ L: OpaquePointer?) -> Int32 {
     reply(L, loadingOnly: "wm.gesture") { state in
-        let fields = try Fields(readValue(L, 1), owner: "wm.gesture", allowed: ["mods", "fingers", "direction", "threshold", "description"])
+        let fields = try Fields(readValue(L, 1), owner: "wm.gesture", allowed: ["mods", "fingers", "zone", "direction", "threshold", "description"])
         let fingers = try fields.integer("fingers", min: 3)
         if let fingers, fingers > 4 { throw ConfigError(message: "wm.gesture: 'fingers' must be 3 or 4") }
         let mods = try fields.string("mods")
-        guard mods != nil || fingers != nil else {
-            throw ConfigError(message: "wm.gesture: needs 'mods', for example mods = \"alt\", or 'fingers' (3 or 4)")
+        let zone = try fields.choice("zone", GestureZone.allCases.map(\.rawValue)).flatMap(GestureZone.init(rawValue:)) ?? .anywhere
+        if zone == .titleBar {
+            guard mods == nil, fingers == nil else { throw ConfigError(message: "wm.gesture: a gesture with zone = \"title_bar\" takes no 'mods' and no 'fingers'") }
+        } else {
+            guard mods != nil || fingers != nil else {
+                throw ConfigError(message: "wm.gesture: needs 'mods', for example mods = \"alt\", or 'fingers' (3 or 4)")
+            }
         }
         var modifiers: Modifiers = []
         if let mods {
             do { modifiers = try parseModifiers(mods) } catch { throw ConfigError(message: "wm.gesture: 'mods' \(error)") }
         }
         guard let name = try fields.choice("direction", GestureDirection.allCases.map(\.rawValue)), let direction = GestureDirection(rawValue: name) else {
-            throw ConfigError(message: "wm.gesture: needs a 'direction' (left, right, up or down)")
+            throw ConfigError(message: "wm.gesture: needs a 'direction' (left, right, up or down; pinch-in or pinch-out with zone = \"title_bar\")")
         }
+        if direction.isPinch, zone != .titleBar { throw ConfigError(message: "wm.gesture: 'direction' \(direction.rawValue) needs zone = \"title_bar\"") }
         let threshold = try fields.number("threshold", min: 10, max: 2000) ?? 100
         let action: BindAction
         switch lua_type(L, 2) {
@@ -573,8 +650,8 @@ private func nativeGesture(_ L: OpaquePointer?) -> Int32 {
             throw ConfigError(message: "wm.gesture: needs a 'command', a command string or a function")
         }
         let description = try fields.string("description")
-        state.gestures.removeAll { $0.modifiers == modifiers && $0.fingers == fingers && $0.direction == direction }
-        let gesture = Gesture(modifiers: modifiers, fingers: fingers, direction: direction, action: action, threshold: threshold, description: description)
+        state.gestures.removeAll { $0.modifiers == modifiers && $0.fingers == fingers && $0.zone == zone && $0.direction == direction }
+        let gesture = Gesture(modifiers: modifiers, fingers: fingers, zone: zone, direction: direction, action: action, threshold: threshold, description: description)
         state.gestures.append(gesture)
         // `wm list binds` shows it next to the keys.
         state.bindRecords.removeAll { $0.mode == "gesture" && $0.keys == gesture.label }

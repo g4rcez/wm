@@ -181,6 +181,104 @@ struct LuaHostTests {
         ])
     }
 
+    @Test func ruleMatchFieldsRoleSubroleAndIdentifierLoad() throws {
+        let config = try host.load(configURL: dir.write("init.lua", """
+        wm.rule { subrole = "AXDialog", float = true }
+        wm.rule { app = "Notes", role = "AXWindow", identifier = "^settings-" , float = true }
+        """))
+
+        #expect(Array(config.rules.prefix(2)) == [
+            WindowRule(subrole: "AXDialog", float: true),
+            WindowRule(app: "Notes", role: "AXWindow", identifier: "^settings-", float: true),
+        ])
+    }
+
+    private func monitor(_ index: Int, _ name: String, role: String) -> LuaValue {
+        .table(["index": .number(Double(index)), "name": .string(name), "role": .string(role)])
+    }
+
+    private func logsAfterDisplaysChange(_ monitors: [LuaValue]) -> [String] {
+        bridge.queryResults["monitors"] = .array(monitors)
+        host.fire(event: "displays_changed", payload: [:])
+        host.flush()
+        return bridge.logs
+    }
+
+    @Test func aProfileRunsWhenItsMonitorsFitAndOnlyOnceWhileItFits() throws {
+        _ = try host.load(configURL: dir.write("init.lua", """
+        wm.profile("desk", { monitors = { "dell", "main" }, apply = function(m) wm.log("desk", #m) end })
+        wm.profile("laptop", { monitors = { "main" }, apply = function() wm.log("laptop") end })
+        """))
+        let dell = monitor(1, "DELL U2723", role: "secondary")
+        let builtIn = monitor(2, "Built-in Retina", role: "main")
+
+        #expect(logsAfterDisplaysChange([dell, builtIn]) == ["desk 2"])
+        #expect(logsAfterDisplaysChange([dell, builtIn]) == ["desk 2"])
+        #expect(logsAfterDisplaysChange([monitor(1, "Built-in Retina", role: "main")]) == ["desk 2", "laptop"])
+        #expect(logsAfterDisplaysChange([dell, builtIn]) == ["desk 2", "laptop", "desk 2"])
+    }
+
+    @Test func aProfileNeedsADifferentMonitorForEachSelector() throws {
+        _ = try host.load(configURL: dir.write("init.lua", """
+        wm.profile("twice", { monitors = { "main", "main" }, apply = function() wm.log("twice") end })
+        wm.profile("pair", { monitors = { "e", "main" }, apply = function() wm.log("pair") end })
+        wm.profile("third", { monitors = { 3, "ez" }, apply = function() wm.log("third") end })
+        """))
+        let eizo = monitor(1, "Eizo", role: "main")
+        let ex = monitor(2, "Ex", role: "secondary")
+
+        // "e" fits both monitors, and "main" only the first: the profile fits when "e" takes the second one.
+        #expect(logsAfterDisplaysChange([eizo, ex]) == ["pair"])
+        // Two selectors and three monitors: no profile fits.
+        #expect(logsAfterDisplaysChange([eizo, ex, monitor(3, "Z", role: "tertiary")]) == ["pair"])
+    }
+
+    @Test func aProfileRunsWhenTheConfigLoadsToo() throws {
+        bridge.queryResults["monitors"] = .array([monitor(1, "Built-in Retina", role: "main")])
+        _ = try host.load(configURL: dir.write("init.lua", """
+        wm.profile("laptop", { monitors = { "main" }, apply = function() wm.log("laptop") end })
+        """))
+
+        host.fire(event: "config_reloaded", payload: [:])
+        host.flush()
+
+        #expect(bridge.logs == ["laptop"])
+    }
+
+    @Test func profilesCannotBeAddedAfterTheConfigLoaded() throws {
+        _ = try host.load(configURL: dir.write("init.lua", """
+        wm.on("tick", function()
+          local ok, err = pcall(wm.profile, "late", { monitors = { "main" }, apply = function() end })
+          wm.log(tostring(ok), err)
+        end)
+        """))
+
+        host.fire(event: "tick", payload: [:])
+        host.flush()
+
+        #expect(bridge.logs.count == 1)
+        #expect(bridge.logs.first?.hasPrefix("false") == true)
+        #expect(bridge.logs.first?.contains("wm.profile can only be called while the config file loads") == true)
+    }
+
+    @Test func ruleMatchingChecksEveryField() {
+        let rule = WindowRule(app: "Notes", title: "^Draft", role: "AXWindow", subrole: "axdialog", identifier: "^settings-")
+        func matches(
+            app: String = "Notes", title: String = "Draft 1", role: String = "AXWindow",
+            subrole: String = "AXDialog", identifier: String = "settings-general"
+        ) -> Bool {
+            rule.matches(bundleID: "com.apple.Notes", appName: app, title: title, role: role, subrole: subrole, identifier: identifier)
+        }
+
+        #expect(matches())
+        #expect(!matches(app: "Mail"))
+        #expect(!matches(title: "My Draft"))
+        #expect(!matches(role: "AXSheet"))
+        #expect(!matches(subrole: "AXStandardWindow"))
+        #expect(!matches(identifier: "document-1"))
+        #expect(!matches(identifier: ""))
+    }
+
     @Test func bindOptionsSetTheTriggerTheDescriptionAndTheMode() throws {
         let config = try host.load(configURL: dir.write("init.lua", """
         wm.bind("alt-a", "focus left", { description = "Left", repeating = false })
@@ -303,6 +401,36 @@ struct LuaHostTests {
         if case .function = config.gestures[1].action {} else { Issue.record("expected a function action") }
         #expect(config.bindRecords.map(\.keys) == ["alt-scroll left", "alt-shift-scroll right"])
         #expect(config.bindRecords.allSatisfy { $0.mode == "gesture" })
+    }
+
+    @Test func aTitleBarGestureTakesAZoneAndNoModifier() throws {
+        let config = try host.load(configURL: dir.write("init.lua", """
+        wm.gesture { zone = "title_bar", direction = "pinch-in", command = "window minimize" }
+        wm.gesture { zone = "title_bar", direction = "up", command = "window maximize" }
+        wm.config { trackpad = { title_bar = true, title_bar_height = 60, pinch = false } }
+        """))
+        #expect(config.gestures == [
+            Gesture(zone: .titleBar, direction: .pinchIn, action: .command("window minimize")),
+            Gesture(zone: .titleBar, direction: .up, action: .command("window maximize")),
+        ])
+        #expect(config.bindRecords.map(\.keys) == ["title_bar pinch-in", "title_bar-scroll up"])
+        #expect(config.settings.trackpad.titleBar)
+        #expect(config.settings.trackpad.titleBarHeight == 60)
+        #expect(!config.settings.trackpad.pinch)
+    }
+
+    @Test(arguments: [
+        ("wm.gesture { mods = 'alt', direction = 'pinch-in', command = 'x' }", "needs zone = \"title_bar\""),
+        ("wm.gesture { zone = 'title_bar', mods = 'alt', direction = 'left', command = 'x' }", "takes no 'mods' and no 'fingers'"),
+        ("wm.gesture { zone = 'title_bar', fingers = 3, direction = 'left', command = 'x' }", "takes no 'mods' and no 'fingers'"),
+        ("wm.gesture { zone = 'corner', direction = 'left', command = 'x' }", "'zone' must be one of"),
+        ("wm.config { trackpad = { title_bar_height = 5 } }", "'trackpad.title_bar_height' must be between 10 and 200"),
+    ])
+    func badTitleBarGesturesNameTheProblem(script: String, expected: String) throws {
+        let error = #expect(throws: ConfigError.self) {
+            try host.load(configURL: dir.write("init.lua", script))
+        }
+        #expect(error?.message.contains(expected) == true)
     }
 
     @Test func aGestureForTheSameModifiersAndDirectionReplacesTheOldOne() throws {
@@ -1041,6 +1169,13 @@ struct LuaHostTests {
         ("wm.mode('windows', { ['alt-foo'] = 'x' })", "mode 'windows': invalid chord 'alt-foo'"),
         ("wm.bind('alt-a', 5)", "must be a command string or a function"),
         ("wm.rule { float = true }", "needs at least one match field"),
+        ("wm.profile('', {})", "wm.profile expects a profile name"),
+        ("wm.profile('a', { monitors = {}, apply = function() end })", "'monitors' must be a list of selectors"),
+        ("wm.profile('a', { monitors = { {} }, apply = function() end })", "a monitor selector is a role, a number or part of a name"),
+        ("wm.profile('a', { monitors = { 'main' } })", "'apply' must be a function"),
+        ("local p = { monitors = { 'main' }, apply = function() end }; wm.profile('a', p); wm.profile('a', p)", "wm.profile 'a' is already defined"),
+        ("wm.rule { identifier = '[' }", "'identifier' is not a valid regular expression"),
+        ("wm.rule { subrole = 5 }", "'subrole'"),
         ("wm.rule { app = 'x', colour = 1 }", "unknown key 'colour'"),
         ("wm.rule { title = '[' }", "not a valid regular expression"),
         ("wm.rule { app = 'x', width = 2 }", "'width' must be between 0.05 and 1"),
@@ -1171,13 +1306,13 @@ struct LuaHostTests {
 
     @Test func everyBuiltInTemplateIsExportedToLua() throws {
         _ = try host.load(configURL: dir.write("init.lua", """
-        local ids = { "two", "three", "four", "five", "six", "stack_left", "stack_right", "two_thirds", "three_quarters", "one_quarter" }
+        local ids = { "two", "three", "four", "five", "six", "stack_left", "stack_right", "two_thirds", "three_quarters", "one_quarter", "two_rows", "two_thirds_tall", "three_rows", "one_over_two", "two_over_one", "sidebars", "corner_top_left", "corner_bottom_left" }
         local names = {}
         for _, id in ipairs(ids) do names[#names + 1] = wm.templates[id].name end
         wm.log(table.concat(names, ","))
         """))
 
-        #expect(bridge.logs == ["2,3,4,5,6,2+1,1+2,2/3,3/4,1/4"])
+        #expect(bridge.logs == ["2,3,4,5,6,2+1,1+2,2/3,3/4,1/4,2v,2/3v,3v,1-over-2,2-over-1,1/2/1,corner-tl,corner-bl"])
     }
 
     @Test(arguments: [
@@ -1197,5 +1332,42 @@ struct LuaHostTests {
             try host.load(configURL: dir.write("init.lua", script))
         }
         #expect(error?.message.contains(expected) == true)
+    }
+}
+
+struct ConfigCheckTests {
+    let dir: ConfigDir
+
+    init() throws { dir = try ConfigDir() }
+
+    @Test func aGoodConfigIsSummarized() throws {
+        let url = try dir.write("init.lua", "wm.bind('alt-h', 'focus left')\nwm.bind('alt-l', 'focus right')")
+
+        #expect(checkConfig(at: url) == .success(ConfigSummary(binds: 2)))
+    }
+
+    @Test func aBrokenConfigNamesTheLine() throws {
+        let url = try dir.write("init.lua", "wm.bind('alt-h', 'focus left')\nwm.bind('alt-foo', 'x')")
+
+        guard case .failure(let error) = checkConfig(at: url) else {
+            Issue.record("the config should not load")
+            return
+        }
+        #expect(error.message.contains("init.lua:2:"))
+        #expect(error.message.contains("invalid chord 'alt-foo'"))
+    }
+
+    @Test func aMissingFileIsAnError() {
+        let url = dir.url.appendingPathComponent("nothing.lua")
+
+        #expect(checkConfig(at: url) == .failure(ConfigError(message: "there is no config file at \(url.path)")))
+    }
+
+    @Test func theCheckDoesNotRunWhatTheConfigStarts() throws {
+        let marker = dir.url.appendingPathComponent("ran").path
+        let url = try dir.write("init.lua", "wm.exec('touch \(marker)')\nwm.dispatch('focus left')")
+
+        #expect(checkConfig(at: url) == .success(ConfigSummary(binds: 0)))
+        #expect(!FileManager.default.fileExists(atPath: marker))
     }
 }

@@ -314,11 +314,14 @@
 
 -- wm.rule, wm.workspace ------------------------------------------------------------------------------------------
 
---- A rule needs `app` or `title`. Rules apply to each new window, in order, until one with `stop = true` (the default) matches.
+--- A rule needs at least one of `app`, `title`, `role`, `subrole` or `identifier`. Rules apply to each new window, in order, until one with `stop = true` (the default) matches.
 ---@class (exact) wm.Rule
 ---@field name? string A label for `wm logs` and for `wm.floating.disable`. It matches nothing.
 ---@field app? string Bundle id (`"com.apple.finder"`) or app name. Exact match, not case-sensitive.
 ---@field title? string Regular expression, matched anywhere in the window title.
+---@field role? string Accessibility role (`"AXWindow"`). Exact match, not case-sensitive.
+---@field subrole? string Accessibility subrole (`"AXStandardWindow"`, `"AXDialog"`, `"AXFloatingWindow"`). Exact match, not case-sensitive. `wm logs` shows it for skipped windows.
+---@field identifier? string Regular expression, matched anywhere in the `AXIdentifier` of the window. It tells apart windows with the same title.
 ---@field float? boolean Open the window floating.
 ---@field workspace? string|integer Send the window to this workspace.
 ---@field layout? wm.Layout Layout of that workspace.
@@ -374,6 +377,7 @@
 ---| "workspace_changed"
 ---| "special_changed"
 ---| "monitor_changed"
+---| "displays_changed"
 ---| "layout_changed"
 ---| "mode_changed"
 ---| "config_reloaded"
@@ -447,6 +451,11 @@
 ---@field built_in boolean
 ---@field enabled boolean wm manages it: the config does not turn it off.
 ---@field hyper boolean CapsLock is mapped to F18 on this keyboard now (the hyper key).
+
+--- The set of connected displays changed. It also fires once at start. A dock or an undock sends one event, 0.5 s after the last change.
+---@class wm.DisplaysChangedEvent
+---@field count integer Number of displays now.
+---@field monitors string[] Their names, from the left one to the right one.
 
 ---@class wm.MonitorChangedEvent
 ---@field monitor integer
@@ -583,6 +592,17 @@ function wm.floating.disable(...) end
 ---@param spec wm.Rule
 function wm.rule(spec) end
 
+--- What `wm.profile` takes.
+---@class (exact) wm.ProfileSpec
+---@field monitors (string|integer)[] One selector for each connected monitor: a role (`"main"`, `"secondary"`, `"tertiary"`), its number (1 is the leftmost) or part of its name. The profile fits when the number of monitors is the same and each selector names a different monitor.
+---@field apply fun(monitors: wm.Monitor[]) Runs when the profile starts to fit. Use `wm.dispatch` and `wm.query` in it.
+
+--- Runs `apply` when the connected monitors fit `monitors`: when the displays change and when the config loads. The first profile
+--- that fits wins, in the order of the calls. Only while the config file loads.
+---@param name string
+---@param spec wm.ProfileSpec
+function wm.profile(name, spec) end
+
 --- Sets the layout, monitor and settings of one workspace. Only while the config file loads.
 ---@param name string|integer
 ---@param spec wm.WorkspaceSpec
@@ -609,6 +629,8 @@ function wm.workspace(name, spec) end
 ---@overload fun(event: "special_changed", filter: wm.EventFilter, handler: fun(e: wm.SpecialChangedEvent))
 ---@overload fun(event: "monitor_changed", handler: fun(e: wm.MonitorChangedEvent))
 ---@overload fun(event: "monitor_changed", filter: wm.EventFilter, handler: fun(e: wm.MonitorChangedEvent))
+---@overload fun(event: "displays_changed", handler: fun(e: wm.DisplaysChangedEvent))
+---@overload fun(event: "displays_changed", filter: wm.EventFilter, handler: fun(e: wm.DisplaysChangedEvent))
 ---@overload fun(event: "layout_changed", handler: fun(e: wm.LayoutChangedEvent))
 ---@overload fun(event: "layout_changed", filter: wm.EventFilter, handler: fun(e: wm.LayoutChangedEvent))
 ---@overload fun(event: "mode_changed", handler: fun(e: wm.ModeChangedEvent))

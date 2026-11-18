@@ -117,6 +117,12 @@ public struct WindowRule: Sendable, Equatable {
     public var app: String?
     /// Regular expression matched anywhere in the window title.
     public var title: String?
+    /// Accessibility role of the window (`AXWindow`), compared case-insensitively and exactly.
+    public var role: String?
+    /// Accessibility subrole of the window (`AXStandardWindow`, `AXDialog`), compared case-insensitively and exactly.
+    public var subrole: String?
+    /// Regular expression matched anywhere in the `AXIdentifier` of the window.
+    public var identifier: String?
     public var float: Bool?
     public var workspace: String?
     public var layout: LayoutKind?
@@ -136,7 +142,8 @@ public struct WindowRule: Sendable, Equatable {
     public var stop: Bool
 
     public init(
-        app: String? = nil, title: String? = nil, float: Bool? = nil, workspace: String? = nil,
+        app: String? = nil, title: String? = nil, role: String? = nil, subrole: String? = nil,
+        identifier: String? = nil, float: Bool? = nil, workspace: String? = nil,
         layout: LayoutKind? = nil, size: RuleSize? = nil, center: Bool = false,
         maximize: Bool? = nil, width: Double? = nil, monitor: String? = nil, focus: Bool? = nil,
         commands: [String] = [], stop: Bool = true, name: String? = nil
@@ -144,6 +151,9 @@ public struct WindowRule: Sendable, Equatable {
         self.name = name
         self.app = app
         self.title = title
+        self.role = role
+        self.subrole = subrole
+        self.identifier = identifier
         self.float = float
         self.workspace = workspace
         self.layout = layout
@@ -159,6 +169,19 @@ public struct WindowRule: Sendable, Equatable {
 }
 
 public extension WindowRule {
+    /// True when the window has every match field of this rule. `app`, `role` and `subrole` are exact and ignore case;
+    /// `title` and `identifier` are regular expressions that match anywhere.
+    func matches(bundleID: String, appName: String, title windowTitle: String, role windowRole: String,
+                 subrole windowSubrole: String, identifier windowIdentifier: String) -> Bool {
+        if let app, app.caseInsensitiveCompare(bundleID) != .orderedSame,
+           app.caseInsensitiveCompare(appName) != .orderedSame { return false }
+        if let title, windowTitle.range(of: title, options: .regularExpression) == nil { return false }
+        if let role, role.caseInsensitiveCompare(windowRole) != .orderedSame { return false }
+        if let subrole, subrole.caseInsensitiveCompare(windowSubrole) != .orderedSame { return false }
+        if let identifier, windowIdentifier.range(of: identifier, options: .regularExpression) == nil { return false }
+        return true
+    }
+
     /// This rule with `later` on top: what `later` sets wins, commands add up, and a window is centered if either says so.
     func merging(_ later: WindowRule) -> WindowRule {
         var result = self
