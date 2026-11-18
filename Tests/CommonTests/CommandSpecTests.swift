@@ -44,15 +44,75 @@ struct CommandSpecTests {
     }
 
     @Test func helpForACommandHasItsUsageAndExample() {
-        let help = renderHelp(topic: "swap")
-        #expect(help == """
+        #expect(renderHelp(topic: "swap") == """
         wm swap <dir>
-            Exchange places with the window in that direction.
+
+          Exchange places with the window in that direction.
 
         <dir> is left, right, up or down.
 
         """)
-        #expect(renderHelp(topic: "resize")?.contains("example: wm resize width +50") == true)
+        #expect(renderHelp(topic: "resize")?.contains("Example\n  wm resize width +50") == true)
+    }
+
+    @Test func helpForACommandWithOptionsExplainsEachOne() {
+        let help = renderHelp(topic: "window send workspace") ?? ""
+        #expect(help.contains("Options\n  --stay    Keep the view where it is; do not follow the window."))
+        #expect(help.contains("  --column  Send the whole column"))
+    }
+
+    @Test func helpForAGroupListsItsCommandsWithTheirSummary() {
+        #expect(renderHelp(topic: "workspace special") == """
+        wm workspace special [name]
+
+          Show or hide a special workspace (default: special).
+
+        Example
+          wm workspace special term
+
+        """)
+        #expect(renderHelp(topic: "layout split")?.contains("Related\n  wm layout split root\n      Make the window a child of the root: half the screen.") == true)
+        #expect(renderHelp(topic: "window")?.hasPrefix("window\n  wm window close\n      Close the window.\n") == true)
+    }
+
+    @Test func colorsWrapEachKindOfWordAndNothingElse() {
+        #expect(renderHelp(topic: "swap", style: HelpStyle(enabled: true)) == """
+        wm \u{1B}[1mswap\u{1B}[0m \u{1B}[36m<dir>\u{1B}[0m
+
+          Exchange places with the window in that direction.
+
+        \u{1B}[2m<dir> is left, right, up or down.\u{1B}[0m
+
+        """)
+    }
+
+    @Test func everyOptionOfACommandIsExplained() {
+        for spec in commandSpecs {
+            let named = spec.flags.split(whereSeparator: { " []=".contains($0) }).filter { $0.hasPrefix("-") }.map(String.init)
+            let explained = (commandOptions[spec.path] ?? []).flatMap { $0.flag.split(whereSeparator: { ", =".contains($0) }) }.map(String.init)
+            for flag in named {
+                #expect(explained.contains(flag), "\(spec.path) \(flag)")
+            }
+        }
+    }
+
+    @Test func optionsAreOnlyExplainedForCommandsThatExist() {
+        let paths = Set(commandSpecs.map(\.path))
+        #expect(Set(commandOptions.keys).isSubset(of: paths))
+    }
+
+    @Test func reflowJoinsAParagraphAndKeepsAListAsItIs() {
+        #expect(reflow("one two\nthree four five\n  item a\n  item b\n\nsix", width: 12) == ["one two", "three four", "five", "  item a", "  item b", "", "six"])
+    }
+
+    @Test func colorsAreOffWithoutATerminalOrWithNoColor() {
+        #expect(HelpStyle.detect(isTerminal: true, environment: [:]).enabled)
+        #expect(!HelpStyle.detect(isTerminal: false, environment: [:]).enabled)
+        #expect(!HelpStyle.detect(isTerminal: true, environment: ["NO_COLOR": "1"]).enabled)
+        #expect(!HelpStyle.detect(isTerminal: true, environment: ["TERM": "dumb"]).enabled)
+        #expect(HelpStyle.detect(isTerminal: false, environment: ["CLICOLOR_FORCE": "1"]).enabled)
+        #expect(!HelpStyle.detect(isTerminal: false, environment: ["CLICOLOR_FORCE": "0"]).enabled)
+        #expect(!HelpStyle.detect(isTerminal: true, environment: ["CLICOLOR_FORCE": "1", "NO_COLOR": "1"]).enabled)
     }
 
     @Test func helpForUnknownTopicIsNil() {

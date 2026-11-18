@@ -170,7 +170,9 @@ struct LuaHostTests {
     @Test func sampleConfigLoadsRules() throws {
         let config = try host.load(configURL: dir.write("init.lua", sampleConfig))
 
-        #expect(config.rules == [
+        // The rules of the config come first; the default floating rules follow them.
+        #expect(config.rules.dropFirst(5).map(\.name) == Self.defaultFloatingNames)
+        #expect(Array(config.rules.prefix(5)) == [
             WindowRule(app: "com.apple.finder", float: true, size: RuleSize(width: 0.62, height: 0.68), center: true),
             WindowRule(app: "Spotify", workspace: "9", layout: .tiling, commands: ["focus left"], stop: false),
             WindowRule(title: "^Picture in Picture$", float: true, commands: ["layout tiling", "focus right"]),
@@ -663,6 +665,22 @@ struct LuaHostTests {
         #expect(set.settings.overview.backdrop == Color(red: 0, green: 0, blue: 0, alpha: 128.0 / 255))
     }
 
+    @Test func theLabelsOfTheHintsHaveColorsThatTheConfigChanges() throws {
+        let plain = try host.load(configURL: dir.write("init.lua", "wm.config { layout = \"tiling\" }"))
+        #expect(plain.settings.hints == HintSettings())
+        let set = try host.load(configURL: dir.write("init.lua", "wm.config { hints = { background = \"#ff0000\", text = \"#ffffff\", area = \"#00ff0080\" } }"))
+        #expect(set.settings.hints.background == Color(red: 1, green: 0, blue: 0))
+        #expect(set.settings.hints.text == Color(red: 1, green: 1, blue: 1))
+        #expect(set.settings.hints.area == Color(red: 0, green: 1, blue: 0, alpha: 128.0 / 255))
+        #expect(set.settings.hints.focus == HintSettings().focus)
+    }
+
+    @Test func aHintColorThatIsNotAColorIsAnError() throws {
+        #expect(throws: (any Error).self) {
+            try host.load(configURL: dir.write("init.lua", "wm.config { hints = { background = \"red\" } }"))
+        }
+    }
+
     @Test func everyKeyboardIsEnabledUnlessTheConfigNamesOne() throws {
         let plain = try host.load(configURL: dir.write("init.lua", "wm.config { layout = \"tiling\" }"))
         #expect(plain.settings.keyboards == KeyboardSettings())
@@ -671,6 +689,79 @@ struct LuaHostTests {
         """))
         #expect(set.settings.keyboards == KeyboardSettings(
             defaultEnabled: false, overrides: ["apple internal keyboard / trackpad": true, "046d:c52b": false]))
+    }
+
+    private static let defaultFloatingNames = [
+        "helium-popups", "chrome-popups", "brave-popups", "chromium-popups", "edge-popups", "firefox-popups", "finder", "preview", "calculator", "activity-monitor", "archive-utility",
+        "quicktime-player", "system-settings", "raycast-settings",
+    ]
+
+    @Test func theDefaultFloatingRulesAreAddedWithoutAnyConfig() throws {
+        let config = try host.load(configURL: dir.write("init.lua", "wm.config { layout = \"tiling\" }"))
+        #expect(config.rules.map(\.name) == Self.defaultFloatingNames)
+        #expect(config.rules.allSatisfy { $0.float == true && $0.center && $0.stop })
+        #expect(config.rules.first { $0.name == "finder" }?.app == "com.apple.finder")
+        #expect(config.rules.first { $0.name == "helium-popups" }?.title == "^(?!.* - Helium).+")
+    }
+
+    @Test func aRuleOfTheUserComesBeforeTheDefaultOnes() throws {
+        let config = try host.load(configURL: dir.write("init.lua", "wm.rule { app = 'com.apple.finder', float = false }"))
+        #expect(config.rules.first?.name == nil)
+        #expect(config.rules.first?.float == false)
+        #expect(config.rules.dropFirst().map(\.name) == Self.defaultFloatingNames)
+    }
+
+    @Test func aDefaultRuleIsTurnedOffByItsName() throws {
+        let config = try host.load(configURL: dir.write("init.lua", "wm.floating.disable('finder', 'preview')"))
+        #expect(config.rules.map(\.name) == Self.defaultFloatingNames.filter { $0 != "finder" && $0 != "preview" })
+    }
+
+    @Test func theNamesCanBeGivenAsAList() throws {
+        let config = try host.load(configURL: dir.write("init.lua", "wm.floating.disable { 'calculator', 'brave-popups' }"))
+        #expect(config.rules.map(\.name) == Self.defaultFloatingNames.filter { $0 != "calculator" && $0 != "brave-popups" })
+    }
+
+    @Test func allTheDefaultRulesCanBeTurnedOff() throws {
+        let config = try host.load(configURL: dir.write("init.lua", "wm.floating.enabled = false"))
+        #expect(config.rules.isEmpty)
+    }
+
+    @Test func aNameThatIsNotADefaultRuleIsAnError() {
+        #expect(throws: (any Error).self) {
+            _ = try host.load(configURL: dir.write("init.lua", "wm.floating.disable('finderr')"))
+        }
+        do {
+            _ = try host.load(configURL: dir.write("init.lua", "wm.floating.disable('finderr')"))
+        } catch {
+            #expect("\(error)".contains("there is no default rule named 'finderr'"))
+        }
+    }
+
+    @Test func theListOfDefaultRulesCanBeChangedByTheConfig() throws {
+        let config = try host.load(configURL: dir.write("init.lua", """
+        table.insert(wm.floating.defaultRules, { name = "notes", app = "com.apple.Notes", float = true, center = true })
+        for _, rule in ipairs(wm.floating.defaultRules) do
+          if rule.name == "finder" then rule.size = { 0.5, 0.6 } end
+        end
+        table.remove(wm.floating.defaultRules, 1)
+        """))
+        #expect(config.rules.map(\.name) == Array(Self.defaultFloatingNames.dropFirst()) + ["notes"])
+        #expect(config.rules.first { $0.name == "finder" }?.size == RuleSize(width: 0.5, height: 0.6))
+    }
+
+    @Test func aRuleCanHaveANameAndTheNameMustBeAString() throws {
+        let config = try host.load(configURL: dir.write("init.lua", "wm.floating.enabled = false; wm.rule { name = 'mine', app = 'x' }"))
+        #expect(config.rules.map(\.name) == ["mine"])
+        #expect(throws: (any Error).self) {
+            _ = try host.load(configURL: dir.write("init.lua", "wm.rule { name = 3, app = 'x' }"))
+        }
+    }
+
+    @Test func floatingWindowsRememberTheirPositionUnlessTheConfigSaysNo() throws {
+        let plain = try host.load(configURL: dir.write("init.lua", "wm.config { layout = \"tiling\" }"))
+        #expect(plain.settings.floating.rememberPosition)
+        let off = try host.load(configURL: dir.write("init.lua", "wm.config { floating = { remember_position = false } }"))
+        #expect(off.settings.floating.rememberPosition == false)
     }
 
     @Test func theFingersOfTheTrackpadAlsoSetTheScrollingFingers() throws {
@@ -922,6 +1013,7 @@ struct LuaHostTests {
         ("wm.config { overview = { backdrop = \"dark\" } }", "'overview.backdrop' must be a color"),
         ("wm.config { keyboards = { default = 'yes' } }", "'keyboards.default' must be true or false"),
         ("wm.config { keyboards = true }", "'keyboards' must be a table"),
+        ("wm.config { floating = { remember_position = 'yes' } }", "'floating.remember_position' must be true or false"),
         ("wm.config { special = { size = 0.2 } }", "'special.size'"),
         ("wm.config { special = { backdrop = \"red\" } }", "'special.backdrop' must be a color"),
         ("wm.gesture { fingers = 5, direction = 'left', command = 'x' }", "'fingers' must be 3 or 4"),

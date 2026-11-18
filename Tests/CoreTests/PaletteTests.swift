@@ -78,6 +78,15 @@ struct PaletteTests {
         #expect(rank(entries, query: PaletteQuery(mode: .windows, text: "")).map(\.key) == ["1"])
     }
 
+    @Test func tabsAreFoundInTheAllListOnlyWithTextAndTheTabsListHoldsTabsAndWindows() {
+        let tab = PaletteEntry(kind: .tabs, title: "Safari tips", detail: "https://example.com", key: "t")
+        #expect(rank(entries + [tab], query: PaletteQuery(mode: .all, text: "")).map(\.key) == ["1", "2", "3"])
+        #expect(rank(entries + [tab], query: PaletteQuery(mode: .all, text: "tips")).map(\.key) == ["t"])
+        #expect(rank(entries + [tab], query: PaletteQuery(mode: .apps, text: "tips")).isEmpty)
+        #expect(rank(entries + [tab], query: PaletteQuery(mode: .tabs, text: "")).map(\.key) == ["1", "t"])
+        #expect(rank(entries + [tab], query: PaletteQuery(mode: .tabs, text: "saf")).map(\.key) == ["t", "1"])
+    }
+
     // MARK: Running apps
 
     @Test func anAppIsFollowedByItsWindowsAndTheAppWithTheNewestWindowComesFirst() {
