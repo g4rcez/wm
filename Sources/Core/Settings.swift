@@ -336,6 +336,12 @@ public struct TrackpadSettings: Sendable, Equatable {
     public var scrollFingers = 4
     /// Strip points per pad width are multiplied by this.
     public var speed = 1.0
+    /// Two-finger swipes and pinches on the title bar of a window (`wm.gesture` with `zone = "title_bar"`, and the built-in ones).
+    public var titleBar = false
+    /// How many points from the top of a window count as its title bar.
+    public var titleBarHeight = 40.0
+    /// Pinch gestures in the title bar, when `titleBar` is on.
+    public var pinch = true
     /// Tell the user in a notification when the framework or a trackpad is missing. Only when the config turned the
     /// trackpad on itself: on by default, a Mac without a trackpad only gets a line in the log.
     public var warnsWhenMissing = false

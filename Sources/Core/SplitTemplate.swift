@@ -93,6 +93,54 @@ public struct SplitTemplate: Sendable, Equatable, Codable {
         name: "1/4", key: "w", title: "Focus one quarter, three quarters beside",
         cells: [CGRect(x: 0, y: 0, width: 0.25, height: 1), CGRect(x: 0.25, y: 0, width: 0.75, height: 1)])
 
+    /// Two windows, one over the other.
+    public static let twoRows = SplitTemplate(
+        name: "2v", key: "v", title: "Two stacked",
+        cells: [CGRect(x: 0, y: 0, width: 1, height: 0.5), CGRect(x: 0, y: 0.5, width: 1, height: 0.5)])
+    /// The first window takes two thirds of the height, the second one third.
+    public static let twoThirdsTall = SplitTemplate(
+        name: "2/3v", key: "h", title: "Focus top two thirds, one third below",
+        cells: [CGRect(x: 0, y: 0, width: 1, height: 2.0 / 3), CGRect(x: 0, y: 2.0 / 3, width: 1, height: 1.0 / 3)])
+    /// Three windows in a column.
+    public static let threeRows = SplitTemplate(
+        name: "3v", key: "y", title: "Three stacked",
+        cells: (0..<3).map { CGRect(x: 0, y: Double($0) / 3, width: 1, height: 1.0 / 3) })
+    /// One wide window on top, two side by side below.
+    public static let oneOverTwo = SplitTemplate(
+        name: "1-over-2", key: "n", title: "One on top, two below",
+        cells: [
+            CGRect(x: 0, y: 0, width: 1, height: 0.5),
+            CGRect(x: 0, y: 0.5, width: 0.5, height: 0.5), CGRect(x: 0.5, y: 0.5, width: 0.5, height: 0.5),
+        ])
+    /// Two side by side on top, one wide window below.
+    public static let twoOverOne = SplitTemplate(
+        name: "2-over-1", key: "j", title: "Two on top, one below",
+        cells: [
+            CGRect(x: 0, y: 0, width: 0.5, height: 0.5), CGRect(x: 0.5, y: 0, width: 0.5, height: 0.5),
+            CGRect(x: 0, y: 0.5, width: 1, height: 0.5),
+        ])
+    /// A narrow window, a wide one in the middle, a narrow one. The middle window is the one that you read first.
+    public static let sidebars = SplitTemplate(
+        name: "1/2/1", key: "m", title: "Wide middle, two sides",
+        cells: [
+            CGRect(x: 0, y: 0, width: 0.25, height: 1), CGRect(x: 0.25, y: 0, width: 0.5, height: 1),
+            CGRect(x: 0.75, y: 0, width: 0.25, height: 1),
+        ])
+    /// A large window in the upper left corner (two thirds by two thirds), with the rest around it.
+    public static let cornerTopLeft = SplitTemplate(
+        name: "corner-tl", key: "u", title: "Large upper left",
+        cells: [
+            CGRect(x: 0, y: 0, width: 2.0 / 3, height: 2.0 / 3), CGRect(x: 2.0 / 3, y: 0, width: 1.0 / 3, height: 2.0 / 3),
+            CGRect(x: 0, y: 2.0 / 3, width: 1, height: 1.0 / 3),
+        ])
+    /// A large window in the lower left corner (two thirds by two thirds), with the rest around it.
+    public static let cornerBottomLeft = SplitTemplate(
+        name: "corner-bl", key: "o", title: "Large lower left",
+        cells: [
+            CGRect(x: 0, y: 0, width: 1, height: 1.0 / 3),
+            CGRect(x: 0, y: 1.0 / 3, width: 2.0 / 3, height: 2.0 / 3), CGRect(x: 2.0 / 3, y: 1.0 / 3, width: 1.0 / 3, height: 2.0 / 3),
+        ])
+
     /// The windows share the middle two thirds of the width, with a sixth of margin on each side. Tiling layout only.
     public static let centered = SplitTemplate(
         name: "center", key: "z", title: "Centered, two thirds wide",
@@ -101,6 +149,7 @@ public struct SplitTemplate: Sendable, Equatable, Codable {
     /// The built-in templates, in the order of Ribbon's menu, then the wide ones. Both layouts can use them.
     public static let allCases: [SplitTemplate] = [
         .two, .three, .four, .five, .six, .stackLeft, .stackRight, .twoThirds, .threeQuarters, .oneQuarter,
+        .twoRows, .twoThirdsTall, .threeRows, .oneOverTwo, .twoOverOne, .sidebars, .cornerTopLeft, .cornerBottomLeft,
     ]
 
     /// What the tiling layout lists without `templates` in the config: the grids and the centered frame.

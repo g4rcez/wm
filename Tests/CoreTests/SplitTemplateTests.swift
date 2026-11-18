@@ -5,7 +5,7 @@ import Testing
 
 struct SplitTemplateTests {
     @Test func windowCountsMatchTheNames() {
-        #expect(SplitTemplate.allCases.map(\.count) == [2, 3, 4, 5, 6, 3, 3, 2, 2, 2])
+        #expect(SplitTemplate.allCases.map(\.count) == [2, 3, 4, 5, 6, 3, 3, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3])
     }
 
     @Test func stackLeftHasTwoStackedOnTheLeftAndOneTallOnTheRight() {
@@ -52,7 +52,7 @@ struct SplitTemplateTests {
     }
 
     @Test func everyTemplateHasAOneCharacterPickerKeyNumbersFirst() {
-        #expect(SplitTemplate.allCases.map(\.key) == ["2", "3", "4", "5", "6", "l", "r", "t", "q", "w"])
+        #expect(SplitTemplate.allCases.map(\.key) == ["2", "3", "4", "5", "6", "l", "r", "t", "q", "w", "v", "h", "y", "n", "j", "m", "u", "o"])
     }
 
     @Test func everyTemplateFillsTheWholeAreaExactly() {

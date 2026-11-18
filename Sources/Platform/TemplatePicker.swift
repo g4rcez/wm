@@ -30,12 +30,13 @@ public enum TemplateGlyph {
             cells = (0..<4).map { CGRect(x: Double($0) / 4, y: 0, width: 0.25, height: 1) }
         }
         let inset: CGFloat = max(1.5, rect.width * 0.03)
-        for cell in cells {
+        // The first cell is the one that the focused window takes: it is drawn bright, the others are dim.
+        for (index, cell) in cells.enumerated() {
             let frame = CGRect(
                 x: rect.minX + cell.minX * rect.width, y: rect.minY + cell.minY * rect.height,
                 width: cell.width * rect.width, height: cell.height * rect.height
             ).insetBy(dx: inset, dy: inset)
-            color.setFill()
+            (index == 0 || cells.count == 1 ? color : color.withAlphaComponent(color.alphaComponent * 0.4)).setFill()
             NSBezierPath(roundedRect: frame, xRadius: frame.width * 0.18, yRadius: frame.width * 0.18).fill()
         }
     }
@@ -51,7 +52,9 @@ public enum TemplateGlyph {
     }
 }
 
-/// A small picker with the pictures of the templates of a layout and the chain. Keys come from the event tap, so the panel never becomes key or active:
+/// A small picker with the pictures of the templates of a layout and the chain. In the tiling layout it has one more picture,
+/// `g`: a grid where you drag a rectangle with the mouse. The rectangle becomes a frame template (the windows share that part
+/// of the screen). Keys come from the event tap, so the panel never becomes key or active:
 /// the arrow keys move, the key printed on a picture (a number or a letter; `c` is the chain) or Return chooses, Escape cancels. A click on a picture chooses it.
 @MainActor
 public final class TemplatePicker {
@@ -64,6 +67,12 @@ public final class TemplatePicker {
     private let view = PickerView()
     private var selected = 0
     private var entries: [SplitTemplate?] = []
+    private var allowsGrid = false
+    private var isGridMode = false {
+        didSet { view.isGridMode = isGridMode }
+    }
+    /// The pictures, and the grid tile after them when the layout has it.
+    private var itemCount: Int { entries.count + (allowsGrid ? 1 : 0) }
 
     /// Called with the chosen template (`nil` is the chain) after the picker closes.
     public var onChoose: ((SplitTemplate?) -> Void)?
@@ -83,32 +92,49 @@ public final class TemplatePicker {
             selected = index
             commit()
         }
+        view.onGrid = { [unowned self] column, row, columns, rows in
+            guard let frame = CustomTemplates.gridFrame(
+                columns: PickerView.gridColumns, rows: PickerView.gridRows, column: column, row: row, spanColumns: columns, spanRows: rows)
+            else { return }
+            hide()
+            onChoose?(frame)
+        }
     }
 
     /// `workArea` is the focused monitor's usable area in Accessibility coordinates. `templates` are the pictures
     /// (the chain comes last). `current` starts the selection.
-    public func show(on workArea: CGRect, templates: [SplitTemplate], current: SplitTemplate?) {
+    public func show(on workArea: CGRect, templates: [SplitTemplate], current: SplitTemplate?, allowsGrid: Bool = false) {
         entries = TemplateGlyph.entries(templates)
+        self.allowsGrid = allowsGrid
+        isGridMode = false
         selected = entries.firstIndex { $0 == current } ?? 0
-        let rows = (entries.count + Self.columns - 1) / Self.columns
+        let rows = (itemCount + Self.columns - 1) / Self.columns
         let size = CGSize(
             width: 2 * Self.padding + CGFloat(Self.columns) * Self.tile.width + CGFloat(Self.columns - 1) * Self.gap,
             height: 2 * Self.padding + CGFloat(rows) * Self.tile.height + CGFloat(rows - 1) * Self.gap
         )
         let rect = CGRect(
             x: workArea.midX - size.width / 2, y: workArea.midY - size.height / 2, width: size.width, height: size.height)
-        view.configure(entries: entries, columns: Self.columns, tile: Self.tile, gap: Self.gap, padding: Self.padding)
+        view.configure(entries: entries, showsGridTile: allowsGrid, columns: Self.columns, tile: Self.tile, gap: Self.gap, padding: Self.padding)
         view.selected = selected
         panel.setFrame(Displays.cocoaRect(rect), display: true)
         panel.orderFrontRegardless()
     }
 
-    public func hide() { panel.orderOut(nil) }
+    public func hide() {
+        isGridMode = false
+        panel.orderOut(nil)
+    }
 
     /// Returns `true` when the key is used up. Any other key closes the picker and is typed as usual.
     public func handleKey(_ key: String) -> Bool {
         guard isOpen else { return false }
-        let count = entries.count
+        // In the grid only the mouse draws. Escape goes back to the pictures.
+        if isGridMode {
+            if key == "esc" { isGridMode = false }
+            return true
+        }
+        let count = itemCount
         switch key {
         case "left": move(by: -1)
         case "right": move(by: 1)
@@ -117,9 +143,11 @@ public final class TemplatePicker {
         case "tab": selected = (selected + 1) % count; view.selected = selected
         case "enter", "space": commit()
         case "esc": hide()
-        case "backslash": choose(count - 1)
+        case "backslash": choose(entries.count - 1)
         default:
-            if let index = entries.firstIndex(where: { TemplateGlyph.key($0) == key && !key.isEmpty }) {
+            if allowsGrid, key == "g" {
+                isGridMode = true
+            } else if let index = entries.firstIndex(where: { TemplateGlyph.key($0) == key && !key.isEmpty }) {
                 choose(index)
             } else {
                 hide()
@@ -130,7 +158,7 @@ public final class TemplatePicker {
     }
 
     private func move(by delta: Int) {
-        let count = entries.count
+        let count = itemCount
         let next = selected + delta
         guard next >= 0, next < count else { return }
         selected = next
@@ -143,6 +171,10 @@ public final class TemplatePicker {
     }
 
     private func commit() {
+        if allowsGrid, selected == entries.count {
+            isGridMode = true
+            return
+        }
         let template = entries[selected]
         hide()
         onChoose?(template)
@@ -159,8 +191,18 @@ private final class PickerPanel: NSPanel {
 }
 
 private final class PickerView: NSView {
+    static let gridColumns = 8
+    static let gridRows = 6
+    private static let titleHeight: CGFloat = 30
+
     var selected = 0 { didSet { needsDisplay = true } }
+    var isGridMode = false { didSet { dragStart = nil; dragEnd = nil; needsDisplay = true } }
     var onClick: ((Int) -> Void)?
+    /// The cell of the top left corner and the size in cells of the rectangle that the user drew.
+    var onGrid: ((Int, Int, Int, Int) -> Void)?
+    private var dragStart: (column: Int, row: Int)?
+    private var dragEnd: (column: Int, row: Int)?
+    private var showsGridTile = false
     private var entries: [SplitTemplate?] = []
     private var columns = 5
     private var tile = CGSize.zero
@@ -170,8 +212,9 @@ private final class PickerView: NSView {
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    func configure(entries: [SplitTemplate?], columns: Int, tile: CGSize, gap: CGFloat, padding: CGFloat) {
+    func configure(entries: [SplitTemplate?], showsGridTile: Bool, columns: Int, tile: CGSize, gap: CGFloat, padding: CGFloat) {
         self.entries = entries
+        self.showsGridTile = showsGridTile
         self.columns = columns
         self.tile = tile
         self.gap = gap
@@ -186,15 +229,122 @@ private final class PickerView: NSView {
             width: tile.width, height: tile.height)
     }
 
+    private var gridRect: CGRect {
+        CGRect(x: padding, y: padding + Self.titleHeight, width: bounds.width - 2 * padding, height: bounds.height - 2 * padding - Self.titleHeight)
+    }
+
+    private func gridCell(at point: CGPoint) -> (column: Int, row: Int) {
+        let rect = gridRect
+        let column = Int((point.x - rect.minX) / rect.width * CGFloat(Self.gridColumns))
+        let row = Int((point.y - rect.minY) / rect.height * CGFloat(Self.gridRows))
+        return (min(max(column, 0), Self.gridColumns - 1), min(max(row, 0), Self.gridRows - 1))
+    }
+
+    /// The rectangle of the drag as the top left cell and the size in cells.
+    private var dragSelection: (column: Int, row: Int, columns: Int, rows: Int)? {
+        guard let start = dragStart, let end = dragEnd else { return nil }
+        return (min(start.column, end.column), min(start.row, end.row), abs(start.column - end.column) + 1, abs(start.row - end.row) + 1)
+    }
+
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        if let index = entries.indices.first(where: { frame(of: $0).contains(point) }) { onClick?(index) }
+        if isGridMode {
+            dragStart = gridCell(at: point)
+            dragEnd = dragStart
+            needsDisplay = true
+            return
+        }
+        let count = entries.count + (showsGridTile ? 1 : 0)
+        if let index = (0..<count).first(where: { frame(of: $0).contains(point) }) { onClick?(index) }
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard isGridMode, dragStart != nil else { return }
+        dragEnd = gridCell(at: convert(event.locationInWindow, from: nil))
+        needsDisplay = true
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard isGridMode, let selection = dragSelection else { return }
+        dragStart = nil
+        dragEnd = nil
+        needsDisplay = true
+        onGrid?(selection.column, selection.row, selection.columns, selection.rows)
+    }
+
+    private func drawGrid() {
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: NSColor(white: 1, alpha: 0.7),
+        ]
+        ("Drag to draw a frame. Esc goes back." as NSString).draw(at: CGPoint(x: padding, y: padding), withAttributes: attributes)
+        let rect = gridRect
+        let screen = NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6)
+        NSColor(white: 1, alpha: 0.06).setFill()
+        screen.fill()
+        let cellWidth = rect.width / CGFloat(Self.gridColumns), cellHeight = rect.height / CGFloat(Self.gridRows)
+        NSColor(white: 1, alpha: 0.16).setStroke()
+        for column in 1..<Self.gridColumns {
+            let line = NSBezierPath()
+            line.move(to: CGPoint(x: rect.minX + CGFloat(column) * cellWidth, y: rect.minY))
+            line.line(to: CGPoint(x: rect.minX + CGFloat(column) * cellWidth, y: rect.maxY))
+            line.stroke()
+        }
+        for row in 1..<Self.gridRows {
+            let line = NSBezierPath()
+            line.move(to: CGPoint(x: rect.minX, y: rect.minY + CGFloat(row) * cellHeight))
+            line.line(to: CGPoint(x: rect.maxX, y: rect.minY + CGFloat(row) * cellHeight))
+            line.stroke()
+        }
+        if let selection = dragSelection {
+            let area = CGRect(
+                x: rect.minX + CGFloat(selection.column) * cellWidth, y: rect.minY + CGFloat(selection.row) * cellHeight,
+                width: CGFloat(selection.columns) * cellWidth, height: CGFloat(selection.rows) * cellHeight)
+            let box = NSBezierPath(roundedRect: area.insetBy(dx: 2, dy: 2), xRadius: 6, yRadius: 6)
+            NSColor(srgbRed: 0.537, green: 0.706, blue: 0.980, alpha: 0.5).setFill()
+            box.fill()
+        }
+    }
+
+    private func drawGridTile(_ cell: CGRect, isSelected: Bool) {
+        let card = NSBezierPath(roundedRect: cell, xRadius: 12, yRadius: 12)
+        NSColor(white: 1, alpha: isSelected ? 0.14 : 0.06).setFill()
+        card.fill()
+        if isSelected {
+            NSColor(srgbRed: 0.537, green: 0.706, blue: 0.980, alpha: 1).setStroke()
+            card.lineWidth = 2
+            card.stroke()
+        }
+        let glyph = CGRect(x: cell.minX + 14, y: cell.minY + 10, width: cell.width - 28, height: cell.height - 38)
+        NSColor(white: 1, alpha: isSelected ? 0.95 : 0.7).setStroke()
+        for column in 0..<3 {
+            for row in 0..<3 {
+                let box = CGRect(x: glyph.minX + CGFloat(column) * glyph.width / 3, y: glyph.minY + CGFloat(row) * glyph.height / 3, width: glyph.width / 3, height: glyph.height / 3)
+                let path = NSBezierPath(rect: box.insetBy(dx: 1, dy: 1))
+                path.lineWidth = 1
+                path.stroke()
+            }
+        }
+        let badgeAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .semibold), .foregroundColor: NSColor(white: 1, alpha: 0.55),
+        ]
+        ("g" as NSString).draw(at: CGPoint(x: cell.minX + 8, y: cell.minY + 6), withAttributes: badgeAttributes)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: NSColor(white: 1, alpha: 0.85),
+        ]
+        let text = "draw" as NSString
+        let size = text.size(withAttributes: attributes)
+        text.draw(at: CGPoint(x: cell.midX - size.width / 2, y: cell.maxY - size.height - 8), withAttributes: attributes)
     }
 
     override func draw(_ dirtyRect: NSRect) {
         let background = NSBezierPath(roundedRect: bounds, xRadius: 18, yRadius: 18)
         NSColor(white: 0.08, alpha: 0.92).setFill()
         background.fill()
+        if isGridMode {
+            drawGrid()
+            return
+        }
+        if showsGridTile { drawGridTile(frame(of: entries.count), isSelected: selected == entries.count) }
         for (index, template) in entries.enumerated() {
             let cell = frame(of: index)
             let isSelected = index == selected
