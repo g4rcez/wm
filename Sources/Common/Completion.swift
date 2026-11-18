@@ -72,6 +72,7 @@ private let extraValues: [String: [String]] = [
     "list": ["windows", "workspaces", "monitors", "keyboards", "memory", "binds"],
     "query": ["windows", "workspaces", "monitors", "keyboards", "memory"],
     "zen": ["on", "off"],
+    "init": ["i3"],  // a word with a digit is not a literal value of the spec
     "window snap": ["left", "right", "top", "bottom", "top-left", "top-right", "bottom-left", "bottom-right", "center"],
     "workspace": ["next", "prev", "empty"],
     "window send workspace": ["next", "prev", "empty"],

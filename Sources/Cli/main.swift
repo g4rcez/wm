@@ -77,7 +77,7 @@ if arguments == ["version"] || arguments == ["--version"] {
 if let first = arguments.first, !commandNames.contains(first) {
     die("unknown command '\(first)'", hint: unknownCommandHint(first) ?? "run `wm help` to see the commands", code: 2)
 }
-let localCommands = [["daemon", "start"], ["daemon", "stop"], ["subscribe"], ["logs"], ["pick"]]
+let localCommands = [["daemon", "start"], ["daemon", "stop"], ["subscribe"], ["logs"], ["pick"], ["init"]]
 if windowId != nil || windowSelector != nil, localCommands.contains(where: { Array(arguments.prefix($0.count)) == $0 }) {
     die("--window does not apply to '\(arguments.prefix(2).filter { !$0.hasPrefix("--") }.joined(separator: " "))'", code: 2)
 }
@@ -161,6 +161,46 @@ if arguments.first == "lsp" {
         print("")
         print("Save this as \(luarc.path) (or run `wm lsp --write`):")
         print(text, terminator: "")
+    }
+    exit(0)
+}
+
+if arguments.first == "init" {
+    let usage = "usage: wm init <\(InitTemplate.allCases.map(\.rawValue).joined(separator: "|"))> [--mod=<\(initModKeys.joined(separator: "|"))>] [--force]"
+    var rest = Array(arguments.dropFirst())
+    let force = rest.contains("--force")
+    rest.removeAll { $0 == "--force" }
+    var mod = rest.first { $0.hasPrefix("--mod=") }.map { String($0.dropFirst("--mod=".count)) }
+    rest.removeAll { $0.hasPrefix("--mod=") }
+    guard rest.count == 1, let template = InitTemplate(rawValue: rest[0]) else {
+        die("expected one template name", hint: usage, code: 2)
+    }
+    if let given = mod, !initModKeys.contains(given) { die("unknown mod key '\(given)'", hint: usage, code: 2) }
+    if mod == nil {
+        if isatty(STDIN_FILENO) == 1 {
+            // Enter alone takes the default of the template; another answer is asked again.
+            while mod == nil {
+                write("mod key [\(initModKeys.joined(separator: "|"))] (default \(template.defaultMod)): ", to: .standardError)
+                guard let answer = readLine(strippingNewline: true)?.trimmingCharacters(in: .whitespaces).lowercased() else { exit(1) }
+                if answer.isEmpty { mod = template.defaultMod } else if initModKeys.contains(answer) { mod = answer }
+            }
+        } else {
+            mod = template.defaultMod
+            printError("wm: mod key is \(template.defaultMod) (use --mod=<key> to choose another)\n")
+        }
+    }
+    let text = initConfig(template, mod: mod ?? template.defaultMod)
+    let config = defaultConfigURL()
+    do {
+        if try writeInitConfig(text, to: config, force: force) {
+            print("wrote \(config.path)")
+            print("wm loads it when it starts, and again each time that you save it. `wm daemon start` starts wm.")
+        } else {
+            printError("wm: \(config.path) exists; printed the template instead (use --force to replace the file)\n")
+            print(text, terminator: "")
+        }
+    } catch {
+        die("cannot write \(config.path): \(error)")
     }
     exit(0)
 }

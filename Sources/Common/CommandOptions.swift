@@ -57,6 +57,10 @@ public let commandOptions: [String: [CommandOption]] = [
         CommandOption("--write", "Save .luarc.json next to the config file."),
         CommandOption("--force", "Replace a .luarc.json that is there already."),
     ],
+    "init": [
+        CommandOption("--mod=<key>", "The main modifier of the binds: alt, cmd, ctrl or hyper (CapsLock). Without it wm asks."),
+        CommandOption("--force", "Replace the config file that is there already."),
+    ],
     "exec": [
         CommandOption("--float, --tile", "The window opens floating, or tiled."),
         CommandOption("--center, --maximize", "The window opens centered, or maximized."),

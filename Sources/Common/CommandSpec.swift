@@ -294,6 +294,10 @@ public let commandSections: [CommandSection] = [
             details: "Prints the folder of the type stubs and the .luarc.json that lua-language-server needs. --write saves it next to\nthe config file; --force replaces a .luarc.json that is already there. It works without the daemon.",
             example: "wm lsp --write"),
         CommandSpec(
+            "init", "<osx|windows|i3|hyprland|niri>", "[--mod=<alt|cmd|ctrl|hyper>] [--force]", "Write a starter init.lua with the binds of that system.",
+            details: "The templates follow the keys of macOS, Windows, i3, Hyprland and Niri. The mod key is the main modifier of the binds (the Super key of Linux): without --mod, wm asks for it on a terminal, and uses the default of the template (ctrl for osx, alt for the others) in a script. The file is the config path (see ENVIRONMENT). When it exists, wm prints the template and leaves the file as it is; --force replaces the file. It works without the daemon.",
+            example: "wm init niri --mod=alt"),
+        CommandSpec(
             "completion", "<zsh|bash>", "", "Print the shell completion script.",
             details: "It completes the commands, their arguments and options, and (when the daemon runs) window ids, workspaces and modes.\nLoad it when the shell starts. The script itself works without the daemon.",
             example: "eval \"$(wm completion zsh)\""),
