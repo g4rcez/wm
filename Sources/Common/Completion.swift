@@ -187,6 +187,16 @@ public func complete(_ words: [String], source: CompletionSource = CompletionSou
     return .candidates(found.filter { seen.insert($0.word).inserted })
 }
 
+/// What can finish the command line `text` (the text after `wm`, as in a shortcut: `focus l`). `partial` is the last word, which
+/// is what the user is typing, and `words` are the words that complete it, without `partial` itself. For the Shortcuts window.
+public func commandSuggestions(for text: String, source: CompletionSource = CompletionSource()) -> (partial: String, words: [String]) {
+    var words = text.split(separator: " ").map(String.init)
+    if text.isEmpty || text.hasSuffix(" ") { words.append("") }
+    guard case .candidates(let found) = complete(words, source: source) else { return (words.last ?? "", []) }
+    let partial = words.last ?? ""
+    return (partial, found.map(\.word).filter { $0.hasPrefix(partial) && $0 != partial })
+}
+
 private func windowCandidates(_ windows: [LiveWindow]) -> [CompletionCandidate] {
     windows.sorted { $0.id < $1.id }.map {
         CompletionCandidate(String($0.id), String([$0.app, $0.title].filter { !$0.isEmpty }.joined(separator: " - ").prefix(60)))

@@ -116,3 +116,40 @@ struct CompletionTests {
         #expect(bash.contains("command wm __complete"))
     }
 }
+
+struct CommandSuggestionsTests {
+    @Test func theFirstWordSuggestsCommandsThatStartWithIt() {
+        let result = commandSuggestions(for: "foc")
+
+        #expect(result.partial == "foc")
+        #expect(result.words == ["focus"])
+    }
+
+    @Test func aSpaceSuggestsTheNextWords() {
+        let result = commandSuggestions(for: "layout set ")
+
+        #expect(result.partial == "")
+        #expect(result.words == ["scrolling", "tiling", "master"])
+    }
+
+    @Test func theLastWordFiltersTheNextWords() {
+        let result = commandSuggestions(for: "layout set t")
+
+        #expect(result.partial == "t")
+        #expect(result.words == ["tiling"])
+    }
+
+    @Test func aFinishedWordSuggestsNothingForItself() {
+        #expect(commandSuggestions(for: "layout set tiling").words == [])
+    }
+
+    @Test func anEmptyTextSuggestsEveryCommand() {
+        let result = commandSuggestions(for: "")
+
+        #expect(result.words.starts(with: ["focus", "move", "swap"]))
+    }
+
+    @Test func execHasNoSuggestions() {
+        #expect(commandSuggestions(for: "exec op").words == [])
+    }
+}

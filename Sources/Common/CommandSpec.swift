@@ -306,8 +306,8 @@ public let commandSections: [CommandSection] = [
             details: "Runs the config file (default: the config path, see ENVIRONMENT) in a new Lua state. Nothing is applied and nothing\nstarts: wm.exec and wm.dispatch do nothing, and wm.query finds nothing. A script that needs a query result at load time\nfails here. It prints the error with the file and the line, and exits with 1. It works without the daemon.",
             example: "wm config check ~/dotfiles/wm/init.lua"),
         CommandSpec(
-            "lsp", "", "[--write] [--force]", "Set up autocomplete for init.lua in your editor.",
-            details: "Prints the folder of the type stubs and the .luarc.json that lua-language-server needs. --write saves it next to\nthe config file; --force replaces a .luarc.json that is already there. It works without the daemon.",
+            "lsp", "", "[--write] [--force]", "Set up autocomplete for the config in your editor.",
+            details: "Prints the folder of the type stubs and the .luarc.json that lua-language-server needs, and the .taplo.toml that\ngives shortcuts.toml completion in Taplo. --write saves them next to the config file; --force replaces the files that are\nalready there. It works without the daemon.",
             example: "wm lsp --write"),
         CommandSpec(
             "init", "<osx|windows|i3|hyprland|niri>", "[--mod=<alt|cmd|ctrl|hyper>] [--force]", "Write a starter init.lua with the binds of that system.",
