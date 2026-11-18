@@ -1,0 +1,351 @@
+---
+import Base from "./Base.astro";
+import { getDocs, groupDocs, type Doc } from "../lib/sidebar";
+
+interface Props {
+  entry: Doc;
+  headings: { depth: number; slug: string; text: string }[];
+}
+
+const { entry, headings } = Astro.props;
+const docs = await getDocs();
+const groups = groupDocs(docs);
+const index = docs.findIndex((d) => d.id === entry.id);
+const prev = docs[index - 1];
+const next = docs[index + 1];
+const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
+const editUrl = `https://github.com/g4rcez/wm/edit/main/docs/src/content/docs/${entry.id}.md`;
+---
+
+<Base title={entry.data.title} description={entry.data.description}>
+  <div class:list={["container", "shell", { "no-toc": toc.length === 0 }]}>
+    <details class="side" open>
+      <summary>Menu</summary>
+      <nav aria-label="Documentation">
+        {
+          groups.map((g) => (
+            <section>
+              <h2>{g.name}</h2>
+              <ul>
+                {g.items.map((d) => (
+                  <li>
+                    <a href={`/docs/${d.id}`} aria-current={d.id === entry.id ? "page" : undefined}>
+                      {d.data.title}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))
+        }
+      </nav>
+    </details>
+
+    <article class="prose">
+      <p class="eyebrow">{entry.data.group}</p>
+      <h1>{entry.data.title}</h1>
+      <p class="lead">{entry.data.description}</p>
+      <slot />
+      <footer class="pager">
+        <a class="edit" href={editUrl} rel="noopener">Edit this page on GitHub</a>
+        <div class="links">
+          {
+            prev && (
+              <a class="prev" href={`/docs/${prev.id}`}>
+                <span>Previous</span>
+                {prev.data.title}
+              </a>
+            )
+          }
+          {
+            next && (
+              <a class="next" href={`/docs/${next.id}`}>
+                <span>Next</span>
+                {next.data.title}
+              </a>
+            )
+          }
+        </div>
+      </footer>
+    </article>
+
+    {
+      toc.length > 0 && (
+        <aside class="toc" aria-label="On this page">
+          <h2>On this page</h2>
+          <ul>
+            {toc.map((h) => (
+              <li class={`d${h.depth}`}>
+                <a href={`#${h.slug}`}>{h.text}</a>
+              </li>
+            ))}
+          </ul>
+        </aside>
+      )
+    }
+  </div>
+</Base>
+
+<script>
+  // The sidebar is open on wide screens and closed on a phone.
+  const side = document.querySelector<HTMLDetailsElement>("details.side");
+  const wide = matchMedia("(min-width: 900px)");
+  if (side) {
+    side.open = wide.matches;
+    wide.addEventListener("change", () => (side.open = wide.matches));
+  }
+
+  // Copy button on every code block.
+  document.querySelectorAll<HTMLPreElement>(".prose pre.astro-code").forEach((pre) => {
+    const wrap = document.createElement("div");
+    wrap.className = "code";
+    pre.replaceWith(wrap);
+    wrap.append(pre);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "copy";
+    button.textContent = "Copy";
+    button.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(pre.innerText);
+        button.textContent = "Copied";
+      } catch {
+        button.textContent = "Press ⌘C";
+      }
+      setTimeout(() => (button.textContent = "Copy"), 1600);
+    });
+    wrap.append(button);
+  });
+
+  // Mark the heading in view in "On this page".
+  const links = new Map<string, HTMLAnchorElement>();
+  document.querySelectorAll<HTMLAnchorElement>(".toc a").forEach((a) => links.set(a.hash.slice(1), a));
+  const seen = new Set<string>();
+  const observer = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((e) => (e.isIntersecting ? seen.add(e.target.id) : seen.delete(e.target.id)));
+      const first = [...links.keys()].find((id) => seen.has(id));
+      links.forEach((a, id) => a.toggleAttribute("data-active", id === first));
+    },
+    { rootMargin: "-80px 0px -70% 0px" },
+  );
+  links.forEach((_, id) => {
+    const el = document.getElementById(id);
+    if (el) observer.observe(el);
+  });
+</script>
+
+<style>
+  .shell {
+    max-width: 1280px;
+    display: grid;
+    grid-template-columns: 230px minmax(0, 1fr) 200px;
+    gap: 48px;
+    padding-top: calc(var(--nav-h) + 32px);
+    align-items: start;
+  }
+  .prose {
+    max-width: 820px;
+  }
+  .side {
+    position: sticky;
+    top: calc(var(--nav-h) + 16px);
+    max-height: calc(100vh - var(--nav-h) - 32px);
+    overflow-y: auto;
+    font-size: 14.5px;
+  }
+  .side summary {
+    display: none;
+  }
+  .side h2,
+  .toc h2 {
+    margin: 22px 0 8px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .side section:first-child h2 {
+    margin-top: 0;
+  }
+  ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .side a {
+    display: block;
+    padding: 5px 10px;
+    margin-left: -10px;
+    border-radius: 8px;
+    color: var(--muted);
+  }
+  .side a:hover {
+    color: var(--text);
+    background: var(--surface-2);
+    text-decoration: none;
+  }
+  .side a[aria-current="page"] {
+    color: var(--accent-text);
+    background: var(--accent-soft);
+    font-weight: 600;
+  }
+
+  .eyebrow {
+    margin: 0 0 6px;
+    color: var(--accent-text);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .lead {
+    font-size: 1.1rem;
+    color: var(--muted) !important;
+    margin-bottom: 1.6em;
+    padding-bottom: 1.4em;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .toc {
+    position: sticky;
+    top: calc(var(--nav-h) + 16px);
+    max-height: calc(100vh - var(--nav-h) - 32px);
+    overflow-y: auto;
+    font-size: 13.5px;
+  }
+  .toc h2 {
+    margin-top: 0;
+  }
+  .toc a {
+    display: block;
+    padding: 3px 0 3px 12px;
+    border-left: 1px solid var(--border);
+    color: var(--muted);
+  }
+  .toc .d3 a {
+    padding-left: 24px;
+  }
+  .toc a:hover,
+  .toc a[data-active] {
+    color: var(--text);
+    text-decoration: none;
+  }
+  .toc a[data-active] {
+    border-left-color: var(--accent);
+  }
+
+  .pager {
+    margin-top: 4em;
+    padding-top: 1.4em;
+    border-top: 1px solid var(--border);
+  }
+  .edit {
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .links {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 20px;
+  }
+  .links a {
+    display: block;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    color: var(--text);
+    font-weight: 600;
+    text-decoration: none;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .links a:hover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    text-decoration: none;
+  }
+  .links span {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+  }
+  .next {
+    grid-column: 2;
+    text-align: right;
+  }
+
+  :global(.code) {
+    position: relative;
+  }
+  :global(.code .copy) {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    height: 28px;
+    padding: 0 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--muted);
+    font: 500 12px var(--font-sans);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  :global(.code:hover .copy),
+  :global(.code .copy:focus-visible) {
+    opacity: 1;
+  }
+  :global(.code .copy:hover) {
+    color: var(--text);
+  }
+  @media (hover: none) {
+    :global(.code .copy) {
+      opacity: 1;
+    }
+  }
+
+  @media (min-width: 1181px) {
+    .shell.no-toc {
+      grid-template-columns: 230px minmax(0, 1fr);
+    }
+  }
+  @media (max-width: 1180px) {
+    .shell {
+      grid-template-columns: 230px minmax(0, 1fr);
+    }
+    .toc {
+      display: none;
+    }
+  }
+  @media (max-width: 899px) {
+    .shell {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 20px;
+    }
+    .side {
+      position: static;
+      max-height: none;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface);
+      padding: 4px 14px;
+    }
+    .side summary {
+      display: block;
+      cursor: pointer;
+      padding: 10px 0;
+      font-weight: 600;
+    }
+    .side[open] summary {
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 12px;
+    }
+    .side nav {
+      padding-bottom: 12px;
+    }
+  }
+</style>
