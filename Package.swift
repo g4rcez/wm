@@ -20,6 +20,6 @@ let package = Package(
         .executableTarget(name: "Cli", dependencies: ["Common"]),
         .testTarget(name: "CommonTests", dependencies: ["Common"]),
         .testTarget(name: "CoreTests", dependencies: ["Core"]),
-        .testTarget(name: "ScriptingTests", dependencies: ["Scripting", "Core"]),
+        .testTarget(name: "ScriptingTests", dependencies: ["Scripting", "Core", "Common"]),
     ]
 )
