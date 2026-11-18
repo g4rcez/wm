@@ -27,6 +27,7 @@ cp bundle/Info.plist "$app/Contents/Info.plist"
 # The Lua type stubs go in the bundle, so `wm lsp` can point editors at them (they must be here before the signing).
 mkdir -p "$app/Contents/Resources/types"
 cp types/wm.lua "$app/Contents/Resources/types/wm.lua"
+cp types/shortcuts.schema.json "$app/Contents/Resources/types/shortcuts.schema.json"
 # The app icon. assets/make-icns.sh makes it from assets/icon-windows.svg; this only copies it (before the signing).
 cp bundle/wm.icns "$app/Contents/Resources/wm.icns"
 cp "$bin/wmd" "$app/Contents/MacOS/wmd"
