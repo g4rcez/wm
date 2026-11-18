@@ -1,0 +1,103 @@
+---
+import { Code } from "astro:components";
+
+interface Tab {
+  id: string;
+  label: string;
+  note: string;
+  lang: string;
+  code: string;
+}
+interface Props {
+  tabs: Tab[];
+}
+const { tabs } = Astro.props;
+---
+
+<div class="tabs" data-tabs>
+  <div class="list" role="tablist" aria-label="Configuration examples">
+    {
+      tabs.map((t, i) => (
+        <button type="button" role="tab" id={`tab-${t.id}`} aria-controls={`panel-${t.id}`} aria-selected={i === 0} tabindex={i === 0 ? 0 : -1}>
+          {t.label}
+        </button>
+      ))
+    }
+  </div>
+  {
+    tabs.map((t, i) => (
+      <div role="tabpanel" id={`panel-${t.id}`} aria-labelledby={`tab-${t.id}`} hidden={i !== 0}>
+        <p class="note">{t.note}</p>
+        <Code code={t.code} lang={t.lang} themes={{ light: "vitesse-light", dark: "vitesse-dark" }} defaultColor={false} />
+      </div>
+    ))
+  }
+</div>
+
+<script>
+  document.querySelectorAll<HTMLElement>("[data-tabs]").forEach((root) => {
+    const tabs = [...root.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    const select = (tab: HTMLButtonElement) => {
+      tabs.forEach((t) => {
+        const on = t === tab;
+        t.setAttribute("aria-selected", String(on));
+        t.tabIndex = on ? 0 : -1;
+        root.querySelector<HTMLElement>(`#${t.getAttribute("aria-controls")}`)!.hidden = !on;
+      });
+      tab.focus();
+    };
+    tabs.forEach((tab, i) => {
+      tab.addEventListener("click", () => select(tab));
+      tab.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowRight") select(tabs[(i + 1) % tabs.length]);
+        if (e.key === "ArrowLeft") select(tabs[(i - 1 + tabs.length) % tabs.length]);
+      });
+    });
+  });
+</script>
+
+<style>
+  .tabs {
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: var(--surface);
+    overflow: hidden;
+  }
+  .list {
+    display: flex;
+    gap: 4px;
+    padding: 8px;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  button {
+    flex: none;
+    height: 34px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--muted);
+    font: 550 14px var(--font-sans);
+    cursor: pointer;
+  }
+  button:hover {
+    color: var(--text);
+  }
+  button[aria-selected="true"] {
+    background: var(--accent-soft);
+    color: var(--accent-text);
+  }
+  .note {
+    margin: 0;
+    padding: 16px 20px 0;
+    color: var(--muted);
+    font-size: 14.5px;
+  }
+  .tabs :global(pre.astro-code) {
+    margin: 12px;
+    max-height: 460px;
+    overflow: auto;
+  }
+</style>

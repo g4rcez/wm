@@ -1,0 +1,796 @@
+---
+// An interactive model of wm: a small desktop where the keys of "First five minutes" work.
+// The layout code only mimics wm (dwindle tiling and a scrolling strip). It does not run wm.
+const binds = [
+  { id: "focus-left", chord: "alt-h", cmd: "focus left --wrap" },
+  { id: "focus-down", chord: "alt-j", cmd: "focus down --wrap" },
+  { id: "focus-up", chord: "alt-k", cmd: "focus up --wrap" },
+  { id: "focus-right", chord: "alt-l", cmd: "focus right --wrap" },
+  { id: "swap-left", chord: "alt-shift-h", cmd: "swap left" },
+  { id: "swap-right", chord: "alt-shift-l", cmd: "swap right" },
+  { id: "ws", chord: "alt-N", cmd: "workspace N" },
+  { id: "send", chord: "alt-shift-N", cmd: "window send workspace N" },
+  { id: "full", chord: "alt-f", cmd: "window fullscreen" },
+  { id: "scrolling", chord: "alt-s", cmd: "layout set scrolling" },
+  { id: "tiling", chord: "alt-t", cmd: "layout set tiling" },
+  { id: "new", chord: "alt-n", cmd: "exec open -a <app>", extra: true },
+  { id: "close", chord: "alt-w", cmd: "window close", extra: true },
+];
+---
+
+<section class="demo" data-demo aria-label="Interactive demo of wm">
+  <div class="stage">
+    <div
+      class="screen"
+      tabindex="0"
+      role="group"
+      aria-label="Demo desktop. Click it, then press alt and H, J, K or L to move the focus."
+    >
+      <div class="menubar">
+        <span class="appname" data-app>wm</span>
+        <span class="spacer"></span>
+        <span class="layoutname" data-layout>tiling</span>
+        <span class="wss" role="group" aria-label="Workspaces">
+          <button type="button" data-ws="1" aria-label="Workspace 1">1</button>
+          <button type="button" data-ws="2" aria-label="Workspace 2">2</button>
+          <button type="button" data-ws="3" aria-label="Workspace 3">3</button>
+        </span>
+      </div>
+      <div class="hint" aria-hidden="true">Click the desktop, then press <kbd>alt</kbd> + <kbd>l</kbd></div>
+    </div>
+    <div class="term" aria-hidden="true" data-term></div>
+    <p class="sr-only" role="status" aria-live="polite" data-live></p>
+  </div>
+
+  <aside class="binds">
+    <h3>Binds in this demo</h3>
+    <ul>
+      {
+        binds.map((b) => (
+          <li>
+            <button type="button" data-id={b.id} class:list={{ extra: b.extra }}>
+              <code class="chord">{b.chord}</code>
+              <code class="what">{b.cmd}</code>
+            </button>
+          </li>
+        ))
+      }
+    </ul>
+    <p class="foot">
+      The first eleven are the binds of <a href="/docs/first-five-minutes">First five minutes</a>. <code>alt-n</code> and{" "}
+      <code>alt-w</code> are only for the demo.
+    </p>
+  </aside>
+</section>
+
+<script>
+  type Layout = "tiling" | "scrolling";
+  type Dir = "left" | "right" | "up" | "down";
+  type Rect = { x: number; y: number; w: number; h: number };
+  type Win = { app: string; el: HTMLElement };
+  type Leaf = { win: Win };
+  type Split = { dir: "h" | "v"; a: Node; b: Node };
+  type Node = Leaf | Split;
+  type Ws = { layout: Layout; wins: Win[]; tree: Node | null; focus: Win | null; full: boolean; scroll: number };
+
+  const root = document.querySelector<HTMLElement>("[data-demo]")!;
+  const screen = root.querySelector<HTMLElement>(".screen")!;
+  const term = root.querySelector<HTMLElement>("[data-term]")!;
+  const live = root.querySelector<HTMLElement>("[data-live]")!;
+  const appLabel = root.querySelector<HTMLElement>("[data-app]")!;
+  const layoutLabel = root.querySelector<HTMLElement>("[data-layout]")!;
+  const pills = [...root.querySelectorAll<HTMLButtonElement>("[data-ws]")];
+
+  const BAR = 28; // height of the menu bar
+  const MAX = 6; // windows per workspace: more do not fit a small screen
+  const APPS = ["Terminal", "Browser", "Notes", "Mail", "Music", "Editor"];
+  const bars = (...w: number[]) => w.map((x) => `<b style="width:${x}%"></b>`).join("");
+  const BODIES: Record<string, string> = {
+    Terminal:
+      '<p><s>~ $</s> wm daemon status</p><p><s>~ $</s> wm layout set tiling</p><p><s>~ $</s> <i class="caret"></i></p>',
+    Browser: `<div class="url"></div><div class="hero"></div>${bars(80, 64, 72)}`,
+    Notes: `${bars(46, 92, 88, 94, 60, 90, 74)}`,
+    Mail: `${bars(70, 52)}<hr>${bars(64, 48)}<hr>${bars(76, 40)}<hr>${bars(58, 44)}`,
+    Music: `<div class="cover"></div>${bars(60, 38)}`,
+    Editor: `${bars(40, 62, 52, 70, 34, 58, 66, 44)}`,
+  };
+
+  const byEl = new WeakMap<HTMLElement, Win>();
+  const mk = (layout: Layout): Ws => ({ layout, wins: [], tree: null, focus: null, full: false, scroll: 0 });
+  const spaces: Ws[] = [mk("tiling"), mk("scrolling"), mk("tiling")];
+  let current = 0;
+  let appCursor = 3;
+  let history = ["daemon start"];
+
+  function metrics() {
+    const W = screen.clientWidth || 720;
+    const H = screen.clientHeight || 450;
+    const g = W < 560 ? 4 : 8;
+    return { W, H, g, area: { x: g, y: BAR + g, w: W - 2 * g, h: H - BAR - 2 * g } };
+  }
+  type Metrics = ReturnType<typeof metrics>;
+
+  // Layout: dwindle tree for tiling, equal columns on a strip for scrolling.
+  function layoutTree(n: Node, r: Rect, g: number, out: Map<Win, Rect>) {
+    if ("win" in n) return void out.set(n.win, r);
+    if (n.dir === "h") {
+      const w = (r.w - g) / 2;
+      layoutTree(n.a, { ...r, w }, g, out);
+      layoutTree(n.b, { ...r, x: r.x + w + g, w }, g, out);
+    } else {
+      const h = (r.h - g) / 2;
+      layoutTree(n.a, { ...r, h }, g, out);
+      layoutTree(n.b, { ...r, y: r.y + h + g, h }, g, out);
+    }
+  }
+
+  const columnWidth = (ws: Ws, m: Metrics) => (ws.wins.length <= 1 ? m.area.w : (m.area.w - m.g) / 2);
+
+  function fitScroll(ws: Ws, m: Metrics) {
+    if (ws.layout !== "scrolling" || !ws.focus) return;
+    const cw = columnWidth(ws, m);
+    const total = ws.wins.length * cw + (ws.wins.length - 1) * m.g;
+    const left = ws.wins.indexOf(ws.focus) * (cw + m.g);
+    // Like center = "on-overflow": move the strip only when the focused column is not fully on screen.
+    if (left < ws.scroll || left + cw > ws.scroll + m.area.w) ws.scroll = left - (m.area.w - cw) / 2;
+    ws.scroll = Math.min(Math.max(ws.scroll, 0), Math.max(0, total - m.area.w));
+  }
+
+  function rectsOf(ws: Ws, m: Metrics): Map<Win, Rect> {
+    const out = new Map<Win, Rect>();
+    if (ws.layout === "tiling") {
+      if (ws.tree) layoutTree(ws.tree, m.area, m.g, out);
+    } else {
+      const cw = columnWidth(ws, m);
+      ws.wins.forEach((w, i) => out.set(w, { x: m.area.x + i * (cw + m.g) - ws.scroll, y: m.area.y, w: cw, h: m.area.h }));
+    }
+    // window fullscreen: the work area with no gaps and no border.
+    if (ws.full && ws.focus) out.set(ws.focus, { x: 0, y: BAR, w: m.W, h: m.H - BAR });
+    return out;
+  }
+
+  function replaceLeaf(n: Node, target: Win, repl: Node): Node {
+    if ("win" in n) return n.win === target ? repl : n;
+    n.a = replaceLeaf(n.a, target, repl);
+    n.b = replaceLeaf(n.b, target, repl);
+    return n;
+  }
+
+  function removeLeaf(n: Node, w: Win): Node | null {
+    if ("win" in n) return n.win === w ? null : n;
+    const a = removeLeaf(n.a, w);
+    const b = removeLeaf(n.b, w);
+    if (!a) return b;
+    if (!b) return a;
+    n.a = a;
+    n.b = b;
+    return n;
+  }
+
+  function swapLeaves(n: Node, a: Win, b: Win) {
+    if ("win" in n) {
+      if (n.win === a) n.win = b;
+      else if (n.win === b) n.win = a;
+      return;
+    }
+    swapLeaves(n.a, a, b);
+    swapLeaves(n.b, a, b);
+  }
+
+  // A new window goes beside the focused one. In the tree it splits the focused cell, side by side
+  // when the cell is wider than tall, stacked otherwise.
+  function addWin(ws: Ws, w: Win) {
+    const m = metrics();
+    ws.full = false;
+    const at = ws.focus ?? ws.wins[ws.wins.length - 1];
+    if (!ws.tree || !at) {
+      ws.tree = { win: w };
+    } else {
+      const cells = new Map<Win, Rect>();
+      layoutTree(ws.tree, m.area, m.g, cells);
+      const r = cells.get(at)!;
+      ws.tree = replaceLeaf(ws.tree, at, { dir: r.w >= r.h ? "h" : "v", a: { win: at }, b: { win: w } });
+    }
+    ws.wins.splice(at ? ws.wins.indexOf(at) + 1 : 0, 0, w);
+    ws.focus = w;
+  }
+
+  function dropWin(ws: Ws, w: Win) {
+    const i = ws.wins.indexOf(w);
+    ws.wins.splice(i, 1);
+    ws.tree = ws.tree ? removeLeaf(ws.tree, w) : null;
+    if (ws.focus === w) {
+      ws.focus = ws.wins[Math.max(0, i - 1)] ?? null;
+      ws.full = false;
+    }
+  }
+
+  function makeWin(app: string): Win {
+    const el = document.createElement("div");
+    el.className = "win entering";
+    el.setAttribute("aria-hidden", "true");
+    el.innerHTML = `<div class="bar"><i></i><i></i><i></i><span>${app}</span></div><div class="body">${BODIES[app]}</div>`;
+    screen.append(el);
+    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove("entering")));
+    const win = { app, el };
+    byEl.set(el, win);
+    return win;
+  }
+
+  // Direction of travel: the nearest window that overlaps on the other axis. With wrap, the far one.
+  function target(ws: Ws, dir: Dir, wrap: boolean, rs: Map<Win, Rect>): Win | null {
+    const c = ws.focus && rs.get(ws.focus);
+    if (!ws.focus || !c) return null;
+    const horizontal = dir === "left" || dir === "right";
+    const lap = (a0: number, a1: number, b0: number, b1: number) => Math.min(a1, b1) - Math.max(a0, b0);
+    let best: Win | null = null;
+    let bestScore = Infinity;
+    let far: Win | null = null;
+    let farPos = -Infinity;
+    for (const w of ws.wins) {
+      const r = rs.get(w)!;
+      if (w === ws.focus) continue;
+      const ov = horizontal ? lap(c.y, c.y + c.h, r.y, r.y + r.h) : lap(c.x, c.x + c.w, r.x, r.x + r.w);
+      if (ov <= 0) continue;
+      const dist = { left: c.x - (r.x + r.w), right: r.x - (c.x + c.w), up: c.y - (r.y + r.h), down: r.y - (c.y + c.h) }[dir];
+      if (dist >= -1 && dist * 1000 - ov < bestScore) {
+        best = w;
+        bestScore = dist * 1000 - ov;
+      }
+      const pos = { left: r.x, right: -r.x, up: r.y, down: -r.y }[dir];
+      if (pos > farPos) {
+        far = w;
+        farPos = pos;
+      }
+    }
+    return best ?? (wrap ? far : null);
+  }
+
+  function render() {
+    const m = metrics();
+    spaces.forEach((ws, i) => {
+      fitScroll(ws, m);
+      const rs = rectsOf(ws, m);
+      ws.wins.forEach((w) => {
+        const r = rs.get(w)!;
+        const shown = i === current && (!ws.full || ws.focus === w);
+        const s = w.el.style;
+        s.setProperty("--x", `${r.x}px`);
+        s.setProperty("--y", `${r.y}px`);
+        s.setProperty("--w", `${r.w}px`);
+        s.setProperty("--h", `${r.h}px`);
+        s.zIndex = ws.full && ws.focus === w ? "5" : "1";
+        w.el.dataset.shown = String(shown);
+        w.el.dataset.focused = String(i === current && ws.focus === w);
+        w.el.dataset.full = String(ws.full && ws.focus === w);
+      });
+    });
+    const ws = spaces[current];
+    appLabel.textContent = ws.focus?.app ?? "Desktop";
+    layoutLabel.textContent = ws.layout;
+    pills.forEach((p, i) => p.toggleAttribute("data-on", i === current));
+  }
+
+  function log(cmd: string) {
+    history = [...history, cmd].slice(-3);
+    renderTerm();
+    live.textContent = `Ran wm ${cmd}`;
+  }
+
+  function renderTerm() {
+    term.replaceChildren(
+      ...history.map((c, i) => {
+        const line = document.createElement("div");
+        line.className = i === history.length - 1 ? "line last" : "line";
+        line.innerHTML = "<span>$</span> ";
+        line.append(`wm ${c}`);
+        return line;
+      }),
+    );
+  }
+
+  const actions: Record<string, () => string> = {
+    "focus-left": () => moveFocus("left"),
+    "focus-down": () => moveFocus("down"),
+    "focus-up": () => moveFocus("up"),
+    "focus-right": () => moveFocus("right"),
+    "swap-left": () => swap("left"),
+    "swap-right": () => swap("right"),
+    full: () => {
+      const ws = spaces[current];
+      if (ws.focus) ws.full = !ws.full;
+      return "window fullscreen";
+    },
+    scrolling: () => setLayout("scrolling"),
+    tiling: () => setLayout("tiling"),
+    new: () => {
+      const ws = spaces[current];
+      const app = APPS[appCursor++ % APPS.length];
+      if (ws.wins.length >= MAX) return `exec open -a ${app}   # the demo stops at ${MAX} windows`;
+      addWin(ws, makeWin(app));
+      return `exec open -a ${app}`;
+    },
+    close: () => {
+      const ws = spaces[current];
+      const w = ws.focus;
+      if (w) {
+        dropWin(ws, w);
+        w.el.classList.add("closing");
+        setTimeout(() => w.el.remove(), 260);
+      }
+      return "window close";
+    },
+  };
+
+  function setLayout(layout: Layout) {
+    spaces[current].layout = layout;
+    return `layout set ${layout}`;
+  }
+
+  function moveFocus(dir: Dir) {
+    const ws = spaces[current];
+    ws.full = false;
+    const t = target(ws, dir, true, rectsOf(ws, metrics()));
+    if (t) ws.focus = t;
+    return `focus ${dir} --wrap`;
+  }
+
+  function swap(dir: Dir) {
+    const ws = spaces[current];
+    ws.full = false;
+    const t = target(ws, dir, false, rectsOf(ws, metrics()));
+    if (t && ws.focus) {
+      const a = ws.wins.indexOf(ws.focus);
+      const b = ws.wins.indexOf(t);
+      [ws.wins[a], ws.wins[b]] = [ws.wins[b], ws.wins[a]];
+      if (ws.tree) swapLeaves(ws.tree, ws.focus, t);
+    }
+    return `swap ${dir}`;
+  }
+
+  function go(n: number) {
+    current = n - 1;
+    return `workspace ${n}`;
+  }
+
+  function send(n: number) {
+    const from = spaces[current];
+    const to = spaces[n - 1];
+    const w = from.focus;
+    if (w && to !== from && to.wins.length < MAX) {
+      dropWin(from, w);
+      addWin(to, w);
+    }
+    return `window send workspace ${n}`;
+  }
+
+  // Which row of the panel lights up for an action.
+  const rowOf = (id: string) => (id.startsWith("ws-") ? "ws" : id.startsWith("send-") ? "send" : id);
+
+  function act(id: string) {
+    const out = id.startsWith("ws-") ? go(Number(id.slice(3))) : id.startsWith("send-") ? send(Number(id.slice(5))) : actions[id]();
+    log(out);
+    render();
+    const row = root.querySelector<HTMLElement>(`.binds [data-id="${rowOf(id)}"]`);
+    if (row) {
+      row.setAttribute("data-hit", "");
+      setTimeout(() => row.removeAttribute("data-hit"), 700);
+    }
+  }
+
+  const KEYS: Record<string, string> = {
+    KeyH: "focus-left", KeyJ: "focus-down", KeyK: "focus-up", KeyL: "focus-right",
+    "s+KeyH": "swap-left", "s+KeyL": "swap-right",
+    Digit1: "ws-1", Digit2: "ws-2", Digit3: "ws-3",
+    "s+Digit1": "send-1", "s+Digit2": "send-2", "s+Digit3": "send-3",
+    KeyF: "full", KeyS: "scrolling", KeyT: "tiling", KeyN: "new", KeyW: "close",
+  };
+
+  // The demo reads keys only while the desktop has the focus, so the page keeps its own keys.
+  // event.code, not event.key: alt-h types a different character on macOS.
+  screen.addEventListener("keydown", (e) => {
+    if (!e.altKey || e.ctrlKey || e.metaKey) return;
+    const id = KEYS[(e.shiftKey ? "s+" : "") + e.code];
+    if (!id) return;
+    e.preventDefault();
+    act(id);
+  });
+
+  screen.addEventListener("pointerdown", (e) => {
+    const win = byEl.get((e.target as HTMLElement).closest<HTMLElement>(".win") as HTMLElement);
+    if (!win) return;
+    const ws = spaces[current];
+    if (ws.wins.includes(win) && ws.focus !== win) {
+      ws.focus = win;
+      ws.full = false;
+      render();
+    }
+  });
+
+  pills.forEach((p) => p.addEventListener("click", () => act(`ws-${p.dataset.ws}`)));
+  root.querySelectorAll<HTMLButtonElement>(".binds [data-id]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const id = b.dataset.id!;
+      // A row that stands for three keys goes to the next workspace.
+      act(id === "ws" ? `ws-${(current + 1) % 3 + 1}` : id === "send" ? `send-${(current + 1) % 3 + 1}` : id);
+    }),
+  );
+
+  // First state: three windows split in a tree, three in a strip, one alone.
+  const seed = (i: number, apps: string[], focusAt: number) => {
+    apps.forEach((a) => addWin(spaces[i], makeWin(a)));
+    spaces[i].focus = spaces[i].wins[focusAt];
+  };
+  seed(0, ["Terminal", "Browser", "Notes"], 1);
+  seed(1, ["Editor", "Terminal", "Mail"], 0);
+  seed(2, ["Music"], 0);
+  renderTerm();
+
+  // No transitions while the screen is resized or first drawn.
+  const quiet = () => {
+    screen.classList.add("quiet");
+    requestAnimationFrame(() => requestAnimationFrame(() => screen.classList.remove("quiet")));
+  };
+  quiet();
+  render();
+  new ResizeObserver(() => {
+    quiet();
+    render();
+  }).observe(screen);
+</script>
+
+<style is:global>
+  .demo {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 330px;
+    gap: 20px;
+    align-items: start;
+  }
+  .demo .stage {
+    min-width: 0;
+  }
+
+  /* The desktop is always dark, like a monitor, in both themes. */
+  .demo .screen {
+    --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    --win: #14181a;
+    --win-bar: #1a1f22;
+    --win-line: rgb(255 255 255 / 0.12);
+    --win-text: #8fa09a;
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    overflow: hidden;
+    border: 1px solid var(--border-strong);
+    border-radius: 16px;
+    background:
+      radial-gradient(60% 70% at 15% 10%, rgb(98 204 170 / 0.28), transparent 70%),
+      radial-gradient(55% 60% at 90% 95%, rgb(56 120 180 / 0.3), transparent 70%),
+      #0b0f11;
+    box-shadow: var(--shadow);
+    outline: none;
+    cursor: default;
+  }
+  .demo .screen:focus-within {
+    border-color: var(--accent);
+    box-shadow: var(--shadow), 0 0 0 3px var(--accent-soft);
+  }
+
+  .demo .menubar {
+    position: absolute;
+    inset: 0 0 auto 0;
+    z-index: 10;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 8px 0 14px;
+    background: rgb(8 10 11 / 0.55);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgb(255 255 255 / 0.07);
+    color: #d8e2de;
+    font-size: 12px;
+  }
+  .demo .appname {
+    font-weight: 650;
+  }
+  .demo .spacer {
+    flex: 1;
+  }
+  .demo .layoutname {
+    color: #8fa09a;
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+  .demo .wss {
+    display: flex;
+    gap: 3px;
+  }
+  .demo .wss button {
+    width: 20px;
+    height: 18px;
+    padding: 0;
+    border: 1px solid rgb(255 255 255 / 0.18);
+    border-radius: 6px;
+    background: transparent;
+    color: #b8c6c1;
+    font: 600 11px var(--font-sans);
+    cursor: pointer;
+  }
+  .demo .wss button[data-on] {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-ink);
+  }
+
+  .demo .hint {
+    position: absolute;
+    left: 50%;
+    bottom: 14px;
+    z-index: 10;
+    transform: translateX(-50%);
+    padding: 7px 14px;
+    border-radius: 999px;
+    background: rgb(8 10 11 / 0.78);
+    border: 1px solid rgb(255 255 255 / 0.14);
+    color: #d8e2de;
+    font-size: 12.5px;
+    white-space: nowrap;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .demo .hint kbd {
+    background: rgb(255 255 255 / 0.08);
+    border-color: rgb(255 255 255 / 0.2);
+    color: #fff;
+  }
+  .demo .screen:focus-within .hint {
+    opacity: 0;
+  }
+
+  .demo .win {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: var(--w);
+    height: var(--h);
+    transform: translate3d(var(--x), var(--y), 0);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--win-line);
+    border-radius: 10px;
+    background: var(--win);
+    color: var(--win-text);
+    box-shadow: 0 10px 30px -12px rgb(0 0 0 / 0.7);
+    transition:
+      transform 0.45s var(--ease),
+      width 0.45s var(--ease),
+      height 0.45s var(--ease),
+      opacity 0.25s,
+      border-color 0.2s,
+      border-radius 0.3s,
+      box-shadow 0.25s;
+  }
+  .demo .quiet .win {
+    transition: none !important;
+  }
+  .demo .win[data-shown="false"] {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .demo .win[data-focused="true"] {
+    border-color: var(--accent);
+    box-shadow:
+      0 0 0 1px var(--accent),
+      0 10px 34px -10px rgb(0 0 0 / 0.7),
+      0 0 26px -6px rgb(98 204 170 / 0.45);
+  }
+  .demo .win[data-full="true"] {
+    border-color: transparent;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .demo .win.entering,
+  .demo .win.closing {
+    opacity: 0;
+    scale: 0.96;
+    pointer-events: none;
+  }
+
+  .demo .bar {
+    flex: none;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 9px;
+    background: var(--win-bar);
+    border-bottom: 1px solid var(--win-line);
+    font-size: 11px;
+    color: #b3c2bd;
+  }
+  .demo .bar i {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ff5f57;
+  }
+  .demo .bar i:nth-child(2) {
+    background: #febc2e;
+  }
+  .demo .bar i:nth-child(3) {
+    background: #28c840;
+  }
+  .demo .bar span {
+    margin-left: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .demo .body {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    padding: 10px 12px;
+  }
+  .demo .body b {
+    display: block;
+    height: 6px;
+    margin: 8px 0;
+    border-radius: 3px;
+    background: rgb(255 255 255 / 0.1);
+  }
+  .demo .body hr {
+    border: 0;
+    border-top: 1px solid var(--win-line);
+    margin: 10px 0;
+  }
+  .demo .body p {
+    margin: 4px 0;
+    font: 11px/1.5 var(--font-mono);
+    white-space: nowrap;
+  }
+  .demo .body s {
+    text-decoration: none;
+    color: var(--accent);
+  }
+  .demo .caret {
+    display: inline-block;
+    width: 6px;
+    height: 12px;
+    vertical-align: -2px;
+    background: var(--accent);
+    animation: demo-caret 1.1s steps(2) infinite;
+  }
+  @keyframes demo-caret {
+    to {
+      opacity: 0;
+    }
+  }
+  .demo .url {
+    height: 14px;
+    margin-bottom: 10px;
+    border-radius: 7px;
+    background: rgb(255 255 255 / 0.08);
+  }
+  .demo .hero {
+    height: 34%;
+    min-height: 30px;
+    margin-bottom: 6px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, rgb(98 204 170 / 0.35), rgb(56 120 180 / 0.3));
+  }
+  .demo .cover {
+    width: 42%;
+    aspect-ratio: 1;
+    margin-bottom: 12px;
+    border-radius: 8px;
+    background: linear-gradient(145deg, rgb(98 204 170 / 0.5), rgb(120 80 200 / 0.35));
+  }
+
+  .demo .term {
+    margin-top: 12px;
+    padding: 12px 16px;
+    min-height: 5.6em;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--code-bg);
+    font: 13px/1.7 var(--font-mono);
+    color: var(--muted);
+  }
+  .demo .term .line span {
+    color: var(--accent-text);
+  }
+  .demo .term .last {
+    color: var(--text);
+  }
+
+  .demo .binds {
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: var(--surface);
+  }
+  .demo .binds h3 {
+    margin: 2px 4px 10px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .demo .binds ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 2px;
+  }
+  .demo .binds button {
+    display: grid;
+    grid-template-columns: 7.6em 1fr;
+    align-items: baseline;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text);
+    text-align: left;
+    font-size: 12.5px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.4s;
+  }
+  .demo .binds button:hover {
+    background: var(--surface-2);
+  }
+  .demo .binds button[data-hit] {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    transition: none;
+  }
+  .demo .binds .chord {
+    color: var(--accent-text);
+    white-space: nowrap;
+  }
+  .demo .binds .what {
+    color: var(--muted);
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .demo .binds .extra {
+    margin-top: 6px;
+  }
+  .demo .binds .foot {
+    margin: 12px 6px 2px;
+    color: var(--muted);
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+
+  @media (max-width: 980px) {
+    .demo {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .demo .binds ul {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+  @media (max-width: 640px) {
+    .demo .screen {
+      aspect-ratio: 4 / 3;
+    }
+    .demo .binds ul {
+      grid-template-columns: 1fr;
+    }
+    .demo .hint {
+      font-size: 11.5px;
+    }
+    .demo .body {
+      padding: 6px 8px;
+    }
+  }
+</style>
