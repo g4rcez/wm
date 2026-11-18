@@ -1,0 +1,41 @@
+---
+import Base from "../layouts/Base.astro";
+---
+
+<Base title="Page not found" description="This page does not exist.">
+  <div class="container nf">
+    <p class="code">404</p>
+    <h1>This page does not exist.</h1>
+    <p>The link may be old. Start from the overview or the home page.</p>
+    <div class="actions">
+      <a class="btn btn-primary" href="/docs/overview">Read the docs</a>
+      <a class="btn" href="/">Home</a>
+    </div>
+  </div>
+</Base>
+
+<style>
+  .nf {
+    padding-top: 180px;
+    text-align: center;
+  }
+  .code {
+    margin: 0;
+    color: var(--accent-text);
+    font: 700 1rem var(--font-mono);
+  }
+  h1 {
+    margin: 8px 0;
+    font-size: clamp(2rem, 5vw, 3rem);
+    letter-spacing: -0.03em;
+  }
+  p {
+    color: var(--muted);
+  }
+  .actions {
+    margin-top: 24px;
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+  }
+</style>

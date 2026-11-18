@@ -1,0 +1,280 @@
+/* Tokens. Dark is the default; light follows the system. #62ccaa is the brand color (shared with Zetta). */
+:root {
+  color-scheme: dark;
+  --bg: #0a0c0d;
+  --surface: #101315;
+  --surface-2: #161a1c;
+  --border: rgb(255 255 255 / 0.09);
+  --border-strong: rgb(255 255 255 / 0.16);
+  --text: #e8eeec;
+  --muted: #94a39e;
+  --accent: #62ccaa;
+  --accent-text: #62ccaa;
+  --accent-ink: #052018;
+  --accent-soft: rgb(98 204 170 / 0.12);
+  --glow: rgb(98 204 170 / 0.16);
+  --code-bg: #0e1113;
+  --grid: rgb(255 255 255 / 0.035);
+  --shadow: 0 24px 60px -20px rgb(0 0 0 / 0.7);
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --radius: 14px;
+  --gutter: 16px;
+  --nav-h: 64px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --bg: #f8fbfa;
+    --surface: #ffffff;
+    --surface-2: #eff4f2;
+    --border: rgb(0 0 0 / 0.09);
+    --border-strong: rgb(0 0 0 / 0.17);
+    --text: #0d1512;
+    --muted: #55645f;
+    --accent-text: #137457;
+    --accent-soft: rgb(98 204 170 / 0.2);
+    --glow: rgb(98 204 170 / 0.28);
+    --code-bg: #f1f6f4;
+    --grid: rgb(0 0 0 / 0.04);
+    --shadow: 0 24px 60px -24px rgb(10 40 30 / 0.28);
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: calc(var(--nav-h) + 16px);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+a {
+  color: var(--accent-text);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.container {
+  width: 100%;
+  max-width: 1120px;
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+kbd {
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  padding: 0.1em 0.45em;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 20px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 550;
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+.btn:hover {
+  text-decoration: none;
+  background: var(--surface-2);
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+.btn-primary:hover {
+  background: color-mix(in srgb, var(--accent) 86%, white);
+}
+
+/* Code */
+code,
+pre {
+  font-family: var(--font-mono);
+}
+
+pre.astro-code {
+  margin: 0;
+  padding: 16px 18px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 13.5px;
+  line-height: 1.65;
+  background: var(--code-bg) !important;
+  -webkit-overflow-scrolling: touch;
+}
+pre.astro-code,
+pre.astro-code span {
+  color: var(--shiki-light);
+}
+@media (prefers-color-scheme: dark) {
+  pre.astro-code,
+  pre.astro-code span {
+    color: var(--shiki-dark);
+  }
+}
+
+/* Long-form text (docs pages) */
+.prose {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+.prose > * + * {
+  margin-top: 1.1em;
+}
+.prose h1 {
+  font-size: clamp(2rem, 4vw, 2.6rem);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.3em;
+}
+.prose h2 {
+  font-size: 1.55rem;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  margin-top: 2.4em;
+  padding-top: 0.2em;
+}
+.prose h3 {
+  font-size: 1.2rem;
+  margin-top: 2em;
+}
+.prose h4 {
+  font-size: 1rem;
+  margin-top: 1.6em;
+}
+.prose p,
+.prose li {
+  color: color-mix(in srgb, var(--text) 88%, var(--muted));
+}
+.prose li + li {
+  margin-top: 0.35em;
+}
+.prose ul,
+.prose ol {
+  padding-left: 1.4em;
+}
+.prose :not(pre) > code {
+  font-size: 0.86em;
+  padding: 0.15em 0.4em;
+  border-radius: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.prose a {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent-text) 45%, transparent);
+  text-underline-offset: 3px;
+}
+.prose hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2.4em 0;
+}
+.prose table {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.93rem;
+}
+.prose th,
+.prose td {
+  text-align: left;
+  vertical-align: top;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.prose th {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.prose blockquote {
+  margin-inline: 0;
+  padding: 2px 16px;
+  border-left: 1px solid var(--border-strong);
+  color: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

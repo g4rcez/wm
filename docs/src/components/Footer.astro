@@ -1,0 +1,111 @@
+---
+const columns = [
+  {
+    title: "Learn",
+    links: [
+      ["Overview", "/docs/overview"],
+      ["Install", "/docs/install"],
+      ["First five minutes", "/docs/first-five-minutes"],
+      ["Examples", "/docs/examples"],
+    ],
+  },
+  {
+    title: "Reference",
+    links: [
+      ["Config reference", "/docs/config"],
+      ["Command line", "/docs/cli"],
+      ["Lua API", "/docs/lua-api"],
+      ["Troubleshooting", "/docs/troubleshooting"],
+    ],
+  },
+  {
+    title: "Project",
+    links: [
+      ["GitHub", "https://github.com/g4rcez/wm"],
+      ["Author's init.lua", "https://github.com/g4rcez/dotfiles/blob/master/config/wm/init.lua"],
+      ["MIT License", "https://github.com/g4rcez/wm/blob/main/LICENSE"],
+    ],
+  },
+];
+---
+
+<footer>
+  <div class="container inner">
+    <div class="about">
+      <a class="brand" href="/">
+        <img src="/favicon.svg" width="24" height="24" alt="" />
+        <span>wm</span>
+      </a>
+      <p>A tiling window manager for macOS. Swift, Lua, no SIP changes.</p>
+    </div>
+    {
+      columns.map((c) => (
+        <div>
+          <h2>{c.title}</h2>
+          <ul>
+            {c.links.map(([label, href]) => (
+              <li>
+                <a href={href} rel={href.startsWith("http") ? "noopener" : undefined}>
+                  {label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))
+    }
+  </div>
+</footer>
+
+<style>
+  footer {
+    margin-top: 96px;
+    border-top: 1px solid var(--border);
+    padding: 48px 0 64px;
+  }
+  .inner {
+    display: grid;
+    grid-template-columns: 1.4fr repeat(3, 1fr);
+    gap: 32px;
+  }
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text);
+    font-weight: 700;
+    font-size: 17px;
+  }
+  .about p {
+    color: var(--muted);
+    font-size: 14px;
+    max-width: 28ch;
+  }
+  h2 {
+    margin: 0 0 12px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 8px;
+    font-size: 14.5px;
+  }
+  ul a {
+    color: var(--text);
+  }
+  @media (max-width: 720px) {
+    .inner {
+      grid-template-columns: 1fr 1fr;
+    }
+    .about {
+      grid-column: 1 / -1;
+    }
+  }
+</style>
