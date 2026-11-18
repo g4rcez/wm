@@ -33,6 +33,8 @@ final class InputRouter {
     /// The steps pressed so far of a sequence that is waiting for its next key.
     private var pending: [Chord] = []
     private var pendingMode = "main"
+    /// Runs while a persistent sequence (`wm.commands.mode`) waits for its next command; when it fires, the sequence ends.
+    private var repeatTimer: Timer?
     /// Set by the app: the switcher takes over the keys while it is open.
     var switcher: SwitcherController?
     /// Key codes of remaps that a panel used up, until their key comes up.
@@ -152,7 +154,7 @@ final class InputRouter {
         if !pending.isEmpty {
             // A key held down after the prefix must not count as the second key.
             if isRepeat { return true }
-            return continueSequence(with: chord, flags: flags)
+            if let handled = continueSequence(with: chord, flags: flags) { return handled }
         }
         let lookup = lookup(for: chord, mode: mode)
         if !lookup.isEmpty {
@@ -363,8 +365,12 @@ final class InputRouter {
         updatePending()
     }
 
-    /// The next key of a sequence. A key that continues no sequence ends it and is eaten, as in tmux; Escape cancels. A sequence waits without a timeout.
-    private func continueSequence(with chord: Chord, flags: CGEventFlags) -> Bool {
+    /// The next key of a sequence. A key that continues no sequence ends it and is eaten, as in tmux; Escape cancels. A sequence waits
+    /// without a timeout, until its first command ran.
+    ///
+    /// With `wm.commands.mode = "persistent"` the keys after the prefix stay active after a command, and end when `timeout` passes without
+    /// one. In that window a key that is no command ends the sequence and goes on as a normal key (`nil`), so fast typing loses no key.
+    private func continueSequence(with chord: Chord, flags: CGEventFlags) -> Bool? {
         if chord.key == "esc", chord.modifiers.subtracting(.hyper).isEmpty {
             cancelSequence()
             return true
@@ -375,8 +381,18 @@ final class InputRouter {
         for candidate in candidates {
             let steps = pending + [candidate]
             if let action = sequences[pendingMode]?[steps] ?? sequences[universalMode]?[steps] {
-                cancelSequence()
-                perform(action, flags: flags)
+                let commands = manager.settings.commands
+                if commands.mode == .persistent {
+                    pending = Array(steps.dropLast())
+                    updatePending()
+                    startRepeatTimer(seconds: commands.timeout)
+                    perform(action, flags: flags)
+                    // A command that goes to another mode ends the sequence: the keys of that mode are not the keys of the prefix.
+                    if manager.mode != pendingMode { cancelSequence() }
+                } else {
+                    cancelSequence()
+                    perform(action, flags: flags)
+                }
                 return true
             }
             if hasSequence(in: pendingMode, startingWith: steps) {
@@ -389,11 +405,21 @@ final class InputRouter {
             // A screenshot of the key hints: macOS takes the keys, and the hints and the prefix stay as they are.
             return false
         }
+        let repeating = repeatTimer != nil
         cancelSequence()
-        return true
+        return repeating ? nil : true
+    }
+
+    private func startRepeatTimer(seconds: Double) {
+        repeatTimer?.invalidate()
+        repeatTimer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.cancelSequence() }
+        }
     }
 
     func cancelSequence() {
+        repeatTimer?.invalidate()
+        repeatTimer = nil
         guard !pending.isEmpty else { return }
         pending = []
         onPending?(nil)

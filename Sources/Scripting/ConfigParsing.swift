@@ -141,6 +141,7 @@ let topLevelConfigKeys = [
     "layout", "workspaces", "gaps", "animations", "border", "focus_follows_mouse", "mouse_follows_focus",
     "start_at_login", "wrap_focus", "mouse", "trackpad", "workspace_back_and_forth", "tiling", "scrolling", "switcher", "prefix", "url",
     "tab_indicator", "binds", "zen", "special", "overview", "hints", "keyboards", "floating", "master",
+    "commands",
 ]
 
 /// Applies the keys that are present; keys that are absent keep their value, so two `wm.config` calls merge.
@@ -304,6 +305,12 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
             if let name = try label.string("font") { settings.prefix.label.fontName = name.isEmpty ? nil : name }
             if let accent = try color(label, "accent") { settings.prefix.label.accent = accent }
         }
+    }
+
+    if let commands = try top.table("commands", allowed: ["mode", "timeout"]) {
+        if let name = try commands.choice("mode", CommandSettings.Mode.allCases.map(\.rawValue)) { settings.commands.mode = CommandSettings.Mode(rawValue: name)! }
+        // `wm.commands.timeout` is in milliseconds, as in Hyprland.
+        if let milliseconds = try commands.number("timeout", min: 100, max: 10_000) { settings.commands.timeout = milliseconds / 1000 }
     }
 
     if let binds = try top.table("binds", allowed: ["long_press_timeout", "disable_system_cmd_tab", "capslock"]) {

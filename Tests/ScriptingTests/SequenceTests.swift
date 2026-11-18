@@ -46,6 +46,39 @@ struct SequenceConfigTests {
         try host.load(configURL: dir.write("init.lua", script))
     }
 
+    @Test func commandsAreNormalByDefault() throws {
+        let config = try load("wm.bind('ctrl-p>h', 'focus left')")
+
+        #expect(config.settings.commands.mode == .normal)
+        #expect(config.settings.commands.timeout == 0.8)
+    }
+
+    @Test func commandsCanBePersistentWithATimeoutInMilliseconds() throws {
+        let config = try load("wm.commands = { mode = 'persistent', timeout = 500 }")
+
+        #expect(config.settings.commands.mode == .persistent)
+        #expect(config.settings.commands.timeout == 0.5)
+    }
+
+    @Test func commandsCanComeFromWmConfigToo() throws {
+        let config = try load("wm.config { commands = { mode = 'persistent' } }")
+
+        #expect(config.settings.commands.mode == .persistent)
+        #expect(config.settings.commands.timeout == 0.8)
+    }
+
+    @Test(arguments: [
+        ("wm.commands = { mode = 'sticky' }", "'commands.mode' must be one of \"normal\", \"persistent\""),
+        ("wm.commands = { timeout = 50 }", "'commands.timeout' must be between 100 and 10000"),
+        ("wm.commands = { timeout = '800' }", "'commands.timeout' must be a number"),
+        ("wm.commands = { delay = 1 }", "unknown key 'commands.delay'"),
+        ("wm.commands = 'persistent'", "'commands' must be a table"),
+    ])
+    func badCommandsAreErrors(script: String, expected: String) {
+        let error = #expect(throws: ConfigError.self) { try load(script) }
+        #expect(error?.message.contains(expected) == true)
+    }
+
     @Test func sequencesAreSeparateFromSingleChords() throws {
         let config = try load("""
         wm.bind("alt-a", "focus left")

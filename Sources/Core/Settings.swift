@@ -227,6 +227,20 @@ public struct PrefixSettings: Sendable, Equatable {
     public init() {}
 }
 
+/// What happens after a key sequence has run (`wm.commands`).
+public struct CommandSettings: Sendable, Equatable {
+    public enum Mode: String, Sendable, CaseIterable {
+        /// The sequence ends after one command.
+        case normal
+        /// The keys after the prefix stay active until `timeout` seconds pass without a command.
+        case persistent
+    }
+    public var mode = Mode.normal
+    /// Seconds without a command after which a persistent sequence ends.
+    public var timeout = 0.8
+    public init() {}
+}
+
 /// The zen mode (`wm zen`): the focused window alone, centered, and the others hidden.
 public struct ZenSettings: Sendable, Equatable {
     public static let minWidth = 0.3
@@ -364,6 +378,7 @@ public struct Settings: Sendable, Equatable {
     public var scrolling = ScrollingSettings()
     public var switcher = SwitcherSettings()
     public var prefix = PrefixSettings()
+    public var commands = CommandSettings()
     public var binds = BindSettings()
     public var zen = ZenSettings()
     public var special = SpecialSettings()

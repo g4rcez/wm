@@ -254,12 +254,26 @@ final class LuaState {
         guard luaL_loadstring(L, "wm.floating._install()") == LUA_OK else { throw ConfigError(message: popError()) }
         if let message = protectedCall(arguments: 0) { throw ConfigError(message: message) }
 
+        try readCommands()
+
         loading = false
         return LoadedConfig(
             settings: settings, binds: binds, rules: rules, workspaceLayouts: workspaceLayouts, workspaceRules: workspaceRules,
             sequences: sequences,
             releaseBinds: releaseBinds, longPressBinds: longPressBinds, holdBinds: holdBinds, noRepeat: noRepeat, bindRecords: bindRecords,
             gestures: gestures, modeOptions: modeOptions, longPressTimeouts: longPressTimeouts)
+    }
+
+    /// `wm.commands = { ... }` is the same as `wm.config { commands = { ... } }`; it is read after the config file has run.
+    private func readCommands() throws {
+        lua_getglobal(L, "wm")
+        defer { lua_settop(L, -2) }
+        lua_getfield(L, -1, "commands")
+        defer { lua_settop(L, -2) }
+        guard lua_type(L, -1) != LUA_TNIL else { return }
+        var settings = settings
+        try applyConfig(.table(["commands": readValue(L, -1)]), to: &settings)
+        self.settings = settings
     }
 
     func call(ref: Int32) {

@@ -237,6 +237,10 @@
 ---@field menubar? boolean Show "..." in the menu bar icon while waiting. Default true.
 ---@field label? wm.PrefixLabel The floating label.
 
+---@class (exact) wm.CommandsConfig
+---@field mode? "normal"|"persistent" `normal`: the sequence ends after one command. `persistent`: the keys after the prefix stay active until `timeout` passes without a command. Default `normal`.
+---@field timeout? number Milliseconds without a command after which a persistent sequence ends, 100 to 10000. Default 800.
+
 ---@class (exact) wm.UrlConfig
 ---@field allow? string[] Commands that `wm://` URLs may run besides the default ones. `exec`, `daemon` and `subscribe` are blocked by default.
 
@@ -306,6 +310,7 @@
 ---@field special? wm.SpecialConfig Special workspaces (`workspace special`): size, dim backdrop, when they hide.
 ---@field master? wm.MasterConfig The `master` layout.
 ---@field url? wm.UrlConfig
+---@field commands? wm.CommandsConfig What a key sequence does after a command: one command (`normal`) or many until a pause (`persistent`).
 
 -- wm.rule, wm.workspace ------------------------------------------------------------------------------------------
 
@@ -518,6 +523,7 @@
 
 ---@class wm
 ---@field version string Version of the Lua API.
+---@field commands? wm.CommandsConfig `wm.commands = { mode = "persistent", timeout = 800 }`: the same as `wm.config { commands = ... }`.
 ---@field templates wm.BuiltInTemplates The built-in tile templates, to mix with your own in `templates`.
 wm = {}
 
