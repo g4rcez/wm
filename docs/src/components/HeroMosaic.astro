@@ -1,0 +1,261 @@
+---
+// The hero background: a field of window-like blocks that re-tiles itself, as wm does.
+// Hover lights the block under the pointer and its neighbours. A click sends a wave and re-tiles.
+// The layer is decorative; it never takes pointer events (the hero hit-tests the blocks by position).
+---
+
+<div class="mosaic" aria-hidden="true" data-mosaic>
+  <div class="spot"></div>
+</div>
+
+<script>
+  import { animate, inView } from "motion";
+
+  type Rect = { x: number; y: number; w: number; h: number };
+  type Block = { el: HTMLElement; rect: Rect; lit: number; scale: number; lit$?: { stop: () => void } };
+
+  const layer = document.querySelector<HTMLElement>("[data-mosaic]")!;
+  const hero = layer.parentElement!;
+  const spot = layer.querySelector<HTMLElement>(".spot")!;
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+
+  const GAP = 10;
+  const MIN_W = 120;
+  const MIN_H = 84;
+  const REACH = 230; // how far the pointer lights the neighbours, in px
+  let blocks: Block[] = [];
+  let size = { w: 0, h: 0 };
+
+  // Split the hero in a binary tree, like wm's dwindle layout: always the largest cell, along its long side.
+  // A cell that is too small to split stays as it is. The result can have fewer cells than asked for.
+  function partition(w: number, h: number, count: number): Rect[] {
+    const open: Rect[] = [{ x: 0, y: 0, w, h }];
+    const done: Rect[] = [];
+    while (open.length + done.length < count && open.length) {
+      open.sort((a, b) => b.w * b.h - a.w * a.h);
+      const c = open.shift()!;
+      const r = 0.38 + Math.random() * 0.24;
+      const low = Math.min(r, 1 - r);
+      const canSide = c.w * low >= MIN_W;
+      const canStack = c.h * low >= MIN_H;
+      const wantSide = c.w / c.h > 1 ? Math.random() < 0.85 : Math.random() < 0.15;
+      const side = wantSide ? canSide : !canStack && canSide;
+      if (!side && !canStack) {
+        done.push(c);
+      } else if (side) {
+        const a = c.w * r;
+        open.push({ ...c, w: a }, { ...c, x: c.x + a, w: c.w - a });
+      } else {
+        const a = c.h * r;
+        open.push({ ...c, h: a }, { ...c, y: c.y + a, h: c.h - a });
+      }
+    }
+    return [...open, ...done].map((c) => ({ x: c.x + GAP / 2, y: c.y + GAP / 2, w: c.w - GAP, h: c.h - GAP }));
+  }
+
+  // The same number of cells as before, so each block keeps a cell. A few tries are enough.
+  function partitionExactly(w: number, h: number, count: number): Rect[] | null {
+    for (let i = 0; i < 24; i++) {
+      const cells = partition(w, h, count);
+      if (cells.length === count) return cells;
+    }
+    return null;
+  }
+
+  const center = (r: Rect) => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
+
+  function place(b: Block, instant: boolean, delay = 0) {
+    const { x, y, w, h } = b.rect;
+    animate(
+      b.el,
+      { x, y, width: w, height: h },
+      instant || reduced.matches ? { duration: 0 } : { type: "spring", stiffness: 70, damping: 16, delay },
+    );
+  }
+
+  function build() {
+    const w = hero.clientWidth;
+    const h = hero.clientHeight;
+    size = { w, h };
+    blocks.forEach((b) => b.el.remove());
+    const count = Math.min(34, Math.max(9, Math.round((w * h) / (190 * 190))));
+    blocks = partition(w, h, count).map((rect) => {
+      const el = document.createElement("div");
+      el.className = "block";
+      layer.append(el);
+      return { el, rect, lit: 0, scale: 1 };
+    });
+    blocks.forEach((b) => place(b, true));
+    if (reduced.matches) return;
+    const origin = center({ x: 0, y: 0, w, h });
+    blocks.forEach((b) => {
+      const c = center(b.rect);
+      const d = Math.hypot(c.x - origin.x, c.y - origin.y);
+      animate(b.el, { opacity: [0, 1], scale: [0.9, 1] }, { duration: 0.7, delay: d / 1600, ease: [0.22, 1, 0.36, 1] });
+    });
+  }
+
+  // A new layout with the same number of blocks. Each block goes to the nearest new cell, so they glide.
+  function retile(pivot?: { x: number; y: number }) {
+    if (reduced.matches || !blocks.length) return;
+    const next = partitionExactly(size.w, size.h, blocks.length);
+    if (!next) return;
+    const free = [...blocks];
+    const from = pivot ?? { x: Math.random() * size.w, y: Math.random() * size.h };
+    next
+      .sort((a, b) => b.w * b.h - a.w * a.h)
+      .forEach((rect) => {
+        const c = center(rect);
+        let best = 0;
+        let bestD = Infinity;
+        free.forEach((b, i) => {
+          const o = center(b.rect);
+          const d = Math.hypot(o.x - c.x, o.y - c.y);
+          if (d < bestD) {
+            bestD = d;
+            best = i;
+          }
+        });
+        const [b] = free.splice(best, 1);
+        b.rect = rect;
+        place(b, false, Math.hypot(c.x - from.x, c.y - from.y) / 2600);
+      });
+  }
+
+  function light(b: Block, to: number, duration: number) {
+    b.lit$?.stop();
+    b.lit = to;
+    b.lit$ = animate(b.el, { "--lit": to } as never, { duration: reduced.matches ? 0 : duration, ease: "easeOut" });
+  }
+
+  // Hover: the block under the pointer is fully lit and lifts a little; blocks near it glow less.
+  let px = -1e4;
+  let py = -1e4;
+  let frame = 0;
+
+  function tick() {
+    frame = 0;
+    const away = px < 0;
+    const hit = away ? -1 : blocks.findIndex((b) => px >= b.rect.x - 3 && px <= b.rect.x + b.rect.w + 3 && py >= b.rect.y - 3 && py <= b.rect.y + b.rect.h + 3);
+    blocks.forEach((b, i) => {
+      const c = center(b.rect);
+      const near = away ? 0 : Math.max(0, 1 - Math.hypot(px - c.x, py - c.y) / REACH) * 0.4;
+      const target = i === hit ? 1 : near;
+      if (Math.abs(target - b.lit) > 0.04 || (target === 0 && b.lit !== 0)) light(b, target, i === hit ? 0.15 : 0.5);
+      const scale = i === hit ? 1.025 : 1;
+      if (scale !== b.scale && !reduced.matches) {
+        b.scale = scale;
+        animate(b.el, { scale }, { type: "spring", stiffness: 320, damping: 22 });
+      }
+    });
+    if (!reduced.matches) {
+      animate(spot, { x: px - 190, y: py - 190, opacity: away ? 0 : 1 }, { type: "spring", stiffness: 140, damping: 22 });
+    }
+  }
+  const schedule = () => (frame ||= requestAnimationFrame(tick));
+
+  hero.addEventListener("pointermove", (e) => {
+    const r = hero.getBoundingClientRect();
+    px = e.clientX - r.left;
+    py = e.clientY - r.top;
+    schedule();
+  });
+  hero.addEventListener("pointerleave", () => {
+    px = py = -1e4;
+    schedule();
+  });
+
+  // A click on the background sends a wave from the pointer and re-tiles.
+  hero.addEventListener("pointerdown", (e) => {
+    if (reduced.matches || (e.target as HTMLElement).closest("a, button, .install")) return;
+    const r = hero.getBoundingClientRect();
+    const at = { x: e.clientX - r.left, y: e.clientY - r.top };
+    blocks.forEach((b) => {
+      const c = center(b.rect);
+      animate(b.el, { "--idle": [0, 1, 0] } as never, { duration: 1.2, delay: Math.hypot(c.x - at.x, c.y - at.y) / 1300, ease: "easeOut" });
+    });
+    retile(at);
+  });
+
+  // On its own: a block takes the focus now and then, and every few seconds the layout changes.
+  // Both stop when the hero is off screen or the tab is hidden.
+  inView(hero, () => {
+    if (reduced.matches) return;
+    let pulse = 0;
+    let shuffle = 0;
+    const pulseNext = () => {
+      if (!document.hidden && blocks.length) {
+        const b = blocks[Math.floor(Math.random() * blocks.length)];
+        animate(b.el, { "--idle": [0, 1, 0] } as never, { duration: 2.8, ease: "easeInOut" });
+      }
+      pulse = window.setTimeout(pulseNext, 600 + Math.random() * 900);
+    };
+    const shuffleNext = () => {
+      if (!document.hidden) retile();
+      shuffle = window.setTimeout(shuffleNext, 7000 + Math.random() * 3000);
+    };
+    pulseNext();
+    shuffle = window.setTimeout(shuffleNext, 5000);
+    return () => {
+      clearTimeout(pulse);
+      clearTimeout(shuffle);
+    };
+  });
+
+  // Draw again when the hero changes size.
+  let resizeTimer = 0;
+  new ResizeObserver(() => {
+    if (Math.abs(hero.clientWidth - size.w) < 2 && Math.abs(hero.clientHeight - size.h) < 2) return;
+    clearTimeout(resizeTimer);
+    resizeTimer = window.setTimeout(build, 150);
+  }).observe(hero);
+
+  build();
+</script>
+
+<style is:global>
+  .mosaic {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    pointer-events: none;
+    /* Fade out at the sides and the bottom, and keep the middle quiet so the text stays easy to read. */
+    mask-image: radial-gradient(85% 90% at 50% 35%, rgb(0 0 0 / 0.5) 0%, #000 55%, transparent 100%);
+    -webkit-mask-image: radial-gradient(85% 90% at 50% 35%, rgb(0 0 0 / 0.5) 0%, #000 55%, transparent 100%);
+  }
+  .mosaic .block {
+    --lit: 0;
+    --idle: 0;
+    --p: max(var(--lit), var(--idle));
+    position: absolute;
+    left: 0;
+    top: 0;
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--accent) calc(var(--p) * 100%), var(--border));
+    background: color-mix(in srgb, var(--accent) calc(var(--p) * 18%), color-mix(in srgb, var(--surface) 40%, transparent));
+    box-shadow: 0 0 calc(var(--p) * 38px) calc(var(--p) * -6px) var(--accent);
+    will-change: transform, width, height;
+  }
+  /* The title bar of a tiny window. */
+  .mosaic .block::before {
+    content: "";
+    position: absolute;
+    left: 12px;
+    top: 10px;
+    width: 28px;
+    height: 4px;
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--accent) calc(var(--p) * 90%), var(--border-strong));
+  }
+  .mosaic .spot {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 380px;
+    height: 380px;
+    border-radius: 50%;
+    background: radial-gradient(closest-side, var(--glow), transparent);
+    opacity: 0;
+  }
+</style>

@@ -350,9 +350,29 @@ A chord is modifiers and a key joined by `-` or `+`: `alt-h`, `cmd+ctrl-2`. The 
 A bind can also be a sequence of chords separated by `>`: `"ctrl-p>h"`, `"alt-space > t > n"`. wm takes the first chord of
 a sequence from every app, so choose one your apps do not need. A key that continues no sequence cancels it and is
 swallowed, as in tmux, so a typo never reaches the app you are typing in. A sequence waits until the next key or Escape:
-it has no timeout. (`prefix.timeout` of old configs is still accepted and ignored.) The screenshot shortcuts of macOS
+it has no timeout, and it ends after one command unless `wm.commands` says otherwise. (`prefix.timeout` of old configs is still accepted and ignored.) The screenshot shortcuts of macOS
 (Cmd+Shift+3, 4, 5, 6) are the exception: they go to macOS and the key hints and the waiting prefix stay, so you can take a
 picture of the hints. Clicks and drags already go through the hints.
+
+#### Many commands after one prefix
+
+By default a sequence ends after one command (`normal`). With `mode = "persistent"` the keys after the prefix stay active, as in a
+Hyprland submap that you leave by waiting: press the prefix once and then the keys as many times as you want. The sequence ends
+when `timeout` milliseconds pass without a command, or on Escape.
+
+```lua
+wm.commands = { mode = "persistent", timeout = 800 }   -- mode: "normal" | "persistent"; timeout: 100 to 10000 ms, default 800
+wm.bind("alt-space>h", "resize width -50")
+wm.bind("alt-space>l", "resize width +50")
+-- alt-space, then h h l h ...: the key panel stays until 800 ms pass without a key
+```
+
+- The first wait after the prefix has no timeout. The timer starts when the first command has run and restarts with each command.
+- A key that is not a command of the prefix ends the sequence and goes on to the app, so fast typing loses no key. (The first key
+  after the prefix keeps the old rule: a wrong key is eaten.)
+- A command that goes to another mode (`mode resize`) ends the sequence.
+- `wm.config { commands = { ... } }` is the same as `wm.commands = { ... }`. Binding modes (`wm.mode`) are not changed: they stay on
+  until you leave them.
 
 In one mode, a chord cannot be a bind by itself and also the start of a sequence, and a sequence cannot be the start of a
 longer one (`a>b` and `a>b>c`). Both are config errors. `wm.bind("cmd-h", "")` with an empty string swallows a key.

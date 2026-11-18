@@ -4,6 +4,7 @@ import Base from "../layouts/Base.astro";
 import Demo from "../components/Demo.astro";
 import CopyCommand from "../components/CopyCommand.astro";
 import CodeTabs from "../components/CodeTabs.astro";
+import HeroMosaic from "../components/HeroMosaic.astro";
 
 const install = "git clone https://github.com/g4rcez/wm.git && cd wm && ./build-app.sh";
 
@@ -188,6 +189,7 @@ const steps = [
 
 <Base>
   <div class="hero">
+    <HeroMosaic />
     <div class="container">
       <a class="badge" href="/docs/first-five-minutes">
         <span class="dot"></span>
@@ -307,6 +309,56 @@ const steps = [
   </section>
 </Base>
 
+<script>
+  import { animate, motionValue } from "motion";
+
+  // The light of the feature grid follows the pointer with a spring and fades in and out.
+  const section = document.querySelector<HTMLElement>("#features")!;
+  const grid = section.querySelector<HTMLElement>(".grid")!;
+  const cards = [...grid.querySelectorAll<HTMLElement>(".card")];
+  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const x = motionValue(-999);
+  const y = motionValue(-999);
+  const on = motionValue(0);
+  x.on("change", (v) => grid.style.setProperty("--mx", `${v}px`));
+  y.on("change", (v) => grid.style.setProperty("--my", `${v}px`));
+  on.on("change", (v) => grid.style.setProperty("--on", String(v)));
+
+  const spring = { type: "spring", stiffness: 110, damping: 24, mass: 0.9 } as const;
+  const to = (value: typeof x, target: number, options: object) => animate(value, target, still ? { duration: 0 } : options);
+
+  // Each card needs its own corner, so that all of them draw the one light.
+  const measure = () =>
+    cards.forEach((card) => {
+      card.style.setProperty("--ox", `${card.offsetLeft}px`);
+      card.style.setProperty("--oy", `${card.offsetTop}px`);
+    });
+  measure();
+  new ResizeObserver(measure).observe(grid);
+
+  let inside = false;
+  section.addEventListener("pointermove", (e) => {
+    if (e.pointerType === "touch") return;
+    const r = grid.getBoundingClientRect();
+    const px = e.clientX - r.left;
+    const py = e.clientY - r.top;
+    if (!inside) {
+      // Start at the pointer, so the light does not fly in from the corner.
+      inside = true;
+      x.jump(px);
+      y.jump(py);
+    }
+    to(x, px, spring);
+    to(y, py, spring);
+    to(on, 1, { duration: 0.35, ease: "easeOut" });
+  });
+  section.addEventListener("pointerleave", () => {
+    inside = false;
+    to(on, 0, { duration: 0.7, ease: "easeOut" });
+  });
+</script>
+
 <style>
   .hero {
     position: relative;
@@ -315,16 +367,8 @@ const steps = [
     overflow: hidden;
     isolation: isolate;
   }
-  .hero::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    background-image:
-      linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-    background-size: 56px 56px;
-    mask-image: radial-gradient(70% 80% at 50% 0%, #000 20%, transparent 75%);
-    -webkit-mask-image: radial-gradient(70% 80% at 50% 0%, #000 20%, transparent 75%);
+  .hero > .container {
+    position: relative;
   }
   .hero::after {
     content: "";
@@ -451,6 +495,10 @@ const steps = [
   .section {
     padding-top: 88px;
   }
+  /* The shared light of the grid spills past its edges. Keep it from widening the page. */
+  #features {
+    overflow-x: clip;
+  }
   .head {
     max-width: 62ch;
     margin-bottom: 32px;
@@ -500,28 +548,87 @@ const steps = [
     font-size: 13.5px;
   }
 
+  /* One light for the whole grid. The script sets --mx and --my (pointer, in grid px), --on (0 to 1), and --ox and
+     --oy (the offset of each card), so every card draws the same light from its own corner. */
   .grid {
+    --mx: -999px;
+    --my: -999px;
+    --on: 0;
+    position: relative;
     display: grid;
     grid-template-columns: repeat(12, minmax(0, 1fr));
     gap: 14px;
   }
+  .grid::before {
+    content: "";
+    position: absolute;
+    inset: -80px;
+    pointer-events: none;
+    background: radial-gradient(
+      560px circle at calc(var(--mx) + 80px) calc(var(--my) + 80px),
+      color-mix(in srgb, var(--accent) calc(var(--on) * 15%), transparent),
+      transparent 70%
+    );
+    filter: blur(24px);
+  }
   .card {
+    --ox: 0px;
+    --oy: 0px;
+    --at: calc(var(--mx) - var(--ox)) calc(var(--my) - var(--oy));
     grid-column: span var(--span);
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 8px;
     padding: 22px;
     border: 1px solid var(--border);
     border-radius: 18px;
-    background:
-      radial-gradient(120% 80% at 0% 0%, var(--accent-soft), transparent 60%), var(--surface);
+    background: color-mix(in srgb, var(--surface) 55%, transparent);
+    backdrop-filter: blur(18px) saturate(1.3);
+    -webkit-backdrop-filter: blur(18px) saturate(1.3);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
     color: var(--text);
-    transition: border-color 0.2s, transform 0.2s;
+    transition: border-color 0.25s;
   }
   .card:hover {
     text-decoration: none;
-    border-color: var(--accent);
-    transform: translateY(-2px);
+    border-color: var(--border-strong);
+  }
+  .card > * {
+    position: relative;
+    z-index: 1;
+  }
+  /* The light on the glass. */
+  .card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: radial-gradient(
+      380px circle at var(--at),
+      color-mix(in srgb, var(--accent) calc(var(--on) * 11%), transparent),
+      transparent 70%
+    );
+  }
+  /* The light on the edge. */
+  .card::after {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    padding: 1px;
+    border-radius: inherit;
+    pointer-events: none;
+    background: radial-gradient(
+      300px circle at var(--at),
+      color-mix(in srgb, var(--accent) calc(var(--on) * 55%), transparent),
+      transparent 70%
+    );
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    -webkit-mask-composite: xor;
   }
   .card h3 {
     margin: 0;
@@ -539,7 +646,7 @@ const steps = [
     padding: 8px 12px;
     border: 1px solid var(--border);
     border-radius: 10px;
-    background: var(--code-bg);
+    background: color-mix(in srgb, var(--code-bg) 70%, transparent);
     color: var(--accent-text);
     font-size: 12.5px;
     overflow-x: auto;
