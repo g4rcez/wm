@@ -29,3 +29,23 @@ enum MemoryStore {
         try StateStore.write(try encoder.encode(memory), to: url)
     }
 }
+
+/// The file of the places of floating windows that closed: `float-memory.json` next to `memory.json`.
+enum FloatMemoryStore {
+    static var url: URL { StateStore.url.deletingLastPathComponent().appendingPathComponent("float-memory.json") }
+
+    static func load(from url: URL = url) -> FloatMemory {
+        guard let data = try? Data(contentsOf: url) else { return FloatMemory() }
+        guard let memory = try? JSONDecoder().decode(FloatMemory.self, from: data), memory.version == FloatMemory.currentVersion else {
+            Log.write(.warn, "ignoring \(url.path)", source: "memory", prefix: "wmd")
+            return FloatMemory()
+        }
+        return memory
+    }
+
+    static func write(_ memory: FloatMemory, to url: URL = url) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .prettyPrinted]
+        try StateStore.write(try encoder.encode(memory), to: url)
+    }
+}

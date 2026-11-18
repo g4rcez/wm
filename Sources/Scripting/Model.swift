@@ -111,6 +111,8 @@ public struct RuleSize: Sendable, Equatable {
 }
 
 public struct WindowRule: Sendable, Equatable {
+    /// A label for the log and for `wm.floating.disable` (the default rules have one). It does not match anything.
+    public var name: String?
     /// Bundle id or app name, compared case-insensitively and exactly.
     public var app: String?
     /// Regular expression matched anywhere in the window title.
@@ -137,8 +139,9 @@ public struct WindowRule: Sendable, Equatable {
         app: String? = nil, title: String? = nil, float: Bool? = nil, workspace: String? = nil,
         layout: LayoutKind? = nil, size: RuleSize? = nil, center: Bool = false,
         maximize: Bool? = nil, width: Double? = nil, monitor: String? = nil, focus: Bool? = nil,
-        commands: [String] = [], stop: Bool = true
+        commands: [String] = [], stop: Bool = true, name: String? = nil
     ) {
+        self.name = name
         self.app = app
         self.title = title
         self.float = float

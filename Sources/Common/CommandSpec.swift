@@ -39,8 +39,14 @@ public struct CommandSection: Sendable {
 
 public let commandSections: [CommandSection] = [
     CommandSection(title: "Focus and move", specs: [
-        CommandSpec("focus", "<dir>", "[--wrap]", "Focus the window in that direction; --wrap goes around.", example: "wm focus left --wrap"),
-        CommandSpec("focus back", "", "", "Focus the previous window."),
+        CommandSpec(
+            "focus", "<dir>", "[--wrap]", "Focus the window in that direction; --wrap goes around.",
+            details: "The nearest window in that direction gets the focus. Without --wrap the focus stops at the edge; with it, it goes\naround to the other side.",
+            example: "wm focus left --wrap"),
+        CommandSpec(
+            "focus back", "", "", "Focus the previous window.",
+            details: "The window that had the focus before this one on the workspace. It fails when there is none.",
+            example: "wm focus back"),
         CommandSpec(
             "focus next", "", "[--wrap]", "Focus the next window in layout order.",
             details: "The order is the tiled windows as the layout lists them (columns from left to right), then the floating windows.\nWith --wrap, or wrap_focus in the config, the last window goes on to the first."),
@@ -62,7 +68,10 @@ public let commandSections: [CommandSection] = [
             "focus monitor", "<monitor>", "", "Focus another monitor.",
             details: "The monitor is a direction, next, prev, last (the one that had the focus before), a role (main, secondary,\ntertiary), a number (1 is the leftmost) or part of the name. main is the display with the menu bar.",
             example: "wm focus monitor last"),
-        CommandSpec("focus layer", "[floating|tiling]", "", "Switch focus between floating and tiling windows."),
+        CommandSpec(
+            "focus layer", "[floating|tiling]", "", "Switch focus between floating and tiling windows.",
+            details: "Without an argument it goes to the other layer than the one of the focused window. The window of that layer on this\nworkspace that had the focus last gets it; the command fails when the layer has no window.",
+            example: "wm focus layer floating"),
         CommandSpec(
             "move", "<dir> [points]", "", "Move the window; at the edge it goes to the next monitor.",
             details: "A floating window moves by `points` (40 if you leave it out) and stops at the edge of its monitor."),
@@ -73,9 +82,18 @@ public let commandSections: [CommandSection] = [
             example: "wm resize width +50"),
     ]),
     CommandSection(title: "Windows", specs: [
-        CommandSpec("window close", "", "", "Close the window."),
-        CommandSpec("window float", "[on|off]", "", "Float the window and center it, or tile it again."),
-        CommandSpec("window center", "", "", "Float the window (a tiled one first), centered."),
+        CommandSpec(
+            "window close", "", "", "Close the window.",
+            details: "It presses the close button of the window, so the app can still ask to save. Use --window to close another one.",
+            example: "wm --window app:Safari window close"),
+        CommandSpec(
+            "window float", "[on|off]", "", "Float the window and center it, or tile it again.",
+            details: "Without an argument it switches between floating and tiled. `on` and `off` set the state, so running them again\nchanges nothing: the right choice for a script.",
+            example: "wm window float on"),
+        CommandSpec(
+            "window center", "", "", "Float the window (a tiled one first), centered.",
+            details: "The size stays; only the place changes. It fails for a window that is minimized or in native fullscreen.",
+            example: "wm window center"),
         CommandSpec(
             "window sticky", "", "", "Show the window on every workspace of its monitor.",
             details: "A tiled window floats first. The window follows the workspace that the monitor shows (also a special workspace). Again\nto end it; the window then stays floating on the workspace that it is on. `window remember` keeps it.",
@@ -126,7 +144,10 @@ public let commandSections: [CommandSection] = [
         CommandSpec("workspace special", "[name]", "", "Show or hide a special workspace (default: special).", example: "wm workspace special term"),
     ]),
     CommandSection(title: "Layout", specs: [
-        CommandSpec("layout set", "<scrolling|tiling|master>", "", "Switch the layout of the workspace.", example: "wm layout set master"),
+        CommandSpec(
+            "layout set", "<scrolling|tiling|master>", "", "Switch the layout of the workspace.",
+            details: "The layout belongs to the workspace: the other workspaces keep theirs. `wm list workspaces` shows each one.",
+            example: "wm layout set master"),
         CommandSpec(
             "layout master promote", "", "", "Swap the window with the master.",
             details: "The focused window and the first master change places. When the focused window is the master, the first window of the stack\ntakes its place."),
@@ -143,7 +164,10 @@ public let commandSections: [CommandSection] = [
             details: "`place` is left, right, top, bottom, center or next. left, right, top and bottom put the master on that side. center puts it in the middle with the stack on both sides.\nWithout a name, or with next, it goes to the next one in that order.",
             example: "wm layout master orientation center"),
         CommandSpec("layout balance", "", "", "Give every window (or column) an equal share."),
-        CommandSpec("layout rotate", "[cw|ccw]", "", "Move every window one slot around the layout."),
+        CommandSpec(
+            "layout rotate", "[cw|ccw]", "", "Move every window one slot around the layout.",
+            details: "cw (the default) moves each window to the next slot, ccw to the previous one.",
+            example: "wm layout rotate ccw"),
         CommandSpec("layout flip", "", "", "Turn every split from side by side to stacked (tiling)."),
         CommandSpec(
             "layout tile", "[pattern|chain]", "", "Arrange windows in a pattern; no pattern opens a picker.",
@@ -183,21 +207,40 @@ public let commandSections: [CommandSection] = [
             "overview", "[open|close|toggle]", "", "Show all workspaces; type to search a window.",
             details: "Every workspace is a small copy of its screen, in one column that scrolls; yours is in the middle. Typing searches, the\narrows move, Return focuses, Cmd-W closes the selected window, and dragging a window onto another workspace moves it there.\nWithout an argument it opens or closes the overview; `open` and `close` do only that (the swipes of 4 fingers use them)."),
         CommandSpec(
-            "palette", "[windows|apps|commands|menu]", "[--cmdtab] [--reverse]", "Search running apps, windows, commands and menu items.",
-            details: "One text field. Without a prefix it lists the running apps with their windows. `>` finds wm commands (Tab completes one, and after a\ncommand it lists what can follow) and `/` finds the menu items of the app that was in front. Up and down move, Return\nruns the row and Escape closes. The word picks the list to start in.\n--cmdtab works like the Cmd+Tab of macOS: it lists the running apps, selects the previous one, Tab and Shift+Tab move while you hold\nthe modifier, and letting go of it switches to the app. wm swallows those keys, so the macOS switcher does not open.\n--reverse starts from the last app (bind it to cmd-shift-tab).",
+            "hints", "[open|close|toggle]", "[--wait]", "Label every clickable element; type a label to click it.",
+            details: "Every button, link, field and tab of the focused window (web pages too), the menu bar, the menu extras and the Dock gets a\nlabel of two letters, as in the flash plugin of Neovim. Typing the label clicks the element; Shift on the second letter\nright-clicks and Cmd Cmd-clicks. / starts a search as in fzf: words in any order, each with its letters in order (`sv as` finds\nSave As). The matches keep their labels, and a letter that could continue the word is never the first letter of a label.\nBackspace undoes a letter. Return clicks the focused (Tab, Down, Ctrl-N) or only match, and again soon after double-clicks.\nEscape closes. With --wait the search starts at once, a label only highlights its element (so does the first match), and\nReturn clicks it, Shift-Return right-clicks, Cmd-Return Cmd-clicks.",
+            example: "wm hints --wait"),
+        CommandSpec(
+            "scroll", "[open|close|toggle]", "", "Scroll the focused window with h j k l.",
+            details: "The scroll areas of the focused window get numbers; the largest one is active, and the pointer moves to it. h j k l scroll,\nShift makes them dash, d and u go half a page, gg and G go to the top and the bottom. Tab, the arrows, Ctrl-N and Ctrl-P, or\na digit, change the area. Escape closes.",
+            example: "wm scroll toggle"),
+        CommandSpec(
+            "palette", "[list]", "[--cmdtab] [--reverse]", "Search apps, windows, tabs, commands and menu items.",
+            details: "One text field. Without a prefix it lists the running apps with their windows, and typing also finds the tabs\nof Chromium browsers, of Rex and of tmux. `>` finds wm commands (Tab completes one, and after a command it lists\nwhat can follow) and `/` finds the menu items of the app that was in front. Up and down move, Return runs the row\nand Escape closes. The list to start in is windows, apps, tabs, commands or menu. The tabs list holds the tabs of\nbrowsers, Rex and tmux, and the windows of the apps that have no tabs: a window is the tab of such an app.\n--cmdtab works like the Cmd+Tab of macOS: it lists the running apps, selects the previous one, Tab and Shift+Tab move while you hold\nthe modifier, and letting go of it switches to the app. wm swallows those keys, so the macOS switcher does not open.\n--reverse starts from the last app (bind it to cmd-shift-tab).",
             example: "wm palette --cmdtab"),
+        CommandSpec(
+            "palette reset", "", "", "Put the palette back at its first place on the screen.",
+            details: "The palette opens where you last dragged it. This forgets that spot: the palette opens centered, a little above the\nmiddle, again. Cmd-0 does the same while the palette is open.",
+            example: "wm palette reset"),
         CommandSpec(
             "menu", "", "", "Show the menus of the app at the pointer.",
             details: "It reads the menu bar of the app of the window (the focused app) and shows it as a menu at the mouse pointer. An item\nthat you choose runs in that app. It shows what the app gives to the Accessibility API; an app that fills its menus\nonly when you open them can show fewer items.",
             example: "wm menu"),
-        CommandSpec("mode", "<name|back>", "", "Switch the binding mode (`back`: the one before).", example: "wm mode resize"),
-        CommandSpec("pointer", "<window|monitor>", "", "Move the mouse pointer to the center of the target."),
+        CommandSpec(
+            "mode", "<name|back>", "", "Switch the binding mode (`back`: the one before).",
+            details: "A mode is a set of key binds that the config defines. `wm list binds` shows them. The command fails for a mode that\ndoes not exist, and then lists the modes.",
+            example: "wm mode resize"),
+        CommandSpec(
+            "pointer", "<window|monitor>", "", "Move the mouse pointer to the center of the target.",
+            details: "`window` is the window that the command acts on; `monitor` is the work area of the focused monitor.",
+            example: "wm pointer monitor"),
         CommandSpec(
             "exec", "[options] <command>", "", "Run a shell command (--window sets $WM_WINDOW_ID).",
             details: "Options make a rule for the window that the command opens: --float, --tile, --center, --maximize, --no-focus,\n--workspace <w>, --monitor <m>, --width <f>, --size <w>,<h>, --layout <kind>. End them with `--`. The window is found by\nprocess, so use the program itself, not `open -a`.",
             example: "wm exec --float --center --size 0.5,0.5 -- /Applications/Foo.app/Contents/MacOS/foo"),
         CommandSpec(
             "batch", "<commands>", "", "Run commands in order; stops at the first error.",
+            details: "Separate the commands with `;` (quote a `;` that belongs to a command). They run in order, all on the window that\n--window names. The first one that fails stops the batch: its error and its exit code are the answer. A batch cannot\nhold another batch.",
             example: "wm batch 'workspace 2; layout set tiling'"),
         CommandSpec(
             "set", "<key> <value>", "", "Change a config value until the next reload.",
@@ -216,12 +259,16 @@ public let commandSections: [CommandSection] = [
     CommandSection(title: "Inspect", specs: [
         CommandSpec(
             "list", "[what]", "[--focused] [--json]", "List windows, workspaces, monitors, keyboards or binds.",
-            details: "`what` is windows, workspaces, monitors, keyboards, memory or binds. With no argument it lists the workspaces and their windows. --focused lists only the focused window (or, with monitors, the focused monitor).\n--json prints JSON for scripts. `list binds` shows every key bind with its description.",
+            details: "With no argument it lists the workspaces and their windows. `what` picks one kind of thing:\n  windows     every window that wm manages\n  workspaces  the workspaces, their layout and their windows\n  monitors    the monitors, with their frame and work area\n  keyboards   the keyboards, and whether the config enables each one\n  memory      the entries that `window remember` keeps\n  binds       every key bind, with its description\nUse --json when a script reads the answer.",
             example: "wm list windows --json"),
         CommandSpec(
             "query", "[what]", "[--focused] [--json]", "The same as `list`.",
             details: "`wm query keyboards` shows the keyboards: name, `vendor:product` id, transport, whether the config enables it\n(`keyboards` in `wm.config`) and whether CapsLock is the hyper key on it now. Use the name or the id in the config.",
             example: "wm query keyboards"),
+        CommandSpec(
+            "pick", "", "[--json]", "Click a window and print what wm knows about it.",
+            details: "Waits for your next left click and swallows it, so the app under the pointer does not get it. Escape or a right click cancels,\nand so does waiting 30 seconds. It prints the id, app, bundle id, pid, title, role, workspace, state and frame, the `--window`\nselectors that find it and a `wm.rule` table. It works for windows that wm does not manage too. --json prints the same as one object.\nIt only works from the command line, not from a bind, `batch` or Lua.",
+            example: "wm pick --json"),
         CommandSpec(
             "subscribe", "[--snapshot] [event ...]", "", "Print one JSON event per line until stopped.",
             details: "With event names, only those events. With --snapshot, the first line is the state of wm now (`event` is\n`snapshot`, `state` is `wm list --json`). The events: " + subscribableEvents.joined(separator: ", ") + ".",
@@ -234,8 +281,14 @@ public let commandSections: [CommandSection] = [
     CommandSection(title: "Daemon", specs: [
         CommandSpec("daemon start", "", "", "Start wm in the background."),
         CommandSpec("daemon stop", "", "", "Stop wm. Hidden windows come back on screen."),
-        CommandSpec("daemon status", "", "[--json]", "Show whether wm runs and its state (exit 1 if not)."),
-        CommandSpec("daemon reload", "", "", "Load the config again."),
+        CommandSpec(
+            "daemon status", "", "[--json]", "Show whether wm runs and its state (exit 1 if not).",
+            details: "The exit code tells a script whether wm runs: 0 when it does, 1 when it does not.",
+            example: "wm daemon status || wm daemon start"),
+        CommandSpec(
+            "daemon reload", "", "", "Load the config again.",
+            details: "Reads init.lua again. A value that `wm set` changed goes back to what the config says.",
+            example: "wm daemon reload"),
         CommandSpec(
             "lsp", "", "[--write] [--force]", "Set up autocomplete for init.lua in your editor.",
             details: "Prints the folder of the type stubs and the .luarc.json that lua-language-server needs. --write saves it next to\nthe config file; --force replaces a .luarc.json that is already there. It works without the daemon.",
@@ -259,42 +312,156 @@ public func usageLines(for prefix: String) -> [String] {
     return commandSpecs.filter { Array($0.words.prefix(wanted.count)) == wanted }.map(\.usage)
 }
 
-private let globalOptions = """
-Options for every command:
-  --window <w>    act on that window: an id, focused, app:<name>, title:<re>, mark:<name> or pid:<n>
-  --json          machine-readable output (list, daemon status)
-  -v, --verbose   print the state after the command
-  -h, --help      show help for a command
-"""
+private let globalOptions: [CommandOption] = [
+    CommandOption("--window <w>", "Act on that window, not the focused one.\nA window is an id, focused, app:<name>, title:<re>, mark:<name> or pid:<n>."),
+    CommandOption("--json", "Machine-readable output (list, query, pick, daemon status)."),
+    CommandOption("-v, --verbose", "Print the state after the command."),
+    CommandOption("-h, --help", "Show the help of a command."),
+]
 
-/// The text of `wm help` (no topic), or of `wm help <command>`. `nil` when the topic is not a command.
-public func renderHelp(topic: String? = nil) -> String? {
-    guard let topic, !topic.isEmpty else { return overviewHelp() }
+private let usageRows: [(String, String)] = [
+    ("wm <command> [args]", "Run a command on the focused window."),
+    ("wm --window <w> <command>", "Run it on another window."),
+    ("wm help [command]", "The list below, or the details and examples of one command."),
+    ("open \"wm://<command>/<args>\"", "The same commands as a URL, from any app or page."),
+]
+
+private let exampleRows: [(String, String)] = [
+    ("wm focus left --wrap", "Move the focus; go around at the edge."),
+    ("wm window send workspace 3 --stay", "Send the window away and keep the view."),
+    ("wm --window app:Safari window close", "Close a window that is not focused."),
+    ("wm list windows --json", "The windows as JSON, for a script."),
+]
+
+private let urlRows: [(String, String)] = [
+    ("wm://<command>/<arg>...", "open \"wm://workspace/2\""),
+    ("wm://<command>?args=<args>", "open \"wm://window/send/workspace/3?args=--stay\""),
+]
+
+private let exitCodeRows: [(String, String)] = [
+    ("0", "Done."),
+    ("1", "The command could not run now: the daemon is off, no such window, nothing to act on."),
+    ("2", "Wrong use: an unknown command or option, a missing argument."),
+]
+
+private let environmentRows: [(String, String)] = [
+    ("WM_CONFIG", "The config file (default ~/.config/wm/init.lua)."),
+    ("XDG_CONFIG_HOME", "The folder that holds wm/init.lua."),
+    ("XDG_STATE_HOME", "The folder of the log and of the saved state."),
+    ("NO_COLOR", "No colors in the help and in errors. CLICOLOR_FORCE=1 forces them."),
+]
+
+/// The text of `wm help` (no topic), or of `wm help <command>`. `nil` when the topic is not a command. `style` adds colors;
+/// the default is plain text.
+public func renderHelp(topic: String? = nil, style: HelpStyle = .plain) -> String? {
+    guard let topic, !topic.isEmpty else { return overviewHelp(style: style) }
     let wanted = topic.split(separator: " ").map(String.init)
     let matches = commandSpecs.filter { Array($0.words.prefix(wanted.count)) == wanted }
     guard !matches.isEmpty else { return nil }
     var lines: [String] = []
-    for spec in matches {
-        lines.append(spec.usage)
-        lines.append("    " + spec.summary)
-        if let details = spec.details { lines += details.split(separator: "\n").map { "    " + $0 } }
-        if let example = spec.example { lines.append("    example: " + example) }
-        lines.append("")
+    if let exact = matches.first(where: { $0.words == wanted }) {
+        lines += commandPage(exact, style: style)
+        let related = matches.filter { $0 != exact }
+        if !related.isEmpty {
+            lines += ["", style.heading("Related")]
+            for spec in related { lines += ["  " + styledUsage(spec, style), "      " + spec.summary] }
+        }
+    } else {
+        lines.append(style.heading(topic))
+        for spec in matches { lines += ["  " + styledUsage(spec, style), "      " + spec.summary] }
+        lines += ["", style.dim("Run `wm help <command>` for the details and examples of one command.")]
     }
-    lines.append("<dir> is left, right, up or down.")
+    if matches.contains(where: { $0.args.contains("<dir>") || $0.args.contains("[dir]") }) {
+        lines += ["", style.dim("<dir> is left, right, up or down.")]
+    }
     return lines.joined(separator: "\n") + "\n"
 }
 
-private func overviewHelp() -> String {
-    let width = commandSpecs.map(\.signature.count).max() ?? 0
-    var lines = ["wm: a tiling window manager for macOS", "", "Usage: wm [--window <id>] <command> [args]"]
-    for section in commandSections {
-        lines += ["", section.title.uppercased()]
-        for spec in section.specs {
-            lines.append("  " + spec.signature.padded(to: width) + "  " + spec.summary)
+/// `wm window send workspace <name> [--stay]`, with a color for each kind of word.
+private func styledUsage(_ spec: CommandSpec, _ style: HelpStyle) -> String {
+    ["wm", style.command(spec.path), style.argument(spec.args), style.option(spec.flags)].filter { !$0.isEmpty }.joined(separator: " ")
+}
+
+/// The whole page of one command: usage, what it does, its options and an example.
+private func commandPage(_ spec: CommandSpec, style: HelpStyle) -> [String] {
+    var lines = [styledUsage(spec, style), "", "  " + spec.summary]
+    if let details = spec.details { lines += [""] + reflow(details, width: 98).map { "  " + $0 } }
+    if let options = commandOptions[spec.path], !options.isEmpty {
+        lines += ["", style.heading("Options")] + optionLines(options, style: style)
+    }
+    if let example = spec.example { lines += ["", style.heading("Example"), "  " + style.example(example)] }
+    return lines
+}
+
+/// The text in lines of at most `width` columns. The details are written with line breaks that fit a wide screen; this
+/// joins the lines of a paragraph and wraps them again. A line that starts with a space is a list item and stays as it is.
+func reflow(_ text: String, width: Int) -> [String] {
+    var lines: [String] = []
+    var paragraph: [Substring] = []
+    func flush() {
+        var line = ""
+        for word in paragraph.flatMap({ $0.split(separator: " ") }) {
+            if !line.isEmpty, line.count + 1 + word.count > width {
+                lines.append(line)
+                line = ""
+            }
+            line += (line.isEmpty ? "" : " ") + word
+        }
+        if !line.isEmpty { lines.append(line) }
+        paragraph = []
+    }
+    for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+        if line.hasPrefix(" ") {
+            flush()
+            lines.append(String(line))
+        } else if line.isEmpty {
+            flush()
+            lines.append("")
+        } else {
+            paragraph.append(line)
         }
     }
-    lines += ["", "<dir> is left, right, up or down.", "", globalOptions, "", "Run `wm help <command>` for details and examples, for example `wm help window`.", "Config: ~/.config/wm/init.lua"]
+    flush()
+    return lines
+}
+
+/// A table of options: the option, then what it does; a longer text goes on under the first line.
+private func optionLines(_ options: [CommandOption], style: HelpStyle) -> [String] {
+    let width = options.map(\.flag.count).max() ?? 0
+    return options.flatMap { option -> [String] in
+        let text = option.text.split(separator: "\n").map(String.init)
+        let first = "  " + style.option(option.flag) + String(repeating: " ", count: width - option.flag.count) + "  " + (text.first ?? "")
+        return [first] + text.dropFirst().map { "  " + String(repeating: " ", count: width) + "  " + style.dim($0) }
+    }
+}
+
+/// Two columns: the left one padded to the widest plain text, so the colors do not move the right one.
+private func rows(_ pairs: [(String, String)], paint: (String) -> String) -> [String] {
+    let width = pairs.map(\.0.count).max() ?? 0
+    return pairs.map { "  " + paint($0.0) + String(repeating: " ", count: width - $0.0.count) + "  " + $0.1 }
+}
+
+private func overviewHelp(style: HelpStyle) -> String {
+    let width = commandSpecs.map(\.signature.count).max() ?? 0
+    var lines = [style.command("wm") + "  a tiling window manager for macOS", ""]
+    lines.append(style.heading("USAGE"))
+    lines += rows(usageRows, paint: style.command)
+    lines += ["", style.heading("EXAMPLES")]
+    lines += rows(exampleRows, paint: style.example)
+    for section in commandSections {
+        lines += ["", style.heading(section.title.uppercased())]
+        for spec in section.specs {
+            let args = spec.args.isEmpty ? "" : " " + style.argument(spec.args)
+            let padding = String(repeating: " ", count: width - spec.signature.count)
+            lines.append("  " + style.command(spec.path) + args + padding + "  " + spec.summary)
+        }
+    }
+    lines += ["", style.heading("GLOBAL OPTIONS")] + optionLines(globalOptions, style: style)
+    lines += ["", style.heading("URL SCHEME")] + rows(urlRows, paint: style.command)
+    lines.append("  " + style.dim("exec, daemon and subscribe are blocked for URLs, unless `url.allow` in the config lists them."))
+    lines += ["", style.heading("EXIT CODES")] + rows(exitCodeRows, paint: style.command)
+    lines += ["", style.heading("ENVIRONMENT")] + rows(environmentRows, paint: style.command)
+    lines += ["", style.dim("Run `wm help <command>` for details and examples, for example `wm help window`."), style.dim("<dir> is left, right, up or down.")]
     return lines.joined(separator: "\n") + "\n"
 }
 

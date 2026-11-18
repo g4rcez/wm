@@ -3,11 +3,11 @@ import Common
 import Core
 import Platform
 
-/// The command palette: one text field that finds running apps with their windows, wm commands and the menu items of the
-/// frontmost app. Every row has an icon: the icon of the app, or a small window drawn for the command.
+/// The command palette: one text field that finds running apps with their windows, the tabs of browsers and terminals, wm
+/// commands and the menu items of the frontmost app. Every row has an icon: the icon of the app, or a small window drawn for the command.
 ///
-/// `palette` opens it. Without a prefix it lists the running apps, each followed by its windows; `>` lists the commands and
-/// `/` the menu items of the app that was in front. Up and down move, Return runs the row, Tab completes a command, Escape
+/// `palette` opens it. Without a prefix it lists the running apps, each followed by its windows, and typing finds tabs
+/// too; `>` lists the commands and `/` the menu items of the app that was in front. Up and down move, Return runs the row, Tab completes a command, Escape
 /// closes.
 @MainActor
 final class PaletteController {
@@ -29,6 +29,19 @@ final class PaletteController {
     private var icons: [pid_t: NSImage] = [:]
     private var menuPID: pid_t?
     private var menuEntries: [PaletteEntry] = []
+    private let tabReader = TabReader()
+    /// The tabs of the last time the palette read them. They stay between openings, so the list is there at once; each
+    /// opening reads them again. The key of a tab entry is its index here.
+    private var tabs: [PaletteTab] = []
+    private var webTabs: [PaletteTab] = []
+    private var rexTabList: [PaletteTab] = []
+    private var tmuxTabList: [PaletteTab] = []
+    private var tabEntries: [PaletteEntry] = []
+    /// The list of `palette tabs`: the tabs, and the windows of the apps that have no tabs, grouped by app, the app of the
+    /// most recent window first.
+    private var tabsList: [PaletteEntry] = []
+    /// The terminals that show tmux, for the icon of a tmux window.
+    private var tmuxClients: [TmuxClient] = []
     /// The preview shows the picture of the selected window. It needs the setting and the Screen Recording permission, like
     /// the window switcher.
     private var previewsOn = false
@@ -51,9 +64,14 @@ final class PaletteController {
         panel.onCancel = { [unowned self] in close() }
     }
 
-    /// `palette [windows|commands|apps|menu] [--cmdtab [--reverse]]`. Returns an error message for a word that is not a list.
+    /// `palette [windows|apps|tabs|commands|menu] [--cmdtab [--reverse]]`. Returns an error message for a word that is not a list.
     func command(_ arguments: [String]) -> String? {
-        let usage = "usage: palette [windows|apps|commands|menu] [--cmdtab [--reverse]]"
+        let usage = "usage: palette [windows|apps|tabs|commands|menu|reset] [--cmdtab [--reverse]]"
+        // Like the command of Raycast that resets its window position: bind it, or run it from the `>` list.
+        if arguments == ["reset"] {
+            panel.resetPosition()
+            return nil
+        }
         let words = arguments.filter { !$0.hasPrefix("--") }
         let cmdTab = arguments.contains("--cmdtab"), reverse = arguments.contains("--reverse")
         guard Set(arguments.filter { $0.hasPrefix("--") }).isSubset(of: ["--cmdtab", "--reverse"]), words.count <= 1, !reverse || cmdTab else { return usage }
@@ -125,9 +143,10 @@ final class PaletteController {
         menuEntries = []
         entries = appEntries() + commandEntries()
         flatWindows = windowEntries()
+        rebuildTabsList()
         let prefix = mode == .commands ? "> " : mode == .menu ? "/ " : ""
         input = prefix
-        panel.show(text: prefix, placeholder: cmdTab ? "Switch to an app" : "Search windows and apps…")
+        panel.show(text: prefix, placeholder: cmdTab ? "Switch to an app" : mode == .tabs ? "Search tabs…" : "Search windows, apps and tabs…")
         refresh()
         if cmdTab {
             // Like Cmd+Tab: the first press selects the previous app, and a reverse press the last one.
@@ -144,6 +163,104 @@ final class PaletteController {
                 refresh()
             }
         }
+        loadTabs()
+    }
+
+    /// What one source gave. Each source is shown as soon as it is there: tmux and Rex answer at once, and a browser can
+    /// take seconds.
+    private enum TabSource: Sendable {
+        case web([PaletteTab]), rex([PaletteTab]), tmux([PaletteTab], [TmuxClient])
+    }
+
+    private func loadTabs() {
+        let running = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
+        let browsers = TabReader.browsers.filter(running.contains)
+        let rexRuns = running.contains(TabReader.rexBundleID)
+        if !rexRuns { apply(.rex([])) }
+        Task { @MainActor [tabReader] in
+            await withTaskGroup(of: TabSource.self) { group in
+                group.addTask { .web(await tabReader.browserTabs(browsers)) }
+                if rexRuns { group.addTask { .rex(await tabReader.rexTabs()) } }
+                group.addTask { .tmux(await tabReader.tmuxTabs(), await tabReader.clients()) }
+                for await source in group { apply(source) }
+            }
+        }
+    }
+
+    /// Keeps what a source gave. A source that gave the same as the last time changes nothing, so the selection of the
+    /// user stays where it is.
+    private func apply(_ source: TabSource) {
+        switch source {
+        case let .web(found):
+            guard found != webTabs else { return }
+            webTabs = found
+        case let .rex(found):
+            guard found != rexTabList else { return }
+            rexTabList = found
+        case let .tmux(found, clients):
+            guard found != tmuxTabList || clients != tmuxClients else { return }
+            tmuxTabList = found
+            tmuxClients = clients
+        }
+        tabs = webTabs + rexTabList + tmuxTabList
+        rebuildTabsList()
+        if isOpen { refresh() }
+        Log.write(.debug, "palette tabs: " + tabCounts(tabs), source: "palette")
+    }
+
+    /// How many tabs each source gave, for the log: a source that gives none is the first thing to look at.
+    private func tabCounts(_ read: [PaletteTab]) -> String {
+        var counts: [String: Int] = ["browsers": 0, "rex": 0, "tmux": 0]
+        for tab in read {
+            switch tab.source {
+            case .browser: counts["browsers", default: 0] += 1
+            case .rex: counts["rex", default: 0] += 1
+            case .tmux: counts["tmux", default: 0] += 1
+            }
+        }
+        return counts.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " ")
+    }
+
+    /// The tabs of `palette tabs`, with the windows of the apps that give no tabs: the window is the tab of such an app. An
+    /// app whose tabs were read (a browser, Rex) shows its tabs and not its windows. The apps go by the recency of their
+    /// windows, so the app that you used last is at the top.
+    private func rebuildTabsList() {
+        tabEntries = tabs.enumerated().map { PaletteEntry(kind: .tabs, title: $1.title, detail: $1.detail, key: String($0)) }
+        let windows = paletteWindows()
+        let recent = manager.recent
+        let recency = { (id: WindowID) in recent.firstIndex(of: id) ?? Int.max }
+        var owners: [String: pid_t?] = [:]
+        let ownerOf = { (tab: PaletteTab) -> pid_t? in
+            let name: String
+            switch tab.source {
+            case let .browser(id, _, _): name = id
+            case .rex: name = TabReader.rexBundleID
+            case let .tmux(session, _): name = "tmux " + session
+            }
+            if let known = owners[name] { return known }
+            let pid = self.owner(of: tab)
+            owners[name] = .some(pid)
+            return pid
+        }
+        var tabbed = Set<pid_t>()
+        for tab in tabs {
+            if case .tmux = tab.source { continue }
+            if let pid = ownerOf(tab) { tabbed.insert(pid) }
+        }
+        var groups: [(rank: Int, entries: [PaletteEntry])] = []
+        var index: [pid_t: Int] = [:]
+        func add(_ pid: pid_t?, _ entry: PaletteEntry) {
+            let key = pid ?? -1
+            if let found = index[key] { return groups[found].entries.append(entry) }
+            index[key] = groups.count
+            groups.append((pid.map { pid in windows.filter { $0.pid == pid }.map { recency($0.id) }.min() ?? Int.max } ?? Int.max, [entry]))
+        }
+        for (position, tab) in tabs.enumerated() { add(ownerOf(tab), tabEntries[position]) }
+        for window in windows.sorted(by: { (recency($0.id), $0.id) < (recency($1.id), $1.id) }) where !tabbed.contains(window.pid) {
+            let app = manager.windows[window.id]?.info.appName ?? ""
+            add(window.pid, PaletteEntry(kind: .windows, title: window.title, detail: app + " · " + window.place, key: String(window.id)))
+        }
+        tabsList = groups.enumerated().sorted { ($0.element.rank, $0.offset) < ($1.element.rank, $1.offset) }.flatMap(\.element.entries)
     }
 
     private func close() {
@@ -199,11 +316,13 @@ final class PaletteController {
         if query.mode == .commands, let suggestions = argumentEntries(for: query.text) {
             found = suggestions
         } else {
-            found = rank(query.mode == .windows ? flatWindows : entries + menuEntries, query: query)
+            let source = query.mode == .windows ? flatWindows : query.mode == .tabs ? tabsList : entries + tabEntries + menuEntries
+            found = rank(source, query: query)
         }
         // The Cmd+Tab list is the apps only, as in macOS.
         if holding != nil { found = found.filter { $0.kind == .apps } }
-        shown = Array(found.prefix(50))
+        // The tabs of a browser can be many; the list of tabs shows all of them.
+        shown = Array(found.prefix(query.mode == .tabs ? 1000 : 50))
         let grouped = query.text.isEmpty && (query.mode == .all || query.mode == .apps)
         // Tab completes a command in the commands list; in the other lists Tab and Shift-Tab cycle the rows.
         panel.cyclesWithTab = query.mode != .commands
@@ -231,7 +350,8 @@ final class PaletteController {
         previewTask?.cancel()
         guard previewsOn, shown.indices.contains(row) else { return }
         guard let id = previewWindow(of: shown[row]), let window = manager.windows[id] else {
-            panel.setPreview(nil, placeholder: shown[row].kind == .apps ? icon(pid: pid_t(shown[row].key)) : nil)
+            let tab = shown[row].kind == .tabs ? Int(shown[row].key).map { tabs[$0] } : nil
+            panel.setPreview(nil, placeholder: shown[row].kind == .apps ? icon(pid: pid_t(shown[row].key)) : tab.flatMap(tabIcon))
             return
         }
         let app = icon(pid: window.info.pid)
@@ -250,6 +370,7 @@ final class PaletteController {
         case .commands: "Commands"
         case .menu: "Menu" + (menuPID.flatMap { NSRunningApplication(processIdentifier: $0)?.localizedName }.map { " · " + $0 } ?? "")
         case .windows: query.text.isEmpty ? "Windows" : "Results"
+        case .tabs: query.text.isEmpty ? "Tabs" : "Results"
         default: holding != nil ? "Apps" : query.text.isEmpty ? "Apps & Windows" : "Results"
         }
     }
@@ -271,6 +392,8 @@ final class PaletteController {
             // Under its app the name of the app is not repeated.
             let subtitle = indent ? entry.detail.split(separator: "·").dropFirst().joined(separator: "·").trimmingCharacters(in: .whitespaces) : entry.detail
             return .init(title: entry.title, subtitle: subtitle, accessory: "Window", icon: icon(pid: window?.info.pid), indent: indent, action: "Focus Window")
+        case .tabs:
+            return .init(title: entry.title, subtitle: entry.detail, accessory: "Tab", icon: Int(entry.key).flatMap { tabIcon(tabs[$0]) }, action: "Switch to Tab")
         case .menu:
             let parts = entry.title.components(separatedBy: " > ")
             return .init(
@@ -338,6 +461,9 @@ final class PaletteController {
             } else {
                 NSRunningApplication(processIdentifier: pid)?.activate()
             }
+        case .tabs:
+            close()
+            if let index = Int(entry.key), tabs.indices.contains(index) { switchTo(tabs[index]) }
         case .menu:
             close()
             guard let token = Int(entry.key) else { return }
@@ -350,6 +476,57 @@ final class PaletteController {
         case .all:
             break
         }
+    }
+
+    // MARK: - Tabs
+
+    /// The icon of the app that shows the tab. A tmux window that no terminal shows gets the drawing of a terminal.
+    private func tabIcon(_ tab: PaletteTab) -> NSImage? {
+        icon(pid: owner(of: tab)) ?? NSImage(systemSymbolName: "terminal", accessibilityDescription: nil)
+    }
+
+    /// The app that shows the tab: the browser, Rex, or the terminal of the tmux client that shows the session (else of the
+    /// first client). `nil` for tmux without a client.
+    private func owner(of tab: PaletteTab) -> pid_t? {
+        let bundleID: String
+        switch tab.source {
+        case let .browser(id, _, _): bundleID = id
+        case .rex: bundleID = TabReader.rexBundleID
+        case let .tmux(session, _): return tmuxClient(for: session, among: tmuxClients).flatMap { terminal(of: $0.pid) }
+        }
+        return NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first?.processIdentifier
+    }
+
+    /// The program selects the tab, then wm focuses the window that shows it, which also shows the workspace of the window.
+    private func switchTo(_ tab: PaletteTab) {
+        Task { @MainActor [tabReader] in
+            var pid = owner(of: tab)
+            switch await tabReader.activate(tab) {
+            case .done: break
+            case let .client(client): pid = terminal(of: client)
+            case let .failed(message): return notify(message)
+            }
+            guard let pid else { return }
+            // The window of a browser has the title of its selected tab, with the name of the browser after it.
+            let titled = manager.windows.first { $0.value.info.pid == pid && !tab.title.isEmpty && $0.value.info.title.hasPrefix(tab.title) }?.key
+            if let id = titled ?? recentWindow(of: pid) {
+                manager.focus(id)
+            } else {
+                NSRunningApplication(processIdentifier: pid)?.activate()
+            }
+        }
+    }
+
+    /// The app with the terminal of a tmux client: the nearest parent of the client that has a window. The shells of Rex
+    /// are children of its server, not of the app, so a parent that is the server stands for Rex.
+    private func terminal(of client: pid_t) -> pid_t? {
+        for parent in ProcessTree.ancestors(of: client) {
+            if manager.windows.values.contains(where: { $0.info.pid == parent }) { return parent }
+            if NSRunningApplication(processIdentifier: parent)?.bundleIdentifier?.hasPrefix(TabReader.rexBundleID) == true {
+                return NSRunningApplication.runningApplications(withBundleIdentifier: TabReader.rexBundleID).first?.processIdentifier
+            }
+        }
+        return nil
     }
 
     private func execute(_ words: [String]) {

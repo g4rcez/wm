@@ -42,6 +42,13 @@ final class InputRouter {
     var palette: PaletteController?
     /// Set by the app: the template picker takes over the keys while it is open.
     var picker: TemplatePicker?
+    /// Set by the app: hint mode and scroll mode take over the keys while they are on.
+    var hints: HintController?
+    var scroller: ScrollController?
+    /// `wm pick`: while set, the next left click chooses a window (called with its location) and Escape or a right click cancels
+    /// (called with `nil`). The click is swallowed with its drags and its release, so the app under the pointer never sees it.
+    private var pickDone: ((CGPoint?) -> Void)?
+    private var pickButton: MouseButton?
     /// The modifiers of the key press being handled (empty outside a key press), for commands that depend on them.
     private(set) var currentFlags: CGEventFlags = []
     /// CapsLock as the hyper key (`binds.capslock = "hyper"`): `hyperDown` while it is held. A tap that no other key used is Esc.
@@ -83,13 +90,44 @@ final class InputRouter {
         }
         tap.onButton = { [unowned self] isDown in manager.mouseButton(isDown: isDown) }
         tap.onMouse = { [unowned self] event in
-            if event.kind == .down { switcher?.pointerPressed(at: event.location) }
+            if let pick = pickDone, event.kind == .down {
+                pickDone = nil
+                pickButton = event.button
+                pick(event.button == .left ? event.location : nil)
+                return true
+            }
+            if pickButton == event.button, event.kind != .down {
+                if event.kind == .up { pickButton = nil }
+                return true
+            }
+            if event.kind == .down {
+                switcher?.pointerPressed(at: event.location)
+                hints?.pointerPressed()
+                scroller?.pointerPressed()
+            }
             return manager.handleMouse(event)
         }
         return tap.start()
     }
 
+    /// Arms `wm pick`. `done` runs on the main actor once: with the click location, or with `nil` when the pick is cancelled.
+    /// Returns `false` when another pick is waiting already.
+    func beginPick(_ done: @escaping (CGPoint?) -> Void) -> Bool {
+        guard pickDone == nil else { return false }
+        pickDone = done
+        return true
+    }
+
+    /// Disarms `wm pick` when nothing chose a window (the time ran out).
+    func endPick() { pickDone = nil }
+
     private func handleKey(_ code: Int, _ flags: CGEventFlags, isRepeat: Bool) -> Bool {
+        if let pick = pickDone, code == KeyCodes.code(for: "esc") {
+            pickDone = nil
+            overlayHeld.insert(code)
+            pick(nil)
+            return true
+        }
         if hyperEnabled, code == KeyboardRemap.hyperKeyCode { return hyperKeyDown(isRepeat: isRepeat) }
         guard let key = KeyCodes.name(for: code) else { return false }
         if hyperDown { hyperUsed = true }
@@ -134,8 +172,10 @@ final class InputRouter {
         return chord.modifiers.contains(.hyper)
     }
 
-    /// The open panel (palette, switcher, template picker) takes the key. `nil` when no panel is open.
+    /// The open panel (hints, scroll, palette, switcher, template picker) takes the key. `nil` when no panel is open.
     private func overlayKey(_ key: String, flags: CGEventFlags) -> Bool? {
+        if let hints, hints.isOpen { return hints.handleKey(key, flags: flags) }
+        if let scroller, scroller.isOpen { return scroller.handleKey(key, flags: flags) }
         if let palette, palette.isOpen { return palette.handleKey(key, flags: flags) }
         if let switcher, switcher.isOpen { return switcher.handleKey(key, flags: flags) }
         if let picker, picker.isOpen { return picker.handleKey(key) }

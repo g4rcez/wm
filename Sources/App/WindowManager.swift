@@ -131,8 +131,12 @@ final class WindowManager {
     private var lastSaved: Data?
     /// What `wm window remember` keeps. A window that opens after the first scan gets the entry that matches it.
     private(set) var memory = MemoryStore.load()
+    /// Where the floating windows were when they closed (see `FloatMemory`).
+    private var floatMemory = FloatMemoryStore.load()
     /// The windows that were open when the daemon started are not moved by the memory.
     private var didFirstScan = false
+    /// New windows that `detect` left alone, so that the log says it once for each of them.
+    private var skippedWindows: Set<WindowID> = []
 
     init() {
         pendingRestore = StateStore.load()
@@ -314,10 +318,17 @@ final class WindowManager {
             }
             detect(info)
         }
-        // An app that could not be read says nothing about its windows: only forget those that are gone.
-        for id in windows.keys where !seen.contains(id) {
-            if let pid = windows[id]?.info.pid, unread.contains(pid), Self.systemWindowIDs().contains(id) { continue }
-            forget(id)
+        skippedWindows.formIntersection(seen)
+        // A window that is not listed is not always gone: an app that could not be read says nothing about its windows, and the
+        // Accessibility API lists only the windows of the active Space (so every other window is missing while one is in native
+        // fullscreen). Only forget those that are gone.
+        let missing = windows.keys.filter { !seen.contains($0) }
+        let system = missing.isEmpty ? [] : Self.systemWindowIDs()
+        for id in missing {
+            let forgotten = shouldForgetMissingWindow(
+                appUnreadable: windows[id].map { unread.contains($0.info.pid) } ?? false,
+                inSystemList: system.contains(id), place: WindowSpace.place(of: id))
+            if forgotten { forget(id) }
         }
     }
 
@@ -327,7 +338,17 @@ final class WindowManager {
     }
 
     private func detect(_ info: WindowInfo) {
-        guard info.kind != .ignored, !info.isFullscreen else { return }
+        guard info.kind != .ignored, !info.isFullscreen else {
+            // The window is not managed, so no rule and no memory reaches it. The log has to say why.
+            if didFirstScan, skippedWindows.insert(info.id).inserted {
+                let app = info.bundleID.isEmpty ? "(no bundle id)" : info.bundleID
+                Log.write(
+                    .debug,
+                    "window skipped: id=\(info.id) app=\(app) name=\(info.appName) title=\(info.title.debugDescription) role=\(info.role) subrole=\(info.subrole.isEmpty ? "(none)" : info.subrole) fullscreen=\(info.isFullscreen)",
+                    source: "window")
+            }
+            return
+        }
         if let saved = rebootMatch(for: info) {
             adoptAfterReboot(info, as: saved)
             return
@@ -341,15 +362,23 @@ final class WindowManager {
         if let spawn = takeSpawnRule(for: info) { rule = rule.map { $0.merging(spawn) } ?? spawn }
         // What `wm window remember` kept for this window wins over the rules.
         let remembered = didFirstScan ? memory.match(app: info.bundleID, title: info.title) : nil
+        // A window that a rule floats opens where the last one of its app closed. Windows that were open when the daemon started
+        // are not moved, and a window that `window remember` knows keeps what was remembered.
+        let last = didFirstScan && remembered == nil && settings.floating.rememberPosition && rule?.float == true
+            ? floatMemory.last(app: info.bundleID, title: info.title) : nil
         let home = monitor(containing: CGPoint(x: info.frame.midX, y: info.frame.midY)) ?? focusedMonitor
         let ruleMonitor = rule?.monitor.flatMap(monitor(matching:))
-        let workspaceName = remembered?.workspace ?? rule?.workspace ?? ruleMonitor.map(activeWorkspace(of:)) ?? home.map(activeWorkspace(of:)) ?? "1"
+        let lastMonitor = last?.monitor.flatMap(monitor(matching:))
+        let workspaceName = remembered?.workspace ?? rule?.workspace ?? ruleMonitor.map(activeWorkspace(of:)) ?? lastMonitor.map(activeWorkspace(of:))
+            ?? home.map(activeWorkspace(of:)) ?? "1"
         let rememberedMonitor = remembered?.monitor.flatMap(monitor(matching:))
         let monitor = monitor(showing: workspaceName) ?? rememberedMonitor ?? focusedMonitor
         var floating = remembered?.floating ?? (info.kind == .floating || rule?.float == true)
         var floatFrame: CGRect?
         if let remembered {
             if floating, let frame = remembered.frame, let area = monitor?.workArea { floatFrame = WindowMemory.absolute(frame, in: area) }
+        } else if let last, let area = monitor?.workArea {
+            floatFrame = WindowMemory.absolute(last.frame, in: area)
         } else if let area = monitor?.workArea, rule?.size != nil || rule?.center == true {
             floating = rule?.float != false
             var size = info.frame.size
@@ -703,6 +732,7 @@ final class WindowManager {
     private static func describe(_ rule: WindowRule?) -> String {
         guard let rule else { return "none" }
         var parts: [String] = []
+        if let name = rule.name { parts.append("name \(name)") }
         if let float = rule.float { parts.append(float ? "float" : "tile") }
         if let size = rule.size { parts.append("size \(size.width)x\(size.height)") }
         if rule.center { parts.append("center") }
@@ -733,8 +763,20 @@ final class WindowManager {
         return merged
     }
 
+    /// A floating window that closes leaves its place for the next window of the app (`floating.remember_position`).
+    private func rememberFloatPlace(of managed: ManagedWindow) {
+        guard settings.floating.rememberPosition, managed.floating, !managed.isOutOfLayout, let frame = managed.floatFrame,
+              let monitor = monitor(showing: managed.workspace) else { return }
+        floatMemory.record(LastFloatFrame(
+            app: managed.info.bundleID, title: managed.info.title, frame: WindowMemory.relative(frame, in: monitor.workArea), monitor: monitor.name))
+        do { try FloatMemoryStore.write(floatMemory) } catch {
+            Log.write(.error, "cannot save \(FloatMemoryStore.url.path): \(error)", source: "memory", prefix: "wmd")
+        }
+    }
+
     private func forget(_ id: WindowID) {
         guard let managed = windows.removeValue(forKey: id) else { return }
+        rememberFloatPlace(of: managed)
         lastShownFrame[id] = nil
         let workspace = workspace(managed.workspace)
         workspace.engine.remove(id)
@@ -1410,6 +1452,12 @@ final class WindowManager {
             }
         }
         return nil
+    }
+
+    /// A window that wm may not manage (a dialog, a popup, an ignored window), read from its app. `nil` when the app has no
+    /// watcher (it is not a regular app) or no longer has this window.
+    func readWindow(_ id: WindowID, pid: pid_t) async -> WindowInfo? {
+        await tracker?.watcher(for: pid)?.snapshot()?.first { $0.id == id }
     }
 
     func monitor(containing point: CGPoint) -> Monitor? {

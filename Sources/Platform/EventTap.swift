@@ -157,6 +157,8 @@ public final class EventTap: @unchecked Sendable {
             let code = Int(event.getIntegerValueField(.keyboardEventKeycode))
             return onKeyUp?(code, event.flags) == true ? nil : pass
         case .scrollWheel:
+            // The scroll mode posts these: they are not trackpad gestures.
+            guard event.getIntegerValueField(.eventSourceUserData) != Self.ownEventTag else { return pass }
             let phase: ScrollPhase = switch event.getIntegerValueField(.scrollWheelEventScrollPhase) {
             case 1: .began
             case 2: .changed

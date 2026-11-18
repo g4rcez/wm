@@ -41,16 +41,27 @@ public final class PalettePanel: NSObject, NSTextFieldDelegate, NSTableViewDataS
     }
 
     private final class KeyPanel: NSPanel {
+        var onReset: (() -> Void)?
+
         override var canBecomeKey: Bool { true }
         override var canBecomeMain: Bool { false }
+
+        /// Cmd-0 puts the panel back at its first place. No bind runs while the panel is open, so the panel takes this key.
+        override func performKeyEquivalent(with event: NSEvent) -> Bool {
+            if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command, event.charactersIgnoringModifiers == "0" {
+                onReset?()
+                return true
+            }
+            return super.performKeyEquivalent(with: event)
+        }
     }
 
     /// The highlight of the selected row: a rounded, translucent rectangle, not the blue of the system.
     private final class RowView: NSTableRowView {
         override func drawSelection(in dirtyRect: NSRect) {
             guard isSelected else { return }
-            NSColor.labelColor.withAlphaComponent(0.1).setFill()
-            NSBezierPath(roundedRect: bounds.insetBy(dx: 8, dy: 1), xRadius: 8, yRadius: 8).fill()
+            NSColor.labelColor.withAlphaComponent(0.09).setFill()
+            NSBezierPath(roundedRect: bounds.insetBy(dx: 7, dy: 0), xRadius: 10, yRadius: 10).fill()
         }
     }
 
@@ -76,15 +87,19 @@ public final class PalettePanel: NSObject, NSTextFieldDelegate, NSTableViewDataS
         required init?(coder: NSCoder) { fatalError("not from a nib") }
     }
 
-    private static let plainWidth: CGFloat = 760
+    private static let plainWidth: CGFloat = 750
     /// With the preview the panel is wider: a list at the left and the picture of the window at the right.
     private static let previewWidth: CGFloat = 900
     private static let previewListWidth: CGFloat = 400
-    private static let rowHeight: CGFloat = 40
-    private static let visibleRows = 9
-    private static let headerHeight: CGFloat = 56
-    private static let sectionHeight: CGFloat = 28
-    private static let footerHeight: CGFloat = 44
+    private static let rowHeight: CGFloat = 38
+    private static let headerHeight: CGFloat = 60
+    private static let sectionHeight: CGFloat = 30
+    /// With a list the panel has one height, however many rows there are, so it does not jump while you type.
+    private static let listHeight: CGFloat = 385
+    /// The action of the selected row floats over the bottom right corner of the list, in a capsule.
+    private static let actionHeight: CGFloat = 36
+    private static let actionMargin: CGFloat = 8
+    private static let cornerRadius: CGFloat = 24
     private static let hintsWidth: CGFloat = 200
 
     /// The text changed.
@@ -108,9 +123,7 @@ public final class PalettePanel: NSObject, NSTextFieldDelegate, NSTableViewDataS
     private let section = NSTextField(labelWithString: "")
     private let icon = NSImageView()
     private let hints = NSView()
-    private let footer = NSView()
-    private let topLine = NSBox()
-    private let footerLine = NSBox()
+    private let footer = NSVisualEffectView()
     private let divider = NSBox()
     private let previewArea = NSView()
     private let previewPicture = NSImageView()
@@ -141,6 +154,7 @@ public final class PalettePanel: NSObject, NSTextFieldDelegate, NSTableViewDataS
         panel.setFrame(NSRect(x: top.x - panelWidth / 2, y: top.y - Self.headerHeight, width: panelWidth, height: Self.headerHeight), display: true)
         placing = false
         layout(rowCount: 0)
+        panel.onReset = { [unowned self] in resetPosition() }
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(field)
         if let editor = field.currentEditor() { editor.selectedRange = NSRange(location: editor.string.count, length: 0) }
@@ -148,6 +162,18 @@ public final class PalettePanel: NSObject, NSTextFieldDelegate, NSTableViewDataS
 
     public func hide() {
         panel?.orderOut(nil)
+    }
+
+    /// Forgets where the user left the panel. An open panel goes back to its first place on its screen at once.
+    public func resetPosition() {
+        Self.savedPosition = nil
+        guard let panel, panel.isVisible else { return }
+        let center = NSPoint(x: panel.frame.midX, y: panel.frame.midY)
+        let area = (NSScreen.screens.first { $0.frame.contains(center) } ?? panel.screen)?.visibleFrame ?? .zero
+        let top = paletteTopCenter(nil, in: area, width: panel.frame.width)
+        placing = true
+        panel.setFrameOrigin(NSPoint(x: top.x - panel.frame.width / 2, y: top.y - panel.frame.height))
+        placing = false
     }
 
     public func setText(_ text: String) {
@@ -190,7 +216,8 @@ public final class PalettePanel: NSObject, NSTextFieldDelegate, NSTableViewDataS
         background.material = .hudWindow
         background.state = .active
         background.wantsLayer = true
-        background.layer?.cornerRadius = 14
+        background.layer?.cornerRadius = Self.cornerRadius
+        background.layer?.cornerCurve = .continuous
         background.layer?.masksToBounds = true
         background.layer?.borderWidth = 1
         background.layer?.borderColor = NSColor.separatorColor.cgColor
@@ -224,11 +251,6 @@ public final class PalettePanel: NSObject, NSTextFieldDelegate, NSTableViewDataS
         hints.frame.size = NSSize(width: x - 14, height: 22)
         background.addSubview(hints)
 
-        for line in [topLine, footerLine] {
-            line.boxType = .separator
-            background.addSubview(line)
-        }
-
         section.font = .systemFont(ofSize: 12, weight: .semibold)
         section.textColor = .secondaryLabelColor
         background.addSubview(section)
@@ -250,6 +272,9 @@ public final class PalettePanel: NSObject, NSTextFieldDelegate, NSTableViewDataS
         scroll.documentView = table
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = false
+        // The last rows can scroll up, out from under the capsule of the action.
+        scroll.automaticallyAdjustsContentInsets = false
+        scroll.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: Self.actionHeight + 2 * Self.actionMargin, right: 0)
         background.addSubview(scroll)
 
         divider.boxType = .separator
@@ -265,17 +290,24 @@ public final class PalettePanel: NSObject, NSTextFieldDelegate, NSTableViewDataS
         previewArea.addSubview(previewIcon)
         background.addSubview(previewArea)
 
+        footer.material = .menu
+        footer.blendingMode = .withinWindow
+        footer.state = .active
+        footer.wantsLayer = true
+        footer.layer?.cornerRadius = Self.actionHeight / 2
+        footer.layer?.masksToBounds = true
+        footer.layer?.borderWidth = 1
+        footer.layer?.borderColor = NSColor.separatorColor.cgColor
         background.addSubview(footer)
         return panel
     }
 
-    /// The panel grows with the list, up to `visibleRows` rows. From the bottom: footer, list, section label, line, header.
+    /// Without rows the panel is the header alone. From the bottom: list (the action floats over its corner), section label,
+    /// header.
     private func layout(rowCount: Int) {
         guard let panel, let content = panel.contentView else { return }
-        // With the preview the list keeps its full height, so the picture has room and the panel does not jump.
-        let list = CGFloat(showsPreview ? Self.visibleRows : min(rowCount, Self.visibleRows)) * Self.rowHeight
         let hasList = rowCount > 0
-        let height = Self.headerHeight + (hasList ? 1 + Self.sectionHeight + list + 8 + Self.footerHeight : 0)
+        let height = Self.headerHeight + (hasList ? Self.sectionHeight + Self.listHeight : 0)
         var frame = panel.frame
         frame.origin.y += frame.height - height
         frame.size.height = height
@@ -285,25 +317,21 @@ public final class PalettePanel: NSObject, NSTextFieldDelegate, NSTableViewDataS
         let bounds = content.bounds
         listWidth = showsPreview ? Self.previewListWidth : bounds.width
         let top = bounds.height - Self.headerHeight
-        icon.frame = NSRect(x: 18, y: top + (Self.headerHeight - 24) / 2, width: 24, height: 24)
-        hints.frame.origin = NSPoint(x: bounds.width - 18 - hints.frame.width, y: top + (Self.headerHeight - 22) / 2)
+        icon.frame = NSRect(x: 15, y: top + (Self.headerHeight - 22) / 2, width: 22, height: 22)
+        hints.frame.origin = NSPoint(x: bounds.width - 16 - hints.frame.width, y: top + (Self.headerHeight - 22) / 2)
         // An editable field draws its text from the top of the frame, so the frame is one line high, and then it is centered.
         let font = field.font ?? .systemFont(ofSize: 20)
         let line = ceil(font.ascender - font.descender + font.leading)
-        field.frame = NSRect(x: 54, y: top + ((Self.headerHeight - line) / 2).rounded(), width: hints.frame.minX - 54 - 12, height: line)
-        topLine.frame = NSRect(x: 0, y: top, width: bounds.width, height: 1)
-        topLine.isHidden = !hasList
-        section.frame = NSRect(x: 18, y: top - Self.sectionHeight + 2, width: listWidth - 36, height: 18)
+        field.frame = NSRect(x: 49, y: top + ((Self.headerHeight - line) / 2).rounded(), width: hints.frame.minX - 49 - 12, height: line)
+        section.frame = NSRect(x: 15, y: top - Self.sectionHeight + 8, width: listWidth - 30, height: 16)
         section.isHidden = !hasList
-        scroll.frame = NSRect(x: 0, y: Self.footerHeight + 8, width: listWidth, height: list)
+        scroll.frame = NSRect(x: 0, y: 0, width: listWidth, height: Self.listHeight)
         scroll.isHidden = !hasList
-        footerLine.frame = NSRect(x: 0, y: Self.footerHeight, width: bounds.width, height: 1)
-        footerLine.isHidden = !hasList
-        footer.frame = NSRect(x: 0, y: 0, width: bounds.width, height: Self.footerHeight)
-        footer.isHidden = !hasList
-        let body = NSRect(x: listWidth + 1, y: Self.footerHeight + 1, width: bounds.width - listWidth - 1, height: top - Self.footerHeight - 1)
-        divider.frame = NSRect(x: listWidth, y: Self.footerHeight + 1, width: 1, height: body.height)
-        previewArea.frame = body
+        if !hasList { footer.isHidden = true }
+        // The picture stays above the capsule of the action.
+        let clear = Self.actionHeight + 2 * Self.actionMargin
+        divider.frame = NSRect(x: listWidth, y: 0, width: 1, height: top)
+        previewArea.frame = NSRect(x: listWidth + 1, y: clear, width: bounds.width - listWidth - 1, height: top - clear)
         divider.isHidden = !showsPreview
         previewArea.isHidden = !showsPreview
         layoutPreview()
@@ -326,21 +354,26 @@ public final class PalettePanel: NSObject, NSTextFieldDelegate, NSTableViewDataS
         }
     }
 
-    /// The right side of the footer: the action of the selected row and its key.
+    /// The capsule at the bottom right: the action of the selected row and its key.
     private func updateFooter() {
         footer.subviews.forEach { $0.removeFromSuperview() }
-        guard rows.indices.contains(table.selectedRow) else { return }
+        guard rows.indices.contains(table.selectedRow), !rows[table.selectedRow].action.isEmpty else {
+            footer.isHidden = true
+            return
+        }
         let row = rows[table.selectedRow]
-        guard !row.action.isEmpty else { return }
-        let key = KeyCap(row.key)
-        key.frame.origin = NSPoint(x: panelWidth - 18 - key.frame.width, y: (Self.footerHeight - 22) / 2)
         let label = NSTextField(labelWithString: row.action)
         label.font = .systemFont(ofSize: 13, weight: .medium)
         label.textColor = .labelColor
         label.sizeToFit()
-        label.frame.origin = NSPoint(x: key.frame.minX - 8 - label.frame.width, y: (Self.footerHeight - label.frame.height) / 2)
+        label.frame.origin = NSPoint(x: 14, y: (Self.actionHeight - label.frame.height) / 2)
+        let key = KeyCap(row.key)
+        key.frame.origin = NSPoint(x: label.frame.maxX + 8, y: (Self.actionHeight - 22) / 2)
         footer.addSubview(label)
         footer.addSubview(key)
+        let width = key.frame.maxX + 8
+        footer.frame = NSRect(x: panelWidth - Self.actionMargin - width, y: Self.actionMargin, width: width, height: Self.actionHeight)
+        footer.isHidden = false
     }
 
     /// The selected row, `nil` when the list is empty.
@@ -419,17 +452,17 @@ public final class PalettePanel: NSObject, NSTextFieldDelegate, NSTableViewDataS
     public func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let data = rows[row]
         let cell = NSView(frame: NSRect(x: 0, y: 0, width: listWidth, height: Self.rowHeight))
-        let left: CGFloat = data.indent ? 38 : 16
+        let left: CGFloat = data.indent ? 37 : 15
         // The list is narrow beside the preview: the type of the row is its icon and indent.
         let accessory = NSTextField(labelWithString: showsPreview ? "" : data.accessory)
-        accessory.font = .systemFont(ofSize: 13)
+        accessory.font = .systemFont(ofSize: 14)
         accessory.textColor = .secondaryLabelColor
         accessory.sizeToFit()
-        accessory.frame.origin = NSPoint(x: listWidth - 18 - accessory.frame.width, y: (Self.rowHeight - accessory.frame.height) / 2)
-        let picture = NSImageView(frame: NSRect(x: left, y: (Self.rowHeight - 24) / 2, width: 24, height: 24))
+        accessory.frame.origin = NSPoint(x: listWidth - 16 - accessory.frame.width, y: (Self.rowHeight - accessory.frame.height) / 2)
+        let picture = NSImageView(frame: NSRect(x: left, y: (Self.rowHeight - 22) / 2, width: 22, height: 22))
         picture.image = data.icon
         picture.imageScaling = .scaleProportionallyUpOrDown
-        let textX = left + 24 + 12
+        let textX = left + 22 + 12
         let room = accessory.frame.minX - 12 - textX
         let title = NSTextField(labelWithString: data.title)
         title.font = .systemFont(ofSize: 14, weight: .medium)
@@ -440,11 +473,11 @@ public final class PalettePanel: NSObject, NSTextFieldDelegate, NSTableViewDataS
         cell.addSubview(title)
         if !data.subtitle.isEmpty, room - title.frame.width > 40 {
             let subtitle = NSTextField(labelWithString: data.subtitle)
-            subtitle.font = .systemFont(ofSize: 13)
-            subtitle.textColor = .tertiaryLabelColor
+            subtitle.font = .systemFont(ofSize: 14)
+            subtitle.textColor = .secondaryLabelColor
             subtitle.lineBreakMode = .byTruncatingMiddle
             subtitle.sizeToFit()
-            let x = title.frame.maxX + 10
+            let x = title.frame.maxX + 12
             subtitle.frame = NSRect(x: x, y: (Self.rowHeight - subtitle.frame.height) / 2, width: min(subtitle.frame.width, accessory.frame.minX - 12 - x), height: subtitle.frame.height)
             cell.addSubview(subtitle)
         }

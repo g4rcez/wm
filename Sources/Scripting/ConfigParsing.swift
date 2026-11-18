@@ -140,7 +140,7 @@ private func color(_ fields: Fields, _ key: String) throws -> Color? {
 let topLevelConfigKeys = [
     "layout", "workspaces", "gaps", "animations", "border", "focus_follows_mouse", "mouse_follows_focus",
     "start_at_login", "wrap_focus", "mouse", "trackpad", "workspace_back_and_forth", "tiling", "scrolling", "switcher", "prefix", "url",
-    "tab_indicator", "binds", "zen", "special", "overview", "keyboards", "master",
+    "tab_indicator", "binds", "zen", "special", "overview", "hints", "keyboards", "floating", "master",
 ]
 
 /// Applies the keys that are present; keys that are absent keep their value, so two `wm.config` calls merge.
@@ -319,6 +319,10 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
         if let name = try master.choice("new_window", MasterSettings.NewWindow.allCases.map(\.rawValue)) { settings.master.newWindow = MasterSettings.NewWindow(rawValue: name)! }
     }
 
+    if let floating = try top.table("floating", allowed: ["remember_position"]) {
+        if let flag = try floating.bool("remember_position") { settings.floating.rememberPosition = flag }
+    }
+
     if let entries = top.values["keyboards"] {
         // Names of keyboards are the keys, so there is no fixed list of fields: `default` and then `["name"] = bool`.
         guard case .table(let table) = entries else {
@@ -336,6 +340,13 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
         }
         if let gap = try overview.number("gap", min: 0, max: OverviewSettings.maxGap) { settings.overview.gap = gap }
         if let backdrop = try color(overview, "backdrop") { settings.overview.backdrop = backdrop }
+    }
+
+    if let hints = try top.table("hints", allowed: ["background", "text", "focus", "area"]) {
+        if let background = try color(hints, "background") { settings.hints.background = background }
+        if let text = try color(hints, "text") { settings.hints.text = text }
+        if let focus = try color(hints, "focus") { settings.hints.focus = focus }
+        if let area = try color(hints, "area") { settings.hints.area = area }
     }
 
     if let special = try top.table("special", allowed: ["size", "backdrop", "hide_on_other_monitor"]) {
@@ -452,10 +463,11 @@ func parseWorkspaceRule(name: String, _ value: LuaValue) throws -> WorkspaceRule
 
 func parseRule(_ value: LuaValue) throws -> WindowRule {
     let fields = try Fields(value, owner: "wm.rule", allowed: [
-        "app", "title", "float", "workspace", "layout", "size", "center", "run", "stop",
+        "name", "app", "title", "float", "workspace", "layout", "size", "center", "run", "stop",
         "maximize", "width", "monitor", "focus",
     ])
     var rule = WindowRule()
+    rule.name = try fields.string("name")
     rule.app = try fields.string("app")
     rule.title = try fields.string("title")
     guard rule.app != nil || rule.title != nil else {

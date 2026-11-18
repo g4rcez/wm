@@ -26,6 +26,8 @@ final class AppController: HostBridge, @unchecked Sendable {
         return picker
     }()
     @MainActor private lazy var trackpad = TrackpadInput { [unowned self] events in input.handleFinger(events) }
+    @MainActor private lazy var hints = HintController { [unowned self] in manager.settings.hints }
+    @MainActor private lazy var scroller = ScrollController { [unowned self] in manager.settings.hints }
     private let menuReader = MenuReader()
     @MainActor private lazy var menuPopup = MenuPopup()
     private lazy var host = LuaHost(bridge: self)
@@ -45,7 +47,14 @@ final class AppController: HostBridge, @unchecked Sendable {
         self.configURL = configURL
         input = InputRouter(
             manager: manager,
-            run: { [unowned self] command in _ = run(splitCommand(command)) },
+            run: { [unowned self] command in
+                let words = splitCommand(command)
+                let answer = run(words)
+                // A bind has no terminal: without this, a `window remember` that fails says nothing.
+                if words.first == "window", ["remember", "forget"].contains(words.dropFirst().first) {
+                    notifyOutcome(of: answer)
+                }
+            },
             call: { [unowned self] id in host.call(function: id) }
         )
         switcher = SwitcherController(manager: manager)
@@ -57,12 +66,22 @@ final class AppController: HostBridge, @unchecked Sendable {
             notify: { [unowned self] text in onNotify(text, 3) })
         input.palette = palette
         input.picker = picker
+        input.hints = hints
+        input.scroller = scroller
         switcher.chordFlags = { [unowned input = input!] in input.currentFlags }
         manager.runRuleCommand = { [unowned self] command, window in _ = run(command, target: window) }
         manager.events.add { [unowned self] name, payload in
             host.fire(event: name, payload: payload)
             broadcaster.send(event: name, json: LuaValue.table(payload.merging(["event": .string(name)]) { $1 }).json)
         }
+    }
+
+    /// Shows the first line of what a command answered, without the `wm: error:` prefix of a failure.
+    @MainActor private func notifyOutcome(of answer: ServerAnswer) {
+        let failed = answer.exitCode != 0
+        let line = (failed ? answer.stderr : answer.stdout).split(separator: "\n").first.map(String.init) ?? ""
+        let message = line.replacingOccurrences(of: "wm: error: ", with: "")
+        if !message.isEmpty { onNotify(failed ? "wm: \(message)" : message, failed ? 4 : 2) }
     }
 
     @MainActor func startServer() throws {
@@ -173,6 +192,26 @@ final class AppController: HostBridge, @unchecked Sendable {
                 return fail("overview takes open, close or toggle", 2, usage: "overview")
             }
             return onMain { switcher.overview(mode: mode ?? "toggle").map { fail($0) } ?? ok() }
+        case "hints", "scroll":
+            let flags = Set(args.dropFirst().filter { $0.hasPrefix("--") })
+            let words = args.dropFirst().filter { !$0.hasPrefix("--") }
+            if let bad = unknownOption(flags, allowed: args[0] == "hints" ? ["--wait"] : [], usage: args[0]) { return bad }
+            let mode = words.first
+            guard words.count <= 1, mode == nil || ["open", "close", "toggle"].contains(mode) else {
+                return fail("\(args[0]) takes open, close or toggle", 2, usage: args[0])
+            }
+            return onMain {
+                // One mode at a time: both take every key.
+                let error: String?
+                if args[0] == "hints" {
+                    if mode != "close" { scroller.close() }
+                    error = hints.command(mode ?? "toggle", wait: flags.contains("--wait"))
+                } else {
+                    if mode != "close" { hints.close() }
+                    error = scroller.command(mode ?? "toggle")
+                }
+                return error.map { fail($0) } ?? ok()
+            }
         case "menu":
             return onMain { showMenu(of: target) }
         case "palette":
@@ -193,6 +232,8 @@ final class AppController: HostBridge, @unchecked Sendable {
                 return fail(error.message, 2, usage: "subscribe", hint: "events: " + subscribableEvents.joined(separator: ", "))
             }
             return ok()
+        case "pick":
+            return pick(Array(args.dropFirst()))
         case "exec":
             let text = args.dropFirst().joined(separator: " ")
             let parsed: (rule: WindowRule?, command: String)
@@ -219,6 +260,51 @@ final class AppController: HostBridge, @unchecked Sendable {
             return fail("missing command", 2, hint: "run `wm help` to see the commands")
         default:
             return onMain { manager.execute(args, target: target) }
+        }
+    }
+
+    /// `pick [--json]`: waits for the next click (30 seconds at most) and describes the window under it. The wait blocks the
+    /// thread of the request, so it is for the CLI; the main thread (a bind, Lua, a URL) must never wait.
+    private func pick(_ rest: [String]) -> ServerAnswer {
+        if let bad = unknownOption(Set(rest.filter { $0.hasPrefix("--") }), allowed: ["--json"], usage: "pick") { return bad }
+        if rest.contains(where: { !$0.hasPrefix("--") }) { return fail("pick takes no arguments", 2, usage: "pick") }
+        if Thread.isMainThread { return fail("pick only works from the command line", 1, hint: "run `wm pick` in a terminal") }
+
+        let click = Slot<CGPoint>()
+        let clicked = DispatchSemaphore(value: 0)
+        let armed = onMain {
+            let armed = input.beginPick { point in
+                click.value = point
+                clicked.signal()
+            }
+            if armed { onNotify("Click a window · Esc cancels", 2) }
+            return armed
+        }
+        guard armed else { return fail("another `wm pick` is waiting for a click") }
+        let finished = clicked.wait(timeout: .now() + 30) == .success
+        // A click that comes just after the timeout still counts: it was swallowed already.
+        let point = onMain {
+            input.endPick()
+            return click.value
+        }
+        guard let point else { return fail(finished ? "pick cancelled" : "no click within 30 seconds") }
+        guard let hit = WindowList.frontmost(at: point) else { return fail("there is no window at the click") }
+
+        // A window that wm does not manage is read from its app. The main thread stays free for that read.
+        let unmanaged = Slot<WindowInfo>()
+        if onMain({ manager.windows[hit.id] == nil }) {
+            let read = DispatchSemaphore(value: 0)
+            Task { @MainActor in
+                unmanaged.value = await manager.readWindow(hit.id, pid: hit.pid)
+                read.signal()
+            }
+            read.wait()
+        }
+        return onMain {
+            guard let picked = manager.pickedWindow(hit.id, unmanaged: unmanaged.value) else {
+                return fail("wm cannot read this window", 1, hint: "it belongs to an app that wm does not watch (pid \(hit.pid))")
+            }
+            return ok(rest.contains("--json") ? manager.pickValue(picked).json + "\n" : renderPick(picked))
         }
     }
 
@@ -601,4 +687,9 @@ final class Broadcaster: @unchecked Sendable {
             }
         }
     }
+}
+
+/// A value that one thread sets and another reads after a semaphore has ordered the two.
+private final class Slot<Value>: @unchecked Sendable {
+    var value: Value?
 }

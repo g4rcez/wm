@@ -1,8 +1,9 @@
 import Foundation
 
 /// What the command palette lists. `all` and `apps` are the running apps with their windows; the others list one kind.
+/// `tabs` are the tabs of browsers and terminals.
 public enum PaletteMode: String, Sendable, CaseIterable {
-    case all, windows, apps, commands, menu
+    case all, windows, apps, tabs, commands, menu
 }
 
 /// What the user typed, split into the list to search and the words to search for.
@@ -28,7 +29,7 @@ public struct PaletteQuery: Equatable, Sendable {
 
 /// One row of the palette.
 public struct PaletteEntry: Sendable, Equatable {
-    /// `windows`, `apps`, `commands` or `menu`.
+    /// `windows`, `apps`, `tabs`, `commands` or `menu`.
     public var kind: PaletteMode
     public var title: String
     public var detail: String
@@ -66,10 +67,20 @@ public func fuzzyScore(_ query: String, _ text: String) -> Int? {
 }
 
 /// The entries that `query` finds, best first. Without text every entry of the mode stays, in the order given. A match in
-/// the title beats a match in the detail.
+/// the title beats a match in the detail. The `all` list finds tabs too, but only once there is text: without text it is
+/// the apps with their windows. The `tabs` list has the tabs and the windows that the caller puts in it: a window is the
+/// tab of an app that has no tabs.
 public func rank(_ entries: [PaletteEntry], query: PaletteQuery) -> [PaletteEntry] {
-    let listed = entries.filter { query.mode == .all || query.mode == .apps ? ($0.kind == .windows || $0.kind == .apps) : $0.kind == query.mode }
-    guard !query.text.trimmingCharacters(in: .whitespaces).isEmpty else { return listed }
+    let hasText = !query.text.trimmingCharacters(in: .whitespaces).isEmpty
+    let listed = entries.filter { entry in
+        switch query.mode {
+        case .all: entry.kind == .windows || entry.kind == .apps || (entry.kind == .tabs && hasText)
+        case .apps: entry.kind == .windows || entry.kind == .apps
+        case .tabs: entry.kind == .tabs || entry.kind == .windows
+        default: entry.kind == query.mode
+        }
+    }
+    guard hasText else { return listed }
     let scored: [(entry: PaletteEntry, score: Int, order: Int)] = listed.enumerated().compactMap { index, entry in
         let title = fuzzyScore(query.text, entry.title)
         let detail = fuzzyScore(query.text, entry.detail).map { $0 - 25 }

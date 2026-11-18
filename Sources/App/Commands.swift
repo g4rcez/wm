@@ -255,7 +255,12 @@ extension WindowManager {
         guard let sub = words.first else { return fail("window needs a command", 2, usage: "window") }
         if sub == "send" { return sendCommand(Array(words.dropFirst()), flags, id) }
         if let bad = unknownOption(flags, allowed: sub == "remember" || sub == "forget" ? ["--title"] : [], usage: "window " + sub) { return bad }
-        guard let id, let managed = windows[id] else { return fail("there is no focused window") }
+        guard let id, let managed = windows[id] else {
+            guard id != nil else { return fail("there is no focused window") }
+            return fail(
+                "the focused window is not managed by wm",
+                hint: "wm skips windows that are not standard windows or dialogs, and windows in native fullscreen; `wm logs` says why a new window was skipped")
+        }
         switch sub {
         case "sticky":
             return toggleSticky(id)
@@ -808,16 +813,7 @@ extension WindowManager {
             if json { return ok(LuaValue.array(ids.compactMap { windowValue($0) }).json + "\n") }
             return ok(renderTable(["", "id", "app", "title", "workspace", "state"], ids.compactMap { id in
                 guard let managed = windows[id] else { return nil }
-                var state: [String] = []
-                if managed.floating { state.append("floating") }
-                if managed.sticky { state.append("sticky") }
-                if isMaximized(id) { state.append("maximized") }
-                if managed.minimized { state.append("minimized") }
-                if managed.nativeFullscreen { state.append("fullscreen") }
-                for name in marks(of: id) { state.append("mark:" + name) }
-                if (workspace(managed.workspace).engine as? ScrollingEngine)?.strip(of: id) == .vertical { state.append("vertical strip") }
-                if workspace(managed.workspace).pseudo[id] != nil { state.append("pseudo") }
-                return [id == focused ? "*" : "", String(id), managed.info.appName, truncated(managed.info.title, to: 48), managed.workspace, state.joined(separator: ", ")]
+                return [id == focused ? "*" : "", String(id), managed.info.appName, truncated(managed.info.title, to: 48), managed.workspace, stateLabels(of: id, managed).joined(separator: ", ")]
             }))
         }
         let onlyFocusedMonitor = kind == "monitors" && flags.contains("--focused")
@@ -961,6 +957,54 @@ extension WindowManager {
             )
         }
         return renderOverview(monitors: monitorList, workspaces: used)
+    }
+
+    /// The words of the `state` column of `list windows`: `floating`, `sticky`, `mark:<name>`, ...
+    private func stateLabels(of id: WindowID, _ managed: ManagedWindow) -> [String] {
+        var state: [String] = []
+        if managed.floating { state.append("floating") }
+        if managed.sticky { state.append("sticky") }
+        if isMaximized(id) { state.append("maximized") }
+        if managed.minimized { state.append("minimized") }
+        if managed.nativeFullscreen { state.append("fullscreen") }
+        for name in marks(of: id) { state.append("mark:" + name) }
+        if (workspace(managed.workspace).engine as? ScrollingEngine)?.strip(of: id) == .vertical { state.append("vertical strip") }
+        if workspace(managed.workspace).pseudo[id] != nil { state.append("pseudo") }
+        return state
+    }
+
+    /// What `wm pick` shows for a window: from wm's own state when it manages the window, else from what its app reports.
+    func pickedWindow(_ id: WindowID, unmanaged: WindowInfo?) -> PickedWindow? {
+        if let managed = windows[id] {
+            let frame = currentFrame(of: id) ?? managed.info.frame
+            return PickedWindow(
+                id: id, pid: managed.info.pid, bundleID: managed.info.bundleID, appName: managed.info.appName, title: managed.info.title,
+                role: managed.info.role, subrole: managed.info.subrole, frame: PickedFrame(frame), managed: true,
+                workspace: managed.workspace, state: stateLabels(of: id, managed))
+        }
+        guard let info = unmanaged else { return nil }
+        return PickedWindow(
+            id: id, pid: info.pid, bundleID: info.bundleID, appName: info.appName, title: info.title, role: info.role,
+            subrole: info.subrole, frame: PickedFrame(info.frame), managed: false, workspace: nil, state: [])
+    }
+
+    /// `wm pick --json`: the object of `list windows --json` for a managed window, with `pid`, `role`, `subrole` and `managed` added.
+    func pickValue(_ picked: PickedWindow) -> LuaValue {
+        var fields: [String: LuaValue]
+        if case .table(let listed)? = windowValue(picked.id) {
+            fields = listed
+        } else {
+            fields = [
+                "id": .number(Double(picked.id)), "app": .string(picked.bundleID), "app_name": .string(picked.appName),
+                "title": .string(picked.title),
+                "frame": .table(["x": .number(picked.frame.x), "y": .number(picked.frame.y), "width": .number(picked.frame.width), "height": .number(picked.frame.height)]),
+            ]
+        }
+        fields["pid"] = .number(Double(picked.pid))
+        fields["role"] = .string(picked.role)
+        fields["subrole"] = .string(picked.subrole)
+        fields["managed"] = .bool(picked.managed)
+        return .table(fields)
     }
 
     private func windowValue(_ id: WindowID) -> LuaValue? {

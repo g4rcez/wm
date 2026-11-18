@@ -5,15 +5,16 @@ import Darwin
 
 func write(_ text: String, to handle: FileHandle) { handle.write(Data(text.utf8)) }
 
-/// Error lines get colors only on a terminal, and never with NO_COLOR set.
-let colorErrors = isatty(STDERR_FILENO) == 1 && ProcessInfo.processInfo.environment["NO_COLOR"] == nil
+/// Colors only on a terminal, and never with NO_COLOR set. One style for each stream, because either one can be a pipe.
+let errorStyle = HelpStyle.detect(isTerminal: isatty(STDERR_FILENO) == 1, environment: ProcessInfo.processInfo.environment)
+let outputStyle = HelpStyle.detect(isTerminal: isatty(STDOUT_FILENO) == 1, environment: ProcessInfo.processInfo.environment)
 
 func printError(_ text: String) {
-    guard colorErrors else { return write(text, to: .standardError) }
+    guard errorStyle.enabled else { return write(text, to: .standardError) }
     let styled = text.split(separator: "\n", omittingEmptySubsequences: false).map { line -> String in
-        if line.hasPrefix("wm: error:") { return "\u{1B}[1;31mwm: error:\u{1B}[0m" + line.dropFirst("wm: error:".count) }
-        if line.hasPrefix("hint:") { return "\u{1B}[36mhint:\u{1B}[0m" + line.dropFirst("hint:".count) }
-        if line.hasPrefix("usage:") { return "\u{1B}[2musage:\u{1B}[0m" + line.dropFirst("usage:".count) }
+        if line.hasPrefix("wm: error:") { return errorStyle.error("wm: error:") + line.dropFirst("wm: error:".count) }
+        if line.hasPrefix("hint:") { return errorStyle.hint("hint:") + line.dropFirst("hint:".count) }
+        if line.hasPrefix("usage:") { return errorStyle.dim("usage:") + line.dropFirst("usage:".count) }
         return String(line)
     }
     write(styled.joined(separator: "\n"), to: .standardError)
@@ -58,12 +59,12 @@ if arguments.first != "exec" {
 
 // Help and the version need no daemon.
 if arguments.isEmpty {
-    write(renderHelp() ?? "", to: .standardError)
+    write(renderHelp(style: errorStyle) ?? "", to: .standardError)
     exit(2)
 }
 if arguments.first != "exec", arguments.contains("--help") || arguments.first == "help" {
     let topic = arguments.filter { $0 != "--help" && $0 != "help" && !$0.hasPrefix("--") }.joined(separator: " ")
-    guard let text = renderHelp(topic: topic) else {
+    guard let text = renderHelp(topic: topic, style: outputStyle) else {
         die("no help for '\(topic)'", hint: unknownCommandHint(topic.split(separator: " ").first.map(String.init) ?? topic) ?? "run `wm help` to see the commands", code: 2)
     }
     write(text, to: .standardOutput)
@@ -76,7 +77,7 @@ if arguments == ["version"] || arguments == ["--version"] {
 if let first = arguments.first, !commandNames.contains(first) {
     die("unknown command '\(first)'", hint: unknownCommandHint(first) ?? "run `wm help` to see the commands", code: 2)
 }
-let localCommands = [["daemon", "start"], ["daemon", "stop"], ["subscribe"], ["logs"]]
+let localCommands = [["daemon", "start"], ["daemon", "stop"], ["subscribe"], ["logs"], ["pick"]]
 if windowId != nil || windowSelector != nil, localCommands.contains(where: { Array(arguments.prefix($0.count)) == $0 }) {
     die("--window does not apply to '\(arguments.prefix(2).filter { !$0.hasPrefix("--") }.joined(separator: " "))'", code: 2)
 }
@@ -220,7 +221,10 @@ if arguments.first == "subscribe" {
 }
 
 do {
-    let answer = try sendRequest(ClientRequest(args: arguments, windowId: windowId, windowSelector: windowSelector))
+    // `pick` waits for a click: the daemon gives up after 30 seconds, so the client waits a little longer.
+    let answer = try sendRequest(
+        ClientRequest(args: arguments, windowId: windowId, windowSelector: windowSelector),
+        timeoutSeconds: arguments.first == "pick" ? 35 : 5)
     write(answer.stdout, to: .standardOutput)
     printError(answer.stderr)
     exit(answer.exitCode)

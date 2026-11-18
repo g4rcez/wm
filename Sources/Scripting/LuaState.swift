@@ -131,6 +131,65 @@ function wm.log(...)
   native.log(table.concat(parts, " "))
 end
 
+-- Windows that start floating and centered without a rule of your own: popups and picture-in-picture windows of browsers,
+-- Finder, Preview and small utilities. `wm.floating.defaultRules` is the list, in the shape of `wm.rule`, and every rule has a
+-- `name`. The rules are added after the config has run, so a `wm.rule` of yours for the same window wins. Turn one off with
+-- `wm.floating.disable("finder")`, all of them with `wm.floating.enabled = false`, or change the list itself.
+wm.floating = {
+  enabled = true,
+  disabled = {},
+  defaultRules = {
+    -- A browser window has the name of the browser at the end of its title; a picture-in-picture window (Google Meet), the popup
+    -- of an extension (Bitwarden) and an about:blank popup do not. An empty title is a dialog, and it floats already.
+    { name = "helium-popups", app = "net.imput.helium", title = "^(?!.* - Helium).+", float = true, center = true },
+    { name = "chrome-popups", app = "com.google.Chrome", title = "^(?!.* - Google Chrome).+", float = true, center = true },
+    { name = "brave-popups", app = "com.brave.Browser", title = "^(?!.*Brave).+", float = true, center = true },
+    { name = "chromium-popups", app = "org.chromium.Chromium", title = "^(?!.* - Chromium).+", float = true, center = true },
+    -- Edge puts a zero-width space inside "Microsoft Edge" and Firefox uses a long dash ("... — Mozilla Firefox"), so these two only
+    -- look for the name of the browser anywhere in the title. Firefox also names its picture-in-picture window "Picture-in-Picture".
+    { name = "edge-popups", app = "com.microsoft.edgemac", title = "^(?!.*Edge).+", float = true, center = true },
+    { name = "firefox-popups", app = "org.mozilla.firefox", title = "^(?!.*Firefox).+", float = true, center = true },
+    { name = "finder", app = "com.apple.finder", float = true, center = true },
+    { name = "preview", app = "com.apple.Preview", float = true, center = true },
+    { name = "calculator", app = "com.apple.calculator", float = true, center = true },
+    { name = "activity-monitor", app = "com.apple.ActivityMonitor", float = true, center = true },
+    { name = "archive-utility", app = "com.apple.archiveutility", float = true, center = true },
+    { name = "quicktime-player", app = "com.apple.QuickTimePlayerX", float = true, center = true },
+    { name = "system-settings", app = "com.apple.systempreferences", float = true, center = true },
+    { name = "raycast-settings", app = "com.raycast.macos", float = true, center = true },
+  },
+}
+
+-- Turns default rules off by name: `wm.floating.disable("finder", "preview")` or `wm.floating.disable { "finder", "preview" }`.
+function wm.floating.disable(...)
+  local names = ...
+  if type(names) ~= "table" then names = { ... } end
+  for _, name in ipairs(names) do
+    expect(type(name) == "string", "wm.floating.disable expects the names of default rules, like 'finder'")
+    wm.floating.disabled[name] = true
+  end
+end
+
+-- Runs when the config file has run (the app calls it): adds the default rules that are still on.
+function wm.floating._install()
+  if not wm.floating.enabled then return end
+  local known = {}
+  for _, rule in ipairs(wm.floating.defaultRules) do
+    if type(rule) == "table" and rule.name ~= nil then known[rule.name] = true end
+  end
+  local unknown = {}
+  for name in pairs(wm.floating.disabled) do
+    if not known[name] then unknown[#unknown + 1] = name end
+  end
+  table.sort(unknown)
+  if #unknown > 0 then
+    error("wm.floating.disable: there is no default rule named '" .. unknown[1] .. "' (see wm.floating.defaultRules)", 0)
+  end
+  for _, rule in ipairs(wm.floating.defaultRules) do
+    if not (type(rule) == "table" and rule.name ~= nil and wm.floating.disabled[rule.name]) then wm.rule(rule) end
+  end
+end
+
 -- Would end the whole app.
 function os.exit()
   error("os.exit is disabled in the wm config", 2)
@@ -190,6 +249,9 @@ final class LuaState {
         if let message = protectedCall(arguments: 1) { throw ConfigError(message: message) }
 
         guard luaL_loadfilex(L, configURL.path, nil) == LUA_OK else { throw ConfigError(message: popError()) }
+        if let message = protectedCall(arguments: 0) { throw ConfigError(message: message) }
+        // The default floating rules go after the rules of the config, so that a rule of the user wins.
+        guard luaL_loadstring(L, "wm.floating._install()") == LUA_OK else { throw ConfigError(message: popError()) }
         if let message = protectedCall(arguments: 0) { throw ConfigError(message: message) }
 
         loading = false

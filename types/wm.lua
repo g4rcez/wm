@@ -56,9 +56,11 @@
 ---| "window pseudo"
 ---| "workspace next" | "workspace prev" | "workspace empty" | "window send workspace next" | "window send workspace prev" | "window send workspace empty"
 ---| "layout tile" | "layout tile 2" | "layout tile 3" | "layout tile 2+1" | "layout tile 1+2" | "layout tile 4" | "layout tile 5" | "layout tile 6" | "layout tile 2/3" | "layout tile 3/4" | "layout tile 1/4" | "layout tile chain"
----| "menu" | "palette" | "palette windows" | "palette apps" | "palette commands" | "palette menu" | "palette --cmdtab" | "palette --cmdtab --reverse"
+---| "menu" | "palette" | "palette windows" | "palette apps" | "palette tabs" | "palette reset" | "palette commands" | "palette menu" | "palette --cmdtab" | "palette --cmdtab --reverse"
 ---| "switcher" | "switcher next" | "switcher prev" | "switcher commit" | "switcher cancel" | "switcher --all"
 ---| "overview" | "overview open" | "overview close"
+---| "hints" | "hints open" | "hints close"
+---| "scroll" | "scroll open" | "scroll close"
 ---| "mode main"
 ---| "pointer window" | "pointer monitor"
 ---| "daemon reload"
@@ -249,10 +251,19 @@
 --- connects later; one that it does not manage keeps its CapsLock. The id wins over the name. The match ignores case.
 ---@alias wm.KeyboardsConfig table<string, boolean>
 
+---@class (exact) wm.FloatingConfig
+---@field remember_position? boolean A window that a rule floats (the default floating rules too) opens where the last floating window of its app was when it closed, with that size. Default true.
+
 ---@class (exact) wm.OverviewConfig
 ---@field zoom? number A workspace is drawn as its screen times this, 0.2 to 0.75. Default 0.5.
 ---@field gap? number Points between two workspaces, 0 to 200. Default 48.
 ---@field backdrop? wm.Color The dim layer behind the workspaces. Default "#0f0f14db".
+
+---@class (exact) wm.HintsConfig
+---@field background? wm.Color The background of a label in hint mode. Default "#ffd60af5".
+---@field text? wm.Color The text of a label. Default "#141414".
+---@field focus? wm.Color The label of the focused element and the ring around that element. Default "#30d158".
+---@field area? wm.Color The rings and the numbers of the scroll areas in scroll mode. Default "#0a84ff".
 
 ---@class (exact) wm.SpecialConfig
 ---@field size? number Size of a shown special workspace as a fraction of the work area, 0.5 to 1. Default 0.9.
@@ -288,8 +299,10 @@
 ---@field prefix? wm.PrefixConfig Key sequences such as `ctrl-p>h`.
 ---@field binds? wm.BindsConfig
 ---@field zen? wm.ZenConfig The zen mode: the focused window alone, centered.
+---@field floating? wm.FloatingConfig Floating windows: whether they open where the last one closed.
 ---@field keyboards? wm.KeyboardsConfig Which keyboards wm manages: `{ default = true, ["Keyboard name"] = false, ["046d:c52b"] = true }`. See `wm query keyboards`.
 ---@field overview? wm.OverviewConfig The overview (`wm overview`): all workspaces, one under the other.
+---@field hints? wm.HintsConfig The colors of the labels of `hints` and of the areas of `scroll`.
 ---@field special? wm.SpecialConfig Special workspaces (`workspace special`): size, dim backdrop, when they hide.
 ---@field master? wm.MasterConfig The `master` layout.
 ---@field url? wm.UrlConfig
@@ -298,6 +311,7 @@
 
 --- A rule needs `app` or `title`. Rules apply to each new window, in order, until one with `stop = true` (the default) matches.
 ---@class (exact) wm.Rule
+---@field name? string A label for `wm logs` and for `wm.floating.disable`. It matches nothing.
 ---@field app? string Bundle id (`"com.apple.finder"`) or app name. Exact match, not case-sensitive.
 ---@field title? string Regular expression, matched anywhere in the window title.
 ---@field float? boolean Open the window floating.
@@ -544,6 +558,20 @@ function wm.mode(name, binds, options) end
 --- Runs a command when you swipe with modifiers held. Only while the config file loads.
 ---@param spec wm.Gesture
 function wm.gesture(spec) end
+
+--- Default rules for windows that start floating and centered: browser popups and picture-in-picture (Google Meet), Finder, Preview
+--- and small utilities. They are added after the config has run, so a `wm.rule` of yours for the same window wins.
+---@class wm.Floating
+---@field enabled boolean `false` turns every default rule off. Default true.
+---@field disabled table<string, boolean> The names that `disable` turned off.
+---@field defaultRules wm.Rule[] The list. Each rule has a `name`. Change it before the config ends: `table.insert`, `table.remove`, or edit a rule.
+wm.floating = {}
+
+--- Turns default rules off by name: `wm.floating.disable("finder", "preview")` or `wm.floating.disable { "finder", "preview" }`.
+--- An unknown name is a config error. Only while the config file loads.
+---@overload fun(names: string[])
+---@param ... string
+function wm.floating.disable(...) end
 
 --- Adds a window rule. Only while the config file loads.
 ---@param spec wm.Rule

@@ -13,6 +13,18 @@ public enum ProcessTree {
         return false
     }
 
+    /// The parent of `pid`, its parent, and so on, the nearest first.
+    public static func ancestors(of pid: Int32) -> [Int32] {
+        var found: [Int32] = []
+        var current = pid
+        for _ in 0..<32 {
+            guard current > 1, let parent = parent(of: current) else { break }
+            found.append(parent)
+            current = parent
+        }
+        return found
+    }
+
     static func parent(of pid: Int32) -> Int32? {
         var info = kinfo_proc()
         var size = MemoryLayout<kinfo_proc>.stride

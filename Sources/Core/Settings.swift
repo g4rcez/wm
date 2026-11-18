@@ -248,6 +248,26 @@ public struct OverviewSettings: Sendable, Equatable {
     public init() {}
 }
 
+/// The labels of hint mode and the rings of scroll mode (`wm.config { hints = { ... } }`).
+public struct HintSettings: Sendable, Equatable {
+    /// The background of a label, and the color of its text.
+    public var background = Color(red: 1, green: 214.0 / 255, blue: 10.0 / 255, alpha: 0.96)
+    public var text = Color(red: 20.0 / 255, green: 20.0 / 255, blue: 20.0 / 255)
+    /// The label of the focused element, and the ring around that element.
+    public var focus = Color(red: 48.0 / 255, green: 209.0 / 255, blue: 88.0 / 255)
+    /// The rings and the numbers of the scroll areas.
+    public var area = Color(red: 10.0 / 255, green: 132.0 / 255, blue: 1)
+    public init() {}
+}
+
+/// Floating windows (`wm.config { floating = { ... } }`).
+public struct FloatingSettings: Sendable, Equatable {
+    /// A window that opens floating because of a rule (`wm.floating.defaultRules` too) opens where the last floating window of its
+    /// app was when it closed, with that size, instead of the place and the size that the rule or the app gives.
+    public var rememberPosition = true
+    public init() {}
+}
+
 /// Special workspaces (`wm workspace special`).
 public struct SpecialSettings: Sendable, Equatable {
     public static let minSize = 0.5
@@ -347,8 +367,10 @@ public struct Settings: Sendable, Equatable {
     public var binds = BindSettings()
     public var zen = ZenSettings()
     public var special = SpecialSettings()
+    public var floating = FloatingSettings()
     public var keyboards = KeyboardSettings()
     public var overview = OverviewSettings()
+    public var hints = HintSettings()
     public var master = MasterSettings()
     /// Commands a `wm://` URL may run besides the always-allowed ones. `exec` and `reload` are denied by default.
     public var urlAllow: [String] = []
