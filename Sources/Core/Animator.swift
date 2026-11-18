@@ -5,7 +5,7 @@ import Foundation
 /// slows down without overshoot. When the target changes during a move the window keeps its speed, so the motion has
 /// no sudden change. The step is exact for any time step, so the motion does not depend on the frame rate.
 public struct Animator: Sendable {
-    /// The spring stiffness: higher is faster. A move of 1000 points ends in about `10 / rate` seconds.
+    /// The spring stiffness (16 = an Apple spring with a response of 0.4 s): higher is faster. A move of 1000 points ends in about `10 / rate` seconds.
     public var rate: Double
     public var enabled: Bool
     private var current: [WindowID: CGRect] = [:]
@@ -22,7 +22,7 @@ public struct Animator: Sendable {
     /// Closer than this (in points) counts as arrived.
     private static let epsilon: CGFloat = 0.5
 
-    public init(rate: Double = 14, enabled: Bool = true) {
+    public init(rate: Double = 16, enabled: Bool = true) {
         self.rate = rate
         self.enabled = enabled
     }

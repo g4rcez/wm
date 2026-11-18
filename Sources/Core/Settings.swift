@@ -148,8 +148,8 @@ public struct ScrollingSettings: Sendable, Equatable {
 
 public struct AnimationSettings: Sendable, Equatable {
     public var enabled: Bool = true
-    /// Exponential ease-out rate per second (`1 - exp(-rate * dt)` of the remaining distance per frame).
-    public var rate: Double = 14
+    /// Frames per second of the window animation. The display caps it (a 60 Hz screen ticks at 60).
+    public var fps: Double = 120
     public init() {}
 }
 
