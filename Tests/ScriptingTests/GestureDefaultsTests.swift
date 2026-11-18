@@ -12,6 +12,26 @@ struct GestureDefaultsTests {
         #expect(defaults.allSatisfy { $0.modifiers == [] && $0.isBuiltIn })
     }
 
+    @Test func theTitleBarHasSixBuiltInGestures() {
+        let defaults = Gesture.titleBarDefaults
+        #expect(defaults.map(\.direction) == [.left, .right, .up, .down, .pinchIn, .pinchOut])
+        #expect(defaults.map(\.action) == [
+            .command("window swipe left"), .command("window swipe right"), .command("window swipe up"),
+            .command("window swipe down"), .command("window close"), .command("window fullscreen"),
+        ])
+        #expect(defaults.allSatisfy { $0.zone == .titleBar && $0.modifiers == [] && $0.isBuiltIn })
+        #expect(defaults.map(\.label) == [
+            "title_bar-scroll left", "title_bar-scroll right", "title_bar-scroll up", "title_bar-scroll down",
+            "title_bar pinch-in", "title_bar pinch-out",
+        ])
+    }
+
+    @Test func aTitleBarGestureOfTheUserReplacesOnlyTheBuiltInOneOfTheSameDirection() {
+        let mine = Gesture(zone: .titleBar, direction: .pinchIn, action: .command("window minimize"))
+        let elsewhere = Gesture(modifiers: .option, direction: .left, action: .command("workspace prev"))
+        #expect(Gesture.missingTitleBarDefaults([mine, elsewhere]).map(\.direction) == [.left, .right, .up, .down, .pinchOut])
+    }
+
     @Test func threeFingersUseTheSameSwipes() {
         #expect(Gesture.defaults(fingers: 3).map(\.fingers) == [3, 3, 3, 3])
     }

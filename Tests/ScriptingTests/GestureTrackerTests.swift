@@ -34,6 +34,22 @@ struct GestureTrackerTests {
         #expect(tracker.scroll(dx: -500, dy: 0, modifiers: .option, phase: .none, time: 0.02, gestures: [left]) == .consumed)
     }
 
+    @Test func aTitleBarGestureNeverFiresAnywhereAndTheReverse() {
+        let onTitleBar = Gesture(zone: .titleBar, direction: .left, action: .command("window swipe left"))
+        var anywhere = GestureTracker()
+        #expect(anywhere.scroll(dx: -300, dy: 0, modifiers: [], phase: .began, time: 0, gestures: [onTitleBar]) == .ignored)
+        var titleBar = GestureTracker()
+        #expect(titleBar.scroll(dx: -300, dy: 0, modifiers: [], phase: .began, time: 0, gestures: [onTitleBar], zone: .titleBar) == .fire(.command("window swipe left")))
+        var other = GestureTracker()
+        #expect(other.scroll(dx: -300, dy: 0, modifiers: .option, phase: .began, time: 0, gestures: [left], zone: .titleBar) == .ignored)
+    }
+
+    @Test func aPinchGestureIsNeverMatchedByAScroll() {
+        let pinch = Gesture(zone: .titleBar, direction: .pinchIn, action: .command("window close"))
+        var tracker = GestureTracker()
+        #expect(tracker.scroll(dx: 0, dy: -500, modifiers: [], phase: .began, time: 0, gestures: [pinch], zone: .titleBar) == .ignored)
+    }
+
     @Test func otherModifiersAreNotTouched() {
         var tracker = GestureTracker()
         #expect(tracker.scroll(dx: -300, dy: 0, modifiers: [], phase: .began, time: 0, gestures: [left]) == .ignored)

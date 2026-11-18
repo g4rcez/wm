@@ -8,12 +8,19 @@ import Scripting
 final class TrackpadInput: @unchecked Sendable {
     private let lock = NSLock()
     private var tracker = FingerTracker()
+    private var pinchTracker = PinchTracker()
     private var pending: [FingerTracker.Event] = []
+    private var pendingPinches: [PinchTracker.Event] = []
     private var scheduled = false
     private let deliver: @MainActor @Sendable ([FingerTracker.Event]) -> Void
+    private let deliverPinch: @MainActor @Sendable (PinchTracker.Event) -> Void
 
-    init(deliver: @escaping @MainActor @Sendable ([FingerTracker.Event]) -> Void) {
+    init(
+        deliver: @escaping @MainActor @Sendable ([FingerTracker.Event]) -> Void,
+        pinch: @escaping @MainActor @Sendable (PinchTracker.Event) -> Void
+    ) {
         self.deliver = deliver
+        self.deliverPinch = pinch
     }
 
     /// `false` when the framework or a trackpad is missing.
@@ -32,25 +39,31 @@ final class TrackpadInput: @unchecked Sendable {
     private func reset() {
         lock.withLock {
             tracker = FingerTracker()
+            pinchTracker = PinchTracker()
             pending = []
+            pendingPinches = []
         }
     }
 
     private func frame(_ points: [TouchPoint], _ time: Double) {
         let hop: Bool = lock.withLock {
             pending += tracker.frame(points, time: time)
-            guard !pending.isEmpty, !scheduled else { return false }
+            if let pinch = pinchTracker.frame(points) { pendingPinches.append(pinch) }
+            guard !pending.isEmpty || !pendingPinches.isEmpty, !scheduled else { return false }
             scheduled = true
             return true
         }
         guard hop else { return }
         DispatchQueue.main.async { [self] in
-            let events: [FingerTracker.Event] = lock.withLock {
+            let (events, pinches): ([FingerTracker.Event], [PinchTracker.Event]) = lock.withLock {
                 scheduled = false
-                defer { pending = [] }
-                return pending
+                defer { pending = []; pendingPinches = [] }
+                return (pending, pendingPinches)
             }
-            MainActor.assumeIsolated { deliver(events) }
+            MainActor.assumeIsolated {
+                if !events.isEmpty { deliver(events) }
+                pinches.forEach(deliverPinch)
+            }
         }
     }
 }

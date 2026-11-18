@@ -26,6 +26,14 @@ final class InputRouter {
     /// Swipes with a modifier (`wm.gesture`).
     var gestures: [Gesture] = []
     private var gestureTracker = GestureTracker()
+    /// Swipes and pinches on a title bar (`trackpad.title_bar`), with the built-in ones that the config does not replace.
+    var titleBarGestures: [Gesture] = []
+    private var titleBarTracker = GestureTracker()
+    /// The window under the pointer where the two-finger swipe that is going on started; `nil` when it started elsewhere.
+    private var titleBarTarget: WindowID?
+    private var titleBarLastScroll = 0.0
+    /// A pause this long, in seconds, between scroll events ends the title bar swipe (its momentum comes faster than this).
+    private static let titleBarPause = 0.25
     private var tracker = BindTracker()
     private var longPressTimers: [Int: Timer] = [:]
     /// Called with the steps pressed so far while a sequence waits for its next key (`ctrl-p`), and with `nil` when it ends.
@@ -346,6 +354,52 @@ final class InputRouter {
         }
     }
 
+    // MARK: Title bar gestures
+
+    /// A two-finger swipe that starts over a title bar belongs to the title bar, also while it coasts; the app never sees it.
+    /// Returns `true` when the gesture used up the event.
+    private func handleTitleBarScroll(_ dx: CGFloat, _ dy: CGFloat, _ phase: ScrollPhase) -> Bool {
+        let time = ProcessInfo.processInfo.systemUptime
+        if phase == .began {
+            titleBarTarget = CGEvent(source: nil).flatMap { manager.titleBarWindow(at: $0.location) }
+        } else if time - titleBarLastScroll > Self.titleBarPause {
+            titleBarTarget = nil
+        }
+        titleBarLastScroll = time
+        guard let target = titleBarTarget else { return false }
+        let gesturePhase: GesturePhase = switch phase {
+        case .began: .began
+        case .changed: .changed
+        case .ended: .ended
+        case .none: .none
+        }
+        switch titleBarTracker.scroll(
+            dx: Double(dx), dy: Double(dy), modifiers: [], phase: gesturePhase, time: time, gestures: titleBarGestures, zone: .titleBar
+        ) {
+        case .consumed: return true
+        case .fire(let action):
+            performOnWindow(target, action)
+            return true
+        case .ignored: return false
+        }
+    }
+
+    /// A pinch on the trackpad, with the pointer over a title bar.
+    func handlePinch(_ pinch: PinchTracker.Event) {
+        let pad = manager.settings.trackpad
+        guard pad.titleBar, pad.pinch, let location = CGEvent(source: nil)?.location, let target = manager.titleBarWindow(at: location) else { return }
+        let direction: GestureDirection = pinch == .pinchIn ? .pinchIn : .pinchOut
+        guard let gesture = titleBarGestures.first(where: { $0.direction == direction }) else { return }
+        performOnWindow(target, gesture.action)
+    }
+
+    /// The action runs on `window`, which takes the focus first: the commands act on the focused window.
+    private func performOnWindow(_ window: WindowID, _ action: BindAction) {
+        manager.focus(window)
+        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        perform(action, flags: [])
+    }
+
     private func scrollStrip(_ x: Double, _ y: Double) {
         let delta = manager.focusedStrip == .vertical ? y : x
         if delta != 0 { manager.scrollBy(-delta) }
@@ -433,6 +487,7 @@ final class InputRouter {
     /// The focused window's strip decides the axis: sideways swipes move a strip that runs sideways, up and down swipes a
     /// strip that runs down the screen.
     private func handleScroll(_ dx: CGFloat, _ dy: CGFloat, _ flags: CGEventFlags, _ phase: ScrollPhase) -> Bool {
+        if !titleBarGestures.isEmpty, Self.modifiers(of: flags).isEmpty, handleTitleBarScroll(dx, dy, phase) { return true }
         // A swipe that a gesture claims is the gesture's. The rest goes on to the scrolling of the strip.
         if !gestures.isEmpty {
             let gesturePhase: GesturePhase = switch phase {
