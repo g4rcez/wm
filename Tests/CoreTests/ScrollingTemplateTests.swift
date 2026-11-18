@@ -172,4 +172,34 @@ struct ScrollingTemplateTests {
         #expect(frames[1] == CGRect(x: 0, y: 0, width: 250, height: 800))
         #expect(frames[2] == CGRect(x: 250, y: 0, width: 750, height: 800))
     }
+
+    @Test func aStackOutsideTheGroupStaysStacked() {
+        let engine = engine([1, 2, 3, 4])
+        #expect(engine.perform(.stack(.left), focused: 4, in: context))
+        let before = engine.frames(in: context, focused: 1)
+        #expect(engine.perform(.applyTemplate(.two), focused: 1, in: context))
+        let frames = engine.frames(in: context, focused: 1)
+        #expect(frames[3]?.minX == frames[4]?.minX)
+        #expect(frames[3]?.height == before[3]?.height)
+        #expect(frames[4]?.height == before[4]?.height)
+    }
+
+    @Test func aPatternNeverSplitsAStack() {
+        let engine = engine([1, 2, 3, 4])
+        #expect(engine.perform(.stack(.left), focused: 3, in: context))
+        // Columns: [1] [2, 3] [4]. Two windows cannot be made from whole columns around window 4 or 1.
+        #expect(engine.templateError(.two, focused: 4) != nil)
+        #expect(!engine.perform(.applyTemplate(.two), focused: 4, in: context))
+        #expect(engine.perform(.applyTemplate(.three), focused: 1, in: context))
+    }
+
+    @Test func theChainGivesBackTheColumnsThatThePatternTook() {
+        let engine = engine([1, 2, 3, 4])
+        #expect(engine.perform(.stack(.left), focused: 3, in: context))
+        #expect(engine.perform(.columnWidth(.fraction(0.3)), focused: 4, in: context))
+        let before = engine.frames(in: context, focused: 1)
+        #expect(engine.perform(.applyTemplate(.three), focused: 1, in: context))
+        #expect(engine.perform(.releaseTemplate, focused: 1, in: context))
+        #expect(engine.frames(in: context, focused: 1) == before)
+    }
 }

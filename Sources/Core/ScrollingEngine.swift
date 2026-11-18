@@ -105,7 +105,11 @@ public struct ScrollingEngine: LayoutEngine {
             return "tile works on a window of the horizontal strip"
         }
         let count = horizontal.windows.count
-        return count < template.count ? "need at least \(template.count) windows in the strip (it has \(count))" : nil
+        if count < template.count { return "need at least \(template.count) windows in the strip (it has \(count))" }
+        let at = horizontal.locate(focused)!
+        if horizontal.lanes[at.lane].template != nil { return nil }
+        return horizontal.group(count: template.count, around: at.lane) == nil
+            ? "need whole columns with \(template.count) windows together around this window (a stack or a tab group is never split)" : nil
     }
 
     // MARK: Membership

@@ -22,11 +22,20 @@ extension ScrollingEngine {
         /// A lane made by a split template: it holds exactly `template.count` windows, each in its own cell, and no
         /// structural command (stack, tabs, cross resize) applies to it.
         var template: SplitTemplate?
+        /// The columns that a template block was made from, to give back when the block ends. Optional, so that a saved
+        /// state without it still loads.
+        var parts: [Lane]?
         /// Relative size of each window along the cross axis. Missing means 1.
         var shares: [WindowID: Double] = [:]
         /// The size was set by a command or a resize. A lone lane that has one keeps it, and does not fill the zone
         /// (`single_window_fit = "fill"`). Optional, so that a saved state without it still loads.
         var userSized: Bool?
+
+        mutating func relabel(_ mapping: [WindowID: WindowID]) {
+            windows = windows.map { mapping[$0] ?? $0 }
+            shares = Dictionary(uniqueKeysWithValues: shares.map { (mapping[$0.key] ?? $0.key, $0.value) })
+            for index in (parts ?? []).indices { parts?[index].relabel(mapping) }
+        }
 
         /// Cross-axis fraction of every window, in lane order. They add up to 1.
         func crossFractions() -> [Double] {
@@ -233,46 +242,51 @@ extension ScrollingEngine {
 
         // MARK: Templates
 
-        /// Replaces a template lane with one lane per window, in cell order, each `size` wide.
+        /// Replaces a template lane with the columns it was made from (their sizes, stacks and tabs come back), or with one
+        /// lane per window, each `size` wide, when those columns no longer match its windows.
         mutating func dissolve(lane: Int, size: Double) {
             guard lanes[lane].template != nil else { return }
+            if let parts = lanes[lane].parts, Set(parts.flatMap(\.windows)) == Set(lanes[lane].windows) {
+                lanes.replaceSubrange(lane...lane, with: parts)
+                return
+            }
             let singles = lanes[lane].windows.map { Lane(windows: [$0], size: size) }
             lanes.replaceSubrange(lane...lane, with: singles)
         }
 
-        /// The focused window and the windows after it (before it when too few come after) fill one screen in the
-        /// pattern. Applying the pattern the focused window already has goes back to single columns. Returns `false`
-        /// when the strip has fewer windows than the pattern, or nothing changes.
-        mutating func apply(_ template: SplitTemplate, focused: WindowID, size: Double) -> Bool {
-            guard let at = locate(focused) else { return false }
-            if lanes[at.lane].template == template {
-                dissolve(lane: at.lane, size: size)
-                return true
-            }
-            let flat = windows
-            guard flat.count >= template.count, let position = flat.firstIndex(of: focused) else { return false }
-            let start = min(position, flat.count - template.count)
-            let group = Array(flat[start..<(start + template.count)])
-            // A template that is cut by the new group cannot stay.
-            for index in lanes.indices.reversed() where lanes[index].template != nil
-                && lanes[index].windows.contains(where: group.contains) {
-                dissolve(lane: index, size: size)
-            }
-            var rebuilt: [Lane] = []
-            var placed = false
-            for lane in lanes {
-                let remaining = lane.windows.filter { !group.contains($0) }
-                if remaining.count != lane.windows.count, !placed {
-                    rebuilt.append(Lane(windows: group, size: Self.maxSize, template: template))
-                    placed = true
+        /// The columns that a template of `count` windows takes: whole columns next to each other, around the focused
+        /// column, with exactly `count` windows together. The group starts at the focused column when it can, else
+        /// earlier. A column that holds a template is never taken. `nil` when no such group exists.
+        func group(count: Int, around lane: Int) -> Range<Int>? {
+            for start in stride(from: lane, through: 0, by: -1) {
+                var total = 0, end = start
+                while end < lanes.count, lanes[end].template == nil, total < count {
+                    total += lanes[end].windows.count
+                    end += 1
                 }
-                guard !remaining.isEmpty else { continue }
-                var kept = lane
-                kept.windows = remaining
-                kept.shares = lane.shares.filter { remaining.contains($0.key) }
-                rebuilt.append(kept)
+                if total == count, end > lane { return start..<end }
             }
-            lanes = rebuilt
+            return nil
+        }
+
+        /// The focused window's column and the columns after it (before it when too few come after) fill one screen in
+        /// the pattern. Only whole columns move into the block, so no stack or tab group is split, and the block keeps
+        /// them to give them back. Applying the pattern the focused window already has goes back to those columns.
+        /// Returns `false` when no group of whole columns has the pattern's number of windows.
+        mutating func apply(_ template: SplitTemplate, focused: WindowID, size: Double) -> Bool {
+            guard var at = locate(focused) else { return false }
+            if lanes[at.lane].template != nil {
+                let same = lanes[at.lane].template == template
+                dissolve(lane: at.lane, size: size)
+                if same { return true }
+                guard let moved = locate(focused) else { return false }
+                at = moved
+            }
+            guard let range = group(count: template.count, around: at.lane) else { return false }
+            let parts = Array(lanes[range])
+            var block = Lane(windows: parts.flatMap(\.windows), size: Self.maxSize, template: template)
+            block.parts = parts
+            lanes.replaceSubrange(range, with: [block])
             return true
         }
 
@@ -443,12 +457,7 @@ extension ScrollingEngine {
         // MARK: Relabel
 
         mutating func relabel(_ mapping: [WindowID: WindowID]) {
-            for index in lanes.indices {
-                lanes[index].windows = lanes[index].windows.map { mapping[$0] ?? $0 }
-                var shares: [WindowID: Double] = [:]
-                for (window, share) in lanes[index].shares { shares[mapping[window] ?? window] = share }
-                lanes[index].shares = shares
-            }
+            for index in lanes.indices { lanes[index].relabel(mapping) }
         }
     }
 }

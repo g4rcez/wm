@@ -106,7 +106,7 @@ final class WindowManager {
     private let border = BorderOverlay()
     private let backdrop = SpecialBackdrop()
     private let tabIndicator = TabIndicatorOverlay()
-    private var clock: Timer?
+    private var clock: DisplayClock?
     private var lastTick = CACurrentMediaTime()
     private var refreshing = false
     private var refreshAgain = false
@@ -160,7 +160,6 @@ final class WindowManager {
         settings = new
         if let saved = pendingRestore, saved.mode != SavedState.workspaceMode { pendingRestore = nil }
         self.rules = rules
-        animator.rate = new.animations.rate
         animator.enabled = new.animations.enabled
         let previousLayouts = workspaceLayouts
         workspaceLayouts = newLayouts
@@ -1255,9 +1254,7 @@ final class WindowManager {
         guard !animator.isSettled, clock == nil else { return }
         applier.stats.reset()
         lastTick = CACurrentMediaTime()
-        clock = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.tick() }
-        }
+        clock = DisplayClock(fps: settings.animations.fps) { [weak self] in self?.tick() }
     }
 
     private func tick() {
@@ -1269,7 +1266,7 @@ final class WindowManager {
         updateBorder()
         updateTabIndicator()
         if animator.isSettled {
-            clock?.invalidate()
+            clock?.stop()
             clock = nil
         }
     }
