@@ -97,3 +97,45 @@ struct DoctorTests {
         #expect(try JSONDecoder().decode(DoctorFacts.self, from: data) == healthy)
     }
 }
+
+struct ShortcutsCheckTests {
+    @Test func noFileIsSkipped() {
+        let check = shortcutsCheck(fileExists: false, imported: false, count: 0, problem: nil, overrides: [])
+
+        #expect(check == DoctorCheck("shortcuts", .skip, "no shortcuts.toml: init.lua is the only source of binds"))
+    }
+
+    @Test func aBrokenFileFailsWithTheLine() {
+        let check = shortcutsCheck(fileExists: true, imported: true, count: 0, problem: "shortcuts.toml line 3: bad", overrides: [])
+
+        #expect(check.status == .fail)
+        #expect(check.detail == "shortcuts.toml line 3: bad")
+    }
+
+    @Test func aFileThatInitLuaDoesNotLoadWarnsAndNamesTheLine() {
+        let check = shortcutsCheck(fileExists: true, imported: false, count: 4, problem: nil, overrides: [])
+
+        #expect(check == DoctorCheck(
+            "shortcuts", .warn, "shortcuts.toml has 4 shortcuts, but init.lua does not call wm.shortcuts(): none is bound",
+            hint: "add `wm.shortcuts()` to init.lua"))
+    }
+
+    @Test func conflictsAreListed() {
+        let check = shortcutsCheck(
+            fileExists: true, imported: true, count: 4, problem: nil,
+            overrides: ["main: alt-h (init.lua replaces shortcuts.toml: focus left)", "main: alt-l (init.lua replaces shortcuts.toml: focus right)"])
+
+        #expect(check.status == .warn)
+        #expect(check.detail == "2 in conflict: main: alt-h (init.lua replaces shortcuts.toml: focus left); main: alt-l (init.lua replaces shortcuts.toml: focus right)")
+    }
+
+    @Test func aLoadedFileWithoutConflictsIsOk() {
+        #expect(shortcutsCheck(fileExists: true, imported: true, count: 4, problem: nil, overrides: []) == DoctorCheck("shortcuts", .ok, "4 shortcuts"))
+    }
+
+    @Test func aWarningDoesNotFailTheExitCode() {
+        let check = shortcutsCheck(fileExists: true, imported: false, count: 1, problem: nil, overrides: [])
+
+        #expect(doctorExitCode([check]) == 0)
+    }
+}

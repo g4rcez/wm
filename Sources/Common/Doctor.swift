@@ -50,6 +50,26 @@ public struct DoctorFacts: Codable, Equatable, Sendable {
     }
 }
 
+/// The check of `shortcuts.toml`. `problem` is the message of reading the file. `overrides` are the binds that replaced a
+/// bind of the other file (`wm.shortcuts()` and `wm.bind` for the same keys).
+public func shortcutsCheck(fileExists: Bool, imported: Bool, count: Int, problem: String?, overrides: [String]) -> DoctorCheck {
+    if let problem {
+        return DoctorCheck("shortcuts", .fail, problem, hint: "fix the line, or open Shortcuts… in the wm menu to save the file again")
+    }
+    guard fileExists else { return DoctorCheck("shortcuts", .skip, "no shortcuts.toml: init.lua is the only source of binds") }
+    guard imported else {
+        return DoctorCheck(
+            "shortcuts", .warn, "shortcuts.toml has \(count) shortcuts, but init.lua does not call wm.shortcuts(): none is bound",
+            hint: "add `wm.shortcuts()` to init.lua")
+    }
+    guard overrides.isEmpty else {
+        return DoctorCheck(
+            "shortcuts", .warn, "\(overrides.count) in conflict: " + overrides.joined(separator: "; "),
+            hint: "remove one of the two binds, or move `wm.shortcuts()` in init.lua to choose which one wins")
+    }
+    return DoctorCheck("shortcuts", .ok, "\(count) shortcuts")
+}
+
 public func daemonChecks(_ facts: DoctorFacts) -> [DoctorCheck] {
     let privacy = "System Settings > Privacy & Security"
     var checks: [DoctorCheck] = []

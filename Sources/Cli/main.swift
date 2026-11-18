@@ -144,6 +144,10 @@ if arguments.first == "lsp" {
     let config = defaultConfigURL()
     let luarc = config.deletingLastPathComponent().appendingPathComponent(".luarc.json")
     let text = luarcJSON(typesPath: types.path)
+    // An app built before `shortcuts.toml` has no schema: then there is nothing to set up for it.
+    let schema = types.appendingPathComponent("shortcuts.schema.json")
+    let taplo = config.deletingLastPathComponent().appendingPathComponent(".taplo.toml")
+    let taploText = FileManager.default.fileExists(atPath: schema.path) ? taploConfig(schemaURL: schema.absoluteString) : nil
     if flags.contains("--write") {
         if FileManager.default.fileExists(atPath: luarc.path), !flags.contains("--force") {
             die("\(luarc.path) exists already", hint: "use --force to replace it, or add \(types.path) to its workspace.library")
@@ -156,12 +160,23 @@ if arguments.first == "lsp" {
         }
         print("wrote \(luarc.path)")
         print("Open \(config.path) in an editor with lua-language-server and it completes the wm API.")
+        if let taploText {
+            if FileManager.default.fileExists(atPath: taplo.path), !flags.contains("--force") {
+                print("\n\(taplo.path) exists already: add this to it, or use --force to replace it:")
+                print(taploText, terminator: "")
+            } else {
+                do { try Data(taploText.utf8).write(to: taplo, options: .atomic) } catch { die("cannot write \(taplo.path): \(error)") }
+                print("wrote \(taplo.path)")
+                print("An editor with Taplo (Even Better TOML) completes and checks shortcuts.toml.")
+            }
+        }
     } else {
         print("type stubs  \(types.path)")
         print("config      \(config.path)")
         print("")
         print("Save this as \(luarc.path) (or run `wm lsp --write`):")
         print(text, terminator: "")
+        if let taploText { print("\nFor shortcuts.toml, save this as \(taplo.path):\n\(taploText)", terminator: "") }
     }
     exit(0)
 }
@@ -214,6 +229,7 @@ if arguments.first == "config" {
     switch checkConfig(at: url) {
     case .success(let summary):
         print("ok: \(url.path) (\(summary.binds) binds)")
+        for conflict in summary.overrides { print("warn: \(conflict)") }
         exit(0)
     case .failure(let error):
         die(error.message)
@@ -227,14 +243,24 @@ if arguments.first == "doctor" {
     }
     var checks: [DoctorCheck] = []
     let config = defaultConfigURL()
+    var summary = ConfigSummary(binds: 0)
     if !FileManager.default.fileExists(atPath: config.path) {
         checks.append(DoctorCheck("config", .warn, "no config at \(config.path): wm has no key binds", hint: "run `wm init <osx|windows|i3|hyprland|niri>`"))
     } else {
         switch checkConfig(at: config) {
-        case .success(let summary): checks.append(DoctorCheck("config", .ok, "\(config.path) (\(summary.binds) binds)"))
+        case .success(let result):
+            summary = result
+            checks.append(DoctorCheck("config", .ok, "\(config.path) (\(result.binds) binds)"))
         case .failure(let error): checks.append(DoctorCheck("config", .fail, error.message, hint: "fix the line, then save: wm loads the file again"))
         }
     }
+    let shortcutsFile = shortcutsURL(for: config)
+    var shortcutCount = 0
+    var shortcutProblem: String?
+    do { shortcutCount = try readShortcuts(at: shortcutsFile).count } catch { shortcutProblem = "\(error)" }
+    checks.append(shortcutsCheck(
+        fileExists: FileManager.default.fileExists(atPath: shortcutsFile.path), imported: summary.shortcutsImported,
+        count: shortcutCount, problem: shortcutProblem, overrides: summary.overrides.map(\.description)))
     if let answer = try? sendRequest(ClientRequest(args: ["version"]), timeoutSeconds: 2), answer.exitCode == 0 {
         // "wm 0.1.0 (Lua 5.4)": the daemon may be an older build than this `wm`.
         let running = answer.stdout.split(separator: " ").dropFirst().first.map(String.init) ?? "?"
