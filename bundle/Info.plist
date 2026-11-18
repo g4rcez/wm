@@ -22,6 +22,8 @@
     <true/>
     <key>NSAccessibilityUsageDescription</key>
     <string>wm moves and resizes windows to tile them.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>wm lists the tabs of your browsers in the palette and selects the one you choose.</string>
     <key>CFBundleURLTypes</key>
     <array>
         <dict>
