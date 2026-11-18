@@ -55,6 +55,9 @@ final class InputRouter {
     /// Set by the app: hint mode and scroll mode take over the keys while they are on.
     var hints: HintController?
     var scroller: ScrollController?
+    /// While set (the Shortcuts window records a shortcut), every key press goes to this closure and nothing else: no bind, remap
+    /// or sequence runs, and the app under the window does not see the key. The hyper key counts, as in any chord.
+    var capture: ((Chord) -> Void)?
     /// `wm pick`: while set, the next left click chooses a window (called with its location) and Escape or a right click cancels
     /// (called with `nil`). The click is swallowed with its drags and its release, so the app under the pointer never sees it.
     private var pickDone: ((CGPoint?) -> Void)?
@@ -144,6 +147,12 @@ final class InputRouter {
         var modifiers = Self.modifiers(of: flags)
         if hyperDown { modifiers.insert(.hyper) }
         let chord = Chord(modifiers: modifiers, key: key)
+        if let capture {
+            // The key up is swallowed too, as for a panel that used up a remap.
+            overlayHeld.insert(code)
+            if !isRepeat { capture(chord) }
+            return true
+        }
         let mode = manager.mode
 
         // A remap comes first: the key is its target everywhere, in the panels of wm too. A panel that is open gets the target.

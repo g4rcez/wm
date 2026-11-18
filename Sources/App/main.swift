@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var watcher: ConfigWatcher?
     private var permissionTimer: Timer?
     private var setup: OnboardingWindow?
+    private var shortcutsWindow: ShortcutsWindow?
     private let prefixLabel = PrefixLabel()
     /// The steps of a sequence that waits for its next key; the label lists the keys that can follow while it waits.
     private var pendingSteps: [Chord]?
@@ -28,6 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             configFolder: configURL.deletingLastPathComponent(),
             reload: { [controller] in Task.detached { _ = controller!.reload() } },
             setup: { [weak self] in self?.showSetup() },
+            shortcuts: { [weak self] in self?.showShortcuts() },
             templates: { [manager] in manager.templates(of: manager.focused) },
             tile: { [controller] name in Task.detached { _ = controller!.run(["layout", "tile", name]) } }
         )
@@ -80,6 +82,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.setError("Finish the setup: wm moves no window yet")
             showSetup()
         }
+    }
+
+    private func showShortcuts() {
+        if shortcutsWindow == nil {
+            shortcutsWindow = ShortcutsWindow(
+                configURL: defaultConfigURL(), input: controller.input, tapRunning: { [controller] in controller?.keyTapRunning ?? false })
+        }
+        shortcutsWindow?.show()
     }
 
     /// The setup window. Before the first Start it is the gate; after it, the menu item opens it to look at the setup again.

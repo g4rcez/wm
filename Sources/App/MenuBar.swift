@@ -10,6 +10,7 @@ final class MenuBar: NSObject, NSMenuDelegate {
     private let workspaceItem = NSMenuItem()
     private let reload: () -> Void
     private let setup: () -> Void
+    private let shortcuts: () -> Void
     private let tile: (String) -> Void
     /// The tile templates to list, as the config gives them for the layout in focus.
     private let templates: () -> [SplitTemplate]
@@ -20,9 +21,10 @@ final class MenuBar: NSObject, NSMenuDelegate {
     /// The active binding mode, or `nil` in `main`.
     private var modeShown: String?
 
-    init(configFolder: URL, reload: @escaping () -> Void, setup: @escaping () -> Void, templates: @escaping () -> [SplitTemplate], tile: @escaping (String) -> Void) {
+    init(configFolder: URL, reload: @escaping () -> Void, setup: @escaping () -> Void, shortcuts: @escaping () -> Void, templates: @escaping () -> [SplitTemplate], tile: @escaping (String) -> Void) {
         self.reload = reload
         self.setup = setup
+        self.shortcuts = shortcuts
         self.templates = templates
         self.tile = tile
         self.configFolder = configFolder
@@ -46,6 +48,9 @@ final class MenuBar: NSObject, NSMenuDelegate {
         let setupItem = NSMenuItem(title: "Setup…", action: #selector(openSetup), keyEquivalent: "")
         setupItem.target = self
         menu.addItem(setupItem)
+        let shortcutsItem = NSMenuItem(title: "Shortcuts…", action: #selector(openShortcuts), keyEquivalent: "")
+        shortcutsItem.target = self
+        menu.addItem(shortcutsItem)
         let folderItem = NSMenuItem(title: "Open Config Folder", action: #selector(openFolder), keyEquivalent: "")
         folderItem.target = self
         menu.addItem(folderItem)
@@ -138,5 +143,6 @@ final class MenuBar: NSObject, NSMenuDelegate {
 
     @objc private func reloadConfig() { reload() }
     @objc private func openSetup() { setup() }
+    @objc private func openShortcuts() { shortcuts() }
     @objc private func openFolder() { NSWorkspace.shared.open(configFolder) }
 }

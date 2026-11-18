@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "wm shortcuts.toml",
+  "description": "The binds that the Shortcuts window of wm manages. init.lua loads them with wm.shortcuts(). Keep it in step with Sources/Scripting/Shortcuts.swift.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "shortcut": {
+      "type": "array",
+      "description": "One bind, the same as one wm.bind (or wm.remap) call.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["keys"],
+        "oneOf": [{ "required": ["action"] }, { "required": ["remap"] }],
+        "properties": {
+          "keys": {
+            "type": "string",
+            "description": "A chord such as \"alt-h\" or \"cmd+ctrl-2\", or a sequence of chords joined by >, such as \"ctrl-p>h\". Modifiers: alt, cmd, ctrl, shift, hyper.",
+            "examples": ["alt-h", "hyper-k", "ctrl-p>h"]
+          },
+          "action": {
+            "type": "string",
+            "description": "A wm command line, the same text as `wm <command>` in a shell. An empty string swallows the key. Use either action or remap.",
+            "examples": ["focus left", "workspace 1", "window send workspace 1", "window snap left", "layout set scrolling", "mode resize", "mode main", "overview", "switcher", "exec open -a Terminal"]
+          },
+          "remap": {
+            "type": "string",
+            "description": "Types this key when `keys` is pressed, such as \"left\" or \"cmd-right\", or a media key: volume_up, volume_down, mute, play, next, previous, brightness_up, brightness_down. Use either action or remap.",
+            "examples": ["left", "cmd-right", "play"]
+          },
+          "mode": {
+            "type": "string",
+            "description": "The binding mode of the shortcut. Default \"main\".",
+            "default": "main"
+          },
+          "description": {
+            "type": "string",
+            "description": "Text for `wm list binds` and the key panel."
+          },
+          "repeating": {
+            "type": "boolean",
+            "description": "false: run once per press. true: run for each repeat of the held key (a single chord only)."
+          },
+          "release": {
+            "type": "boolean",
+            "description": "Run when the key comes up. A single chord only.",
+            "default": false
+          },
+          "long_press": {
+            "description": "Run when the key is held: true waits for binds.long_press_timeout, a number is the seconds to wait (0.1 to 3). A single chord only.",
+            "oneOf": [{ "type": "boolean" }, { "type": "number", "minimum": 0.1, "maximum": 3 }]
+          },
+          "universal": {
+            "type": "boolean",
+            "description": "The shortcut works in every mode.",
+            "default": false
+          },
+          "hidden": {
+            "type": "boolean",
+            "description": "Leave the key out of the key panel.",
+            "default": false
+          }
+        }
+      }
+    }
+  }
+}
