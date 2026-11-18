@@ -6,6 +6,9 @@ order: 3
 ---
 ## Troubleshooting
 
+Run `wm doctor` first. It checks the config, the daemon, the Accessibility and Screen Recording permissions and the login item,
+and says what to do for each one that is not ok. `wm config check` loads the config alone, and shows the line of an error.
+
 - **Nothing happens when I press a key.** Check that wm has Accessibility permission and that `wm daemon status` says it
   runs. Without a config, wm has no key binds.
 - **My config has `workspaces = "native"` and no key works.** wm no longer has native macOS desktops, so that value is an

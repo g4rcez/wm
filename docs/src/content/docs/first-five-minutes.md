@@ -4,7 +4,8 @@ description: "A small init.lua to start from: gaps, a border, vim-style focus ke
 group: Start
 order: 3
 ---
-To start from the keys of another system, run `wm init <osx|windows|i3|hyprland|niri>`. It asks for the main modifier
+The setup window of the first run can write a starter config for you (see [First run](/docs/install#first-run)).
+To start from the keys of another system in a terminal, run `wm init <osx|windows|i3|hyprland|niri>`. It asks for the main modifier
 (`alt`, `cmd`, `ctrl` or `hyper`; `--mod=alt` skips the question) and writes `~/.config/wm/init.lua`. When that file exists,
 `wm init` prints the template and leaves the file alone; `--force` replaces it.
 

@@ -4,7 +4,7 @@ description: "wm.config, wm.bind, wm.on, wm.dispatch, wm.query and the rest, wit
 group: Reference
 order: 2
 ---
-`wm.config`, `wm.bind`, `wm.remap`, `wm.mode`, `wm.gesture`, `wm.rule`, `wm.workspace`, `wm.on`, `wm.dispatch`, `wm.query`,
+`wm.config`, `wm.bind`, `wm.remap`, `wm.mode`, `wm.gesture`, `wm.rule`, `wm.workspace`, `wm.profile`, `wm.on`, `wm.dispatch`, `wm.query`,
 `wm.exec`, `wm.press`, `wm.log` and `wm.version`.
 
 - `wm.dispatch(command [, { window = id or selector }])` runs a command. It returns stdout, or `nil, stderr` when the
@@ -22,7 +22,7 @@ order: 2
   local here = wm.query("monitor")   -- the focused monitor: here.name, here.index, here.role
   ```
 - Events: `window_open`, `window_close`, `window_focus`, `window_title`, `window_floating`, `window_fullscreen`,
-  `window_moved`, `workspace_changed`, `special_changed`, `monitor_changed`, `layout_changed`, `mode_changed` and
+  `window_moved`, `workspace_changed`, `special_changed`, `monitor_changed`, `displays_changed`, `layout_changed`, `mode_changed` and
   `config_reloaded`. `wm.on(event, [filter,] handler)` takes an optional table of fields that must match.
 - `wm.exec(command)` runs a shell command and returns nothing. It does not wait for the command and it drops its output.
   wm runs it as `/bin/zsh -c "<command>"`, which does not read `.zshrc`: use absolute paths (`/opt/homebrew/bin/htop`).
@@ -43,7 +43,7 @@ order: 2
   ```
 - `wm.press(key)` types a key now (`"play"`, `"cmd-shift-4"`), and `wm.remap(chord, key)` makes a chord type another key. See
   [The hyper key, remaps and typing keys](/docs/keys#the-hyper-key-remaps-and-typing-keys).
-- `wm.config`, `wm.bind`, `wm.remap`, `wm.mode`, `wm.gesture`, `wm.rule` and `wm.workspace` work only while the config file
+- `wm.config`, `wm.bind`, `wm.remap`, `wm.mode`, `wm.gesture`, `wm.rule`, `wm.workspace` and `wm.profile` work only while the config file
   loads (not inside a bind or an event handler). `wm.dispatch`, `wm.exec`, `wm.press`, `wm.query`, `wm.log` and `wm.on` work
   everywhere. A function bind or handler runs on its own thread, so a slow one never blocks the keyboard; one that runs
   longer than 2 seconds is stopped. `wm.log` writes to `wm logs`, a script that fails too (source `lua`).

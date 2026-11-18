@@ -16,6 +16,7 @@ FOCUS AND MOVE   focus <dir> | focus back | focus next|prev | focus window <id> 
                  move <dir> [points] | swap <dir> | resize <width|height|smart> <+n|-n>
 WINDOWS          window close | float [on|off] | center | fullscreen | native-fullscreen | maximize | pseudo | raise-floating | rescue
                  window snap <left|right|top|bottom|top-left|top-right|bottom-left|bottom-right|center> | sticky
+                 window minimize | swipe <left|right|up|down>
                  window mark <name> | unmark [name] | remember [--title] | forget [--title]
                  window send workspace <name> | monitor <monitor> | strip <horizontal|vertical>
 WORKSPACES       workspace <name|back|next|prev|empty> | workspace special [name]
@@ -25,12 +26,19 @@ LAYOUT           layout set <scrolling|tiling> | balance | rotate | flip | tile 
                  layout stack <join|leave|tabs|equalize|height> | column move <first|last|n>
 INTERFACE        switcher | overview | palette | menu | mode <name|back> | pointer <window|monitor> | zen [on|off]
                  exec [options] <command> | batch <commands> | set <key> <value> | notify <text> | key send <chord> | key press <chord>
-INSPECT          list [windows|workspaces|monitors|keyboards|memory|binds] | query [what] | subscribe [--snapshot] [event ...] | logs [-n count] [-f] [-o otel|json]
+INSPECT          doctor [--json] | list [windows|workspaces|monitors|keyboards|memory|binds] | query [what] | subscribe [--snapshot] [event ...] | logs [-n count] [-f] [-o otel|json]
 DAEMON           daemon start | stop | status | reload | version
 EDITOR           lsp [--write] [--force]
 CONFIG           init <osx|windows|i3|hyprland|niri> [--mod=<alt|cmd|ctrl|hyper>] [--force]
+                 config check [path]
 SHELL            completion <zsh|bash>
 ```
+
+`wm doctor` checks the config, the daemon, Accessibility, the key tap and Screen Recording, and prints a hint for each check that is
+not ok. It exits with 1 when a check failed, and `--json` prints the checks for scripts. `wm config check [path]` loads a
+config file in a new Lua state without applying it, and prints the first error with its line. Neither needs the daemon. In
+`config check`, `wm.exec` and `wm.dispatch` do nothing and `wm.query` finds nothing, so a config that needs a query result while
+it loads fails there.
 
 Options for every command: `--window <w>` acts on that window, `--json` prints JSON (`list`, `daemon status`),
 `-v` or `--verbose` prints the state after the command, and `-h` or `--help` shows help.

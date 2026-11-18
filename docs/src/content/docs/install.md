@@ -37,9 +37,20 @@ make install CODESIGN_IDENTITY="<name>"    # build, sign, copy to /Applications/
 it never installs an ad hoc build that loses the permissions at every rebuild. `APP_DIR` and `BIN_DIR` change where it
 installs. It stops the running wm, replaces `wm.app` and starts the new one.
 
+## First run
+
+The first time that wm starts, it opens a **setup window**, and it moves no window until you press **Start managing
+windows**. The window shows the Accessibility and Screen Recording permissions (it checks them each second, so you can grant
+them in System Settings and come back), and, when you have no config, offers a starter: pick a preset and a modifier key, and
+**Write config** saves `~/.config/wm/init.lua`. Start is enabled when Accessibility is granted.
+
+Every user sees the window once, an upgrade included. Pressing Start writes the file `~/.local/state/wm/onboarded`
+(`$XDG_STATE_HOME/wm/onboarded` when that variable is set). Delete the file to see the window again, or choose **Setup…** in
+the menu bar menu to look at it without the gate. `wm doctor` shows `setup` as not finished until you press Start.
+
 ## Permissions
 
-macOS asks for **Accessibility** the first time wm starts. Grant it in System Settings > Privacy & Security >
+macOS asks for **Accessibility** when you press Grant in the setup window. Grant it in System Settings > Privacy & Security >
 Accessibility. wm cannot move windows without it.
 
 **Screen Recording** is optional. wm uses it for the window pictures in the Alt+Tab switcher and in the overview. Without

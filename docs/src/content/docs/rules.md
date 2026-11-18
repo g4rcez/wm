@@ -10,6 +10,8 @@ order: 5
 |---|---|
 | `app` | Bundle id or app name. Exact match, case does not matter. |
 | `title` | A regular expression, matched anywhere in the title. |
+| `role`, `subrole` | The Accessibility role and subrole of the window, for example `subrole = "AXDialog"`. Exact match, case does not matter. |
+| `identifier` | A regular expression, matched anywhere in the `AXIdentifier` of the window. It tells apart windows that have the same title, such as a settings window and a document. Many apps set none. |
 | `float` | Open the window floating. |
 | `workspace`, `layout` | Where it opens, and the layout of that workspace if it is empty. |
 | `size`, `center` | For floating windows: `{ width, height }` as fractions of the screen (or points above 1), and centering. |
@@ -21,7 +23,14 @@ order: 5
 | `stop = false` | Let later rules add to this one. By default the first match is the last. |
 | `name` | A label. It shows in `wm logs` (`rule=finder float,center`) and is what `wm.floating.disable` takes. It matches nothing. |
 
-A rule needs `app` or `title`. Rules apply in order, and later values win.
+A rule needs at least one of `app`, `title`, `role`, `subrole` or `identifier`. A window must match all the fields of a rule. Rules apply in order, and later values win.
+
+```lua
+-- Every dialog of Notes floats; its documents tile.
+wm.rule({ app = "com.apple.Notes", subrole = "AXDialog", float = true })
+```
+
+`wm logs` prints the role, subrole and identifier of windows that wm skips. Use it to find the value for a rule.
 
 ### Default floating rules
 

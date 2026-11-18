@@ -4,6 +4,16 @@
 
 # wm
 
+## Demo
+
+[![A 56-second walkthrough of wm: the setup window, then four windows that tile, with the keys on screen as they are pressed](docs/assets/wm-walkthrough.png)](docs/assets/wm-walkthrough.mp4)
+
+A 56-second walkthrough, from the first run to the keys that you use each day. You pick a starter config and press Start,
+and wm tiles the windows. Then the keys focus, swap, split, float and fullscreen windows, and move them between
+workspaces. Each key shows on screen when it is pressed. The windows are demo windows.
+
+## Overview
+
 wm is a tiling window manager for macOS. It is written in Swift, runs with SIP on, and you configure it in Lua.
 
 It has three layouts. **Scrolling** puts windows in columns on a strip that moves sideways, as niri and PaperWM do.
@@ -20,6 +30,8 @@ wm has no default key bindings. Until you bind keys in `init.lua`, it only react
 
 ## Table of contents
 
+- [Demo](#demo)
+- [Overview](#overview)
 - [Features](#features)
   - [Layouts](#layouts)
   - [Workspaces and monitors](#workspaces-and-monitors)
@@ -81,7 +93,9 @@ wm has no default key bindings. Until you bind keys in `init.lua`, it only react
 ### Gestures and mouse
 
 - **Trackpad swipes with 3 or 4 fingers** work with no config: workspaces, overview, and scrolling the strip. Swipes with
-  modifier keys (`wm.gesture`) are also available. See [Gestures](https://wm.garcez.dev/docs/gestures).
+  modifier keys (`wm.gesture`) are also available. Two-finger swipes and pinches on a window's title bar (snap, move,
+  maximize, minimize, close, as in Swish) are opt-in with `trackpad = { title_bar = true }`. See
+  [Gestures](https://wm.garcez.dev/docs/gestures).
 - **Mouse:** drag the edges of tiles to resize, drag a tile to swap, and hold a modifier to move or resize any window. See
   [Mouse](https://wm.garcez.dev/docs/mouse).
 
