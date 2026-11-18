@@ -32,6 +32,16 @@ function wm.bind(chord, action, options)
   done(native.bind("main", chord, action, options))
 end
 
+-- Binds the [[shortcut]] entries of shortcuts.toml (next to this file; the Shortcuts window writes it). A `wm.bind` made
+-- after this call for the same keys replaces the shortcut, so call it first to let the config win, or last to let the file win.
+function wm.shortcuts()
+  local list, err = native.shortcuts()
+  if not list then error(err, 2) end
+  for _, shortcut in ipairs(list) do
+    done(native.bind(shortcut.mode, shortcut.keys, shortcut.action, shortcut.options, "shortcuts"))
+  end
+end
+
 -- Types `target` when `chord` is pressed: the key goes down, repeats and comes up with it.
 function wm.remap(chord, target, options)
   expect(type(chord) == "string", "wm.remap expects a chord string like 'hyper-k'")
@@ -288,6 +298,10 @@ final class LuaState {
     fileprivate var pressFromHold: [String: Set<Chord>] = [:]
     fileprivate var noRepeat: [String: Set<Chord>] = [:]
     fileprivate var bindRecords: [BindRecord] = []
+    fileprivate var overrides: [BindOverride] = []
+    fileprivate var shortcutsImported = false
+    /// The config file that runs: `wm.shortcuts()` reads the `shortcuts.toml` next to it.
+    fileprivate var configURL: URL?
     fileprivate var gestures: [Gesture] = []
     fileprivate var modeOptions: [String: ModeOptions] = [:]
     fileprivate var longPressTimeouts: [String: [Chord: Double]] = [:]
@@ -310,6 +324,7 @@ final class LuaState {
     deinit { lua_close(L) }
 
     func run(configURL: URL) throws -> LoadedConfig {
+        self.configURL = configURL
         let directory = configURL.deletingLastPathComponent().path
         let setup = "local dir = ...; package.path = dir .. '/?.lua;' .. dir .. '/?/init.lua;' .. package.path"
         guard luaL_loadstring(L, setup) == LUA_OK else { throw ConfigError(message: popError()) }
@@ -329,7 +344,8 @@ final class LuaState {
             settings: settings, binds: binds, rules: rules, workspaceLayouts: workspaceLayouts, workspaceRules: workspaceRules,
             sequences: sequences,
             releaseBinds: releaseBinds, longPressBinds: longPressBinds, holdBinds: holdBinds, noRepeat: noRepeat, bindRecords: bindRecords,
-            gestures: gestures, modeOptions: modeOptions, longPressTimeouts: longPressTimeouts)
+            gestures: gestures, modeOptions: modeOptions, longPressTimeouts: longPressTimeouts,
+            overrides: overrides, shortcutsImported: shortcutsImported)
     }
 
     /// `wm.commands = { ... }` is the same as `wm.config { commands = { ... } }`; it is read after the config file has run.
@@ -383,7 +399,7 @@ final class LuaState {
     private func installAPI() throws {
         guard luaL_loadstring(L, prelude) == LUA_OK else { throw ConfigError(message: popError()) }
         let functions: [(String, lua_CFunction)] = [
-            ("config", nativeConfig), ("bind", nativeBind), ("gesture", nativeGesture), ("reset_mode", nativeResetMode), ("rule", nativeRule), ("workspace", nativeWorkspace),
+            ("config", nativeConfig), ("bind", nativeBind), ("shortcuts", nativeShortcuts), ("gesture", nativeGesture), ("reset_mode", nativeResetMode), ("rule", nativeRule), ("workspace", nativeWorkspace),
             ("on", nativeOn), ("dispatch", nativeDispatch), ("query", nativeQuery), ("exec", nativeExec), ("log", nativeLog),
         ]
         lua_createtable(L, 0, Int32(functions.count))
@@ -507,6 +523,24 @@ private extension BindAction {
     }
 }
 
+/// The shortcuts of the `shortcuts.toml` next to the config file, as a Lua array, or `nil, message`.
+private func nativeShortcuts(_ L: OpaquePointer?) -> Int32 {
+    let state = owner(L)
+    do {
+        guard state.loading, let configURL = state.configURL else {
+            throw ConfigError(message: "wm.shortcuts can only be called while the config file loads")
+        }
+        let list = try readShortcuts(at: shortcutsURL(for: configURL))
+        state.shortcutsImported = true
+        pushValue(L, .array(list.map(\.luaValue)))
+        return 1
+    } catch {
+        lua_pushnil(L)
+        lua_pushstring(L, "\(error)")
+        return 2
+    }
+}
+
 private func nativeBind(_ L: OpaquePointer?) -> Int32 {
     reply(L, loadingOnly: "wm.bind") { state in
         guard let mode = readString(L, 1), lua_type(L, 1) == LUA_TSTRING else { throw ConfigError(message: "wm.bind: the mode name must be a string") }
@@ -558,7 +592,18 @@ private func nativeBind(_ L: OpaquePointer?) -> Int32 {
             throw ConfigError(message: "mode '\(mode)': the options for '\(text)' must be a table")
         }
         let target = options.universal ? universalMode : mode
-        if trigger == .press || trigger == .hold { try state.checkConflicts(mode: target, chords: chords) }
+        // `wm.shortcuts()` passes "shortcuts" as the fifth argument: the bind comes from `shortcuts.toml`.
+        let source: BindSource = lua_type(L, 5) == LUA_TSTRING && readString(L, 5) == "shortcuts" ? .shortcuts : .lua
+        if trigger == .press || trigger == .hold {
+            do { try state.checkConflicts(mode: target, chords: chords) } catch let error as ConfigError {
+                // A conflict always shares the first chord. Say when the other bind may be in the TOML file.
+                let first = chords[0].description
+                let fromFile = source == .shortcuts || state.bindRecords.contains {
+                    $0.mode == target && $0.source == .shortcuts && $0.keys.split(separator: ">").first.map(String.init) == first
+                }
+                throw fromFile ? ConfigError(message: "\(error.message) (one of the binds is in \(shortcutsFileName))") : error
+            }
+        }
 
         let action: BindAction
         switch lua_type(L, 3) {
@@ -610,8 +655,11 @@ private func nativeBind(_ L: OpaquePointer?) -> Int32 {
         }
         // The canonical text, so the label can read the chords back: `alt-h`, `ctrl-p>h`.
         let keys = chords.map(\.description).joined(separator: ">")
+        if let previous = state.bindRecords.first(where: { $0.mode == target && $0.keys == keys && $0.trigger == trigger }), previous.source != source {
+            state.overrides.append(BindOverride(mode: target, keys: keys, trigger: trigger, kept: source, replacedAction: previous.action))
+        }
         state.bindRecords.removeAll { $0.mode == target && $0.keys == keys && $0.trigger == trigger }
-        state.bindRecords.append(BindRecord(mode: target, keys: keys, trigger: trigger, action: action.recordText, options: options))
+        state.bindRecords.append(BindRecord(mode: target, keys: keys, trigger: trigger, action: action.recordText, options: options, source: source))
     }
 }
 

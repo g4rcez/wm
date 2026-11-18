@@ -57,6 +57,40 @@ public struct ModeOptions: Sendable, Equatable {
     }
 }
 
+/// Where a bind was made: a `wm.bind` call in the Lua config, or a `[[shortcut]]` of `shortcuts.toml`.
+public enum BindSource: String, Sendable, Equatable {
+    case lua, shortcuts
+}
+
+/// A bind that replaced another one with the same mode, keys and trigger. When `shortcuts.toml` loads before the
+/// `wm.bind` calls of `init.lua` (the default), the Lua bind is the one that stays.
+public struct BindOverride: Sendable, Equatable, CustomStringConvertible {
+    public var mode: String
+    public var keys: String
+    public var trigger: BindTrigger
+    /// The source of the bind that stays, and the command text of the bind that it replaced.
+    public var kept: BindSource
+    public var replacedAction: String
+
+    public init(mode: String, keys: String, trigger: BindTrigger, kept: BindSource, replacedAction: String) {
+        self.mode = mode
+        self.keys = keys
+        self.trigger = trigger
+        self.kept = kept
+        self.replacedAction = replacedAction
+    }
+
+    /// The same text as `Shortcut.identity`: it tells which shortcut of the file this is about.
+    public var identity: String { "\(mode)|\(keys)|\(trigger.rawValue)" }
+
+    /// For `wm doctor`: `main: alt-h (init.lua replaces shortcuts.toml: focus left)`.
+    public var description: String {
+        let winner = kept == .lua ? "init.lua" : shortcutsFileName
+        let loser = kept == .lua ? shortcutsFileName : "init.lua"
+        return "\(mode): \(keys) (\(winner) replaces \(loser): \(replacedAction))"
+    }
+}
+
 /// One bind as `wm list binds` shows it.
 public struct BindRecord: Sendable, Equatable {
     /// The mode name; `*` for a bind that works in every mode.
@@ -67,13 +101,15 @@ public struct BindRecord: Sendable, Equatable {
     /// The command text, or `function` for a Lua function.
     public var action: String
     public var options: BindOptions
+    public var source: BindSource
 
-    public init(mode: String, keys: String, trigger: BindTrigger, action: String, options: BindOptions) {
+    public init(mode: String, keys: String, trigger: BindTrigger, action: String, options: BindOptions, source: BindSource = .lua) {
         self.mode = mode
         self.keys = keys
         self.trigger = trigger
         self.action = action
         self.options = options
+        self.source = source
     }
 }
 
@@ -217,6 +253,10 @@ public struct LoadedConfig: Sendable {
     public var noRepeat: [String: Set<Chord>]
     /// Every bind, in the order they were made.
     public var bindRecords: [BindRecord]
+    /// The binds that replaced a bind from the other source (`wm doctor` reports them).
+    public var overrides: [BindOverride]
+    /// `wm.shortcuts()` ran: `init.lua` loads `shortcuts.toml`.
+    public var shortcutsImported: Bool
     /// Swipes with a modifier (`wm.gesture`).
     public var gestures: [Gesture]
     /// The options of the modes that have some (`wm.mode`), by mode name.
@@ -243,8 +283,12 @@ public struct LoadedConfig: Sendable {
         bindRecords: [BindRecord] = [],
         gestures: [Gesture] = [],
         modeOptions: [String: ModeOptions] = [:],
-        longPressTimeouts: [String: [Chord: Double]] = [:]
+        longPressTimeouts: [String: [Chord: Double]] = [:],
+        overrides: [BindOverride] = [],
+        shortcutsImported: Bool = false
     ) {
+        self.overrides = overrides
+        self.shortcutsImported = shortcutsImported
         self.modeOptions = modeOptions
         self.longPressTimeouts = longPressTimeouts
         self.settings = settings

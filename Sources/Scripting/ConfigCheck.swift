@@ -12,6 +12,16 @@ public final class NoopBridge: HostBridge, @unchecked Sendable {
 
 public struct ConfigSummary: Equatable, Sendable {
     public var binds: Int
+    /// `init.lua` calls `wm.shortcuts()`.
+    public var shortcutsImported = false
+    /// Binds that replaced a bind from the other source.
+    public var overrides: [BindOverride] = []
+
+    public init(binds: Int, shortcutsImported: Bool = false, overrides: [BindOverride] = []) {
+        self.binds = binds
+        self.shortcutsImported = shortcutsImported
+        self.overrides = overrides
+    }
 }
 
 /// `wm config check`: runs the config file in a fresh Lua state and says whether it loads. Nothing is applied.
@@ -21,7 +31,7 @@ public func checkConfig(at url: URL) -> Result<ConfigSummary, ConfigError> {
     }
     do {
         let loaded = try LuaHost(bridge: NoopBridge()).load(configURL: url)
-        return .success(ConfigSummary(binds: loaded.bindRecords.count))
+        return .success(ConfigSummary(binds: loaded.bindRecords.count, shortcutsImported: loaded.shortcutsImported, overrides: loaded.overrides))
     } catch let error as ConfigError {
         return .failure(error)
     } catch {

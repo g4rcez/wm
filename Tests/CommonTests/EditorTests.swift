@@ -33,3 +33,19 @@ struct EditorTests {
         #expect(text.hasSuffix("}\n"))
     }
 }
+
+struct TaploConfigTests {
+    @Test func theTaploConfigPointsShortcutsTomlAtTheSchema() {
+        let text = taploConfig(schemaURL: "file:///Applications/wm.app/Contents/Resources/types/shortcuts.schema.json")
+
+        #expect(text == """
+            # Made by `wm lsp --write`: completion and checks for shortcuts.toml.
+            [[rule]]
+            include = ["shortcuts.toml"]
+
+            [rule.schema]
+            path = "file:///Applications/wm.app/Contents/Resources/types/shortcuts.schema.json"
+
+            """)
+    }
+}

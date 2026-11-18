@@ -26,3 +26,17 @@ public func luarcJSON(typesPath: String) -> String {
     // JSONSerialization writes `"key" : value`; the usual style is `"key": value`.
     return String(decoding: data, as: UTF8.self).replacingOccurrences(of: "\" : ", with: "\": ") + "\n"
 }
+
+/// The `.taplo.toml` that makes Taplo (the TOML language server, in the "Even Better TOML" extension) complete and check
+/// `shortcuts.toml` with the schema at `schemaURL`.
+public func taploConfig(schemaURL: String) -> String {
+    """
+    # Made by `wm lsp --write`: completion and checks for shortcuts.toml.
+    [[rule]]
+    include = ["shortcuts.toml"]
+
+    [rule.schema]
+    path = "\(schemaURL)"
+
+    """
+}

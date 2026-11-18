@@ -546,6 +546,11 @@ function wm.config(options) end
 ---@param options? wm.BindOptions
 function wm.bind(chord, action, options) end
 
+--- Binds the `[[shortcut]]` entries of `shortcuts.toml`, the file next to this config that the Shortcuts window writes.
+--- A `wm.bind` made after this call for the same keys replaces the shortcut (`wm doctor` warns about it): call it first to
+--- let this file win, or last to let `shortcuts.toml` win. A missing file binds nothing. Only while the config file loads.
+function wm.shortcuts() end
+
 --- Types a key when a chord is pressed. The key goes down, repeats and comes up with it, and the modifiers that are held
 --- besides the ones of `chord` go with it: with `wm.remap("hyper-h", "left")`, `hyper-shift-h` types shift-left.
 --- `target` is a chord such as `left`, `cmd-right`, or a media key: volume_up, volume_down, mute, play, next, previous,

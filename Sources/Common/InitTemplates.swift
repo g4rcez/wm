@@ -39,6 +39,10 @@ private let initPrelude = #"""
 local drag = mod == "hyper" and "alt" or mod
 local terminal = "open -n -a Terminal"
 
+-- Binds from shortcuts.toml, the file that the Shortcuts window writes. A bind below for the same keys replaces the shortcut:
+-- move this line to the end of the file to let shortcuts.toml win, or delete it to use only this file.
+wm.shortcuts()
+
 local function bind(keys, command) wm.bind(mod .. "-" .. keys, command) end
 
 """#
