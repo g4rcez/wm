@@ -64,6 +64,10 @@ Accessibility. wm cannot move windows without it.
 **Screen Recording** is optional. wm uses it for the window pictures in the Alt+Tab switcher and in the overview. Without
 it those tiles show the app icon and the title.
 
+**Automation** is optional. The palette uses it to read and select the tabs of browsers (and to bring Rex to the front), so
+macOS asks once for each of those apps, the first time the palette opens while the app runs. Without it the palette lists no
+tabs of that app. Change it in System Settings > Privacy & Security > Automation > `wm`.
+
 The menu bar icon needs one more switch: System Settings > Menu Bar > "Allow in the Menu Bar" > `wm`.
 
 ### Signing
@@ -265,6 +269,7 @@ wm.rule { app = "com.apple.Notes", monitor = 2, width = 0.4, focus = false }
 ```sh
 wm list windows                                   # a table of every window
 wm list windows --focused --json                  # JSON for scripts
+wm pick                                           # click a window: its id, app, title and a wm.rule for it
 wm --window app:com.apple.Notes window close      # act on a window by app, title or pid
 wm batch 'workspace 2; layout set tiling'         # several commands, stops at the first error
 wm set gaps.inner 4                               # change a config value until the next reload
@@ -536,8 +541,41 @@ wm.gesture { fingers = 3, direction = "down", command = "workspace prev" }
 | `focus = false` | Open without taking the focus. The window that had it gets it back. |
 | `run` | A command or a list of commands to run after the other actions. |
 | `stop = false` | Let later rules add to this one. By default the first match is the last. |
+| `name` | A label. It shows in `wm logs` (`rule=finder float,center`) and is what `wm.floating.disable` takes. It matches nothing. |
 
 A rule needs `app` or `title`. Rules apply in order, and later values win.
+
+#### Default floating rules
+
+Some windows should not be tiled: the picture-in-picture window of Google Meet, the popup of a browser extension, Finder, Preview.
+wm adds a list of rules for them, after the rules of your config, so these windows start **floating and centered** without any
+setting. The list is `wm.floating.defaultRules`, and each entry is a normal `wm.rule` with a `name`:
+
+| Name | Windows |
+|---|---|
+| `helium-popups`, `chrome-popups`, `chromium-popups`, `edge-popups`, `brave-popups`, `firefox-popups` | Windows of the browser that are not the browser: picture-in-picture (Google Meet, the "Picture-in-Picture" window of Firefox), extension popups, `about:blank` popups. A browser window has the name of the browser in its title (`... - Helium`); these have not. An empty title is a dialog and floats already. |
+| `finder`, `preview`, `calculator`, `activity-monitor`, `archive-utility`, `quicktime-player` | The windows of these apps. |
+| `system-settings`, `raycast-settings` | System Settings and the settings window of Raycast. |
+
+Only the Helium title was checked on a real Mac. The others come from how the browsers name their windows: `... - Google Chrome`,
+`... - Chromium`, and the name `Brave`, `Edge` or `Firefox` anywhere in the title (Edge writes a zero-width space inside its name, and
+Firefox uses a long dash). The bundle ids of Chromium (`org.chromium.Chromium`) and Edge (`com.microsoft.edgemac`) were not checked
+either. Read `wm logs` first if a browser does not match, because a pattern that misses the real windows would float all of them.
+
+```lua
+wm.floating.disable("finder", "preview")        -- tile these again (or: wm.floating.disable { "finder", "preview" })
+wm.floating.enabled = false                     -- no default rule at all
+
+wm.rule { app = "com.apple.finder", float = false }   -- a rule of yours for the same window wins: the config goes first
+
+for _, rule in ipairs(wm.floating.defaultRules) do    -- change the list itself
+  if rule.name == "preview" then rule.size = { 0.5, 0.85 } end
+end
+table.insert(wm.floating.defaultRules, { name = "notes", app = "com.apple.Notes", float = true, center = true })
+```
+
+An unknown name in `wm.floating.disable` is a config error. Rules apply to windows that open after the reload; use `wm window center`
+for one that is open already.
 
 ### Workspace rules
 
@@ -727,6 +765,10 @@ workspace has windows, the window joins the layout and `balance` runs. Add `--ti
   window that is mostly off screen back into the work area of its monitor (a window larger than the area is cut down).
 - `window native-fullscreen` enters or leaves macOS fullscreen. A window in macOS fullscreen has a Space of its own, so
   wm leaves it out of the layout until it comes back. `list windows` shows it as `fullscreen`.
+  While that Space is in front, macOS shows wm only the windows of that Space, so every other window looks gone. wm asks
+  macOS where a window that it cannot see is (the private SkyLight function `CGSCopySpacesForWindows`), and keeps the window,
+  with its workspace and its place in the layout, while it is on another Space. It forgets a window only when no Space has it.
+  If the function is missing on a future macOS, wm forgets such windows as before.
 - `window mark <name>` gives the window a name, and `window unmark [name]` takes it away (without a name, all marks of the
   window). A name belongs to one window, so marking another window with it moves the mark. `focus mark <name>` focuses the
   window, and `--window mark:<name>` acts on it. Marks last until the window closes, and wm saves them with the layout.
@@ -828,14 +870,33 @@ wm.bind("alt-space>shift-r", "window forget", { description = "Forget this windo
   entry without a title. Remembering again replaces the entry; `window forget` (with the same `--title`) removes it.
 - **When it applies:** only to windows that open while wm runs. Windows that are open when the daemon starts do not move.
   The memory wins over `wm.rule` for the same window, and a window that comes back always takes the focus.
+- **Only managed windows:** wm manages standard windows and dialogs, and not windows in native fullscreen. Memory, rules and
+  `window remember` do not reach any other window (some games and helper windows). From a key bind, `window remember` and
+  `window forget` show a notification with what they did, or why they could not (`the focused window is not managed by wm`).
+  `wm logs` has a `window skipped` line, with the role and the subrole, for each new window that wm left alone.
 - `wm list memory` (`--json` for scripts) shows the entries, and `wm.query("memory")` returns them to the config. They are in
   `~/.local/state/wm/memory.json` (`$XDG_STATE_HOME/wm/memory.json`), next to `state.json`. The file has no window ids, so it
   survives a reboot.
 
+#### Floating windows remember their place
+
+Nobody has to ask for this one. When a **floating** window closes, wm keeps where it was and how big it was. The next window that
+a rule floats (`float = true`, also the [default floating rules](#default-floating-rules): the picture-in-picture window of Meet,
+Finder, Preview) opens **there**, with that size, instead of the place that the rule or the app gives. Move or resize a Finder window
+once, close it, and the next Finder window opens at that place.
+
+- **Matching:** a window with the same app and exactly the same title gets its own place (the Meet window); any other window of
+  the app gets the place of the last one that closed (a Finder window of another folder). The place is a fraction of the work area of
+  the monitor, so it fits a monitor of another size. The window also opens on that monitor, when it is connected.
+- **What it does not touch:** windows that were open when the daemon started, a window that `window remember` knows (that wins), a
+  tiled window (a window that you floated by hand does not open floating next time), and dialogs, which wm floats by themselves.
+- **Off:** `wm.config { floating = { remember_position = false } }`. The places are in `float-memory.json` next to `memory.json`
+  (the last 200 are kept); delete the file to forget them all.
+
 ## Command palette
 
 `wm.bind("alt-p", "palette")` opens one text field above a list. Without a prefix it lists the running apps, each
-followed by its windows; typing finds windows (by title, app, workspace and mark) and apps. Every row has an icon: the
+followed by its windows; typing finds windows (by title, app, workspace and mark), apps and tabs. Every row has an icon: the
 app icon, or a small window drawn for the wm command. `>` finds wm commands:
 Tab puts a command in the field, and after the command name the list shows what can follow (workspaces, modes, marks,
 the values that the command takes). `/` finds the menu items of the app that was in front, with its icon. A fuzzy match is enough:
@@ -847,8 +908,27 @@ With `switcher.thumbnails` on and the Screen Recording permission given (the sam
 windows show a preview on the right: the picture of the selected window, or of the most recent window of the selected app.
 A window of another workspace has a picture too: wm captures windows that it parked off screen.
 
-Drag the panel by its background (the header, the preview or the footer) to move it. wm keeps the spot as a fraction of the
-screen, and opens the palette there on the screen that has the mouse.
+**Tabs.** Typing also finds tabs. `palette tabs` lists all of them, and an app that has no tabs shows its windows there,
+because a window is its tab. The apps go by how recently you used them, so the app that you used last is at the top; an
+app with tabs (a browser, Rex) shows its tabs and not its windows. Return selects the tab and focuses its window, on
+the workspace where the window is. The sources:
+
+- **Chromium browsers** that run: Chrome, Brave, Edge, Helium, Arc, Vivaldi, Chromium and yab. A row is the title and the
+  address of a tab, so `gith` finds a tab by its URL. wm asks the browser through Apple events (see Permissions).
+- **Rex:** the tabs of every session, with the name of the session. The app goes to the tab when its Remote Control
+  setting is on; without it wm can only make the tab the active one of the session.
+- **tmux:** every window of the default server, with its session, program and directory. wm switches the client that shows
+  that session (else the first client) to the window, and focuses the terminal of the client.
+
+wm reads the tabs when the palette opens, and shows the ones of the last time until the new ones are there. It starts no
+browser and no server to do so. Limits: Safari and Firefox are not read. A tmux window needs an attached client. For tmux
+inside Rex, wm focuses the most recent Rex window, not the Rex tab that holds the client. When two windows of a browser show
+a tab with the same title, wm can focus the other window; the tab is selected all the same.
+
+Drag the panel by its background (the header or the preview) to move it. wm keeps the spot as a fraction of the
+screen, and opens the palette there on the screen that has the mouse. `palette reset` forgets the spot, so the palette is
+centered, a little above the middle, again: run it from the `>` list or bind it. Cmd-0 does the same while the palette is
+open.
 
 **Cmd+Tab.** `palette --cmdtab` works like the app switcher of macOS, with the thumbnails of the palette:
 
@@ -873,6 +953,93 @@ shows what the app gives it: items that an app adds only when you open its menu 
 takes a moment. A read looks at four levels and at most 3000 items. `wm --window app:Notes menu` shows the menus of
 another app.
 
+## Hints and scroll mode
+
+Keyboard clicking and scrolling, as in Homerow. wm has no default keys for them:
+
+```lua
+wm.bind("cmd-shift-space", "hints")
+wm.bind("cmd-shift-j", "scroll")
+```
+
+### Hints
+
+`hints` works like the flash plugin of Neovim. It puts a label of **two letters** on every clickable element of the focused
+window (buttons, links, fields, tabs, rows, checkboxes), of the menu bar, of the menu extras on its right, and of the Dock.
+Type the two letters and wm clicks the element. With more than 676 elements the labels have three letters.
+
+Press `/` to search instead. The search works as in fzf: type words separated by spaces, in any order, and each word matches
+an element when its letters are in the title, description or value of the element in that order, with other letters between
+them (`sv as` and `as sv` both find "Save As"; case does not count). Only the elements that match keep a label. As in
+flash, a letter that could continue the last word in some match is never the first letter of a label, so every key is a label
+key or a search key, not both. While the last word is empty (right after `/` or a space) there are no labels. When the
+letters that are left for labels are too few for all the matches, the first matches (in reading order) get one: go on typing
+to narrow the search.
+
+| Key | Effect |
+| --- | --- |
+| two letters | click the element of that label |
+| second letter with `Shift` | right click |
+| second letter with `Cmd` | Cmd-click (a link opens in a new tab) |
+| `/` | start a search |
+| `Backspace` | undo a label letter, then a letter of the text, then the search |
+| `Tab`, `Down`, `Ctrl-N` / `Shift-Tab`, `Up`, `Ctrl-P` | focus the next, previous match |
+| `Return` | click the focused element, or the only match (`Shift`: right click) |
+| `Return` again within 300 ms | double click |
+| `Esc`, a mouse click | close |
+
+A wrong second letter cancels the first one. A shortcut with Cmd, Ctrl or Alt ends the mode and goes to the app. Web pages work
+too. A browser builds the tree of a page only for an assistive tool, so when wm finds a page with nothing in it, it sets
+`AXManualAccessibility` and `AXEnhancedUserInterface` on the app (once for each app) and reads again. wm turns the second one
+off and on around its own window moves, so the animations stay smooth. The click is
+a real mouse click at the center of the element, so it works in web pages, the menu bar and the Dock. The pointer stays there.
+
+### Two modes
+
+- **`hints`** (search and click): as above. Typing a label clicks the element.
+- **`hints --wait`** (search and wait): the search starts at once, with no `/`. A label does not click: it highlights its
+  element, and so does the first match of the search (the green ring). Tab, Down and Ctrl-N, or Shift-Tab, Up and Ctrl-P,
+  move the highlight. `Return` clicks it, `Shift-Return` right-clicks and `Cmd-Return` Cmd-clicks. `Return` again within
+  300 ms double-clicks. Typing a word keeps narrowing the matches, and Backspace widens them.
+
+```lua
+wm.bind("cmd-shift-space", "hints")
+wm.bind("cmd-alt-space", "hints --wait")
+```
+
+### Label colors
+
+```lua
+wm.config { hints = {
+  background = "#ffd60af5",    -- the background of a label
+  text = "#141414",            -- the letters of a label
+  focus = "#30d158",           -- the label and the ring of the focused element
+  area = "#0a84ff",            -- the rings and the numbers of the scroll areas
+} }
+```
+
+Colors are `"#rrggbb"` or `"#rrggbbaa"`. The letters of a label that you typed already are drawn with the same color, faded.
+A reload of the config changes them.
+
+### Scroll mode
+
+`scroll` numbers the scroll areas of the focused window (up to ten, in reading order) and scrolls the active one, the largest
+at first. The pointer moves to the active area, because scroll events go to the view under it.
+
+| Key | Effect |
+| --- | --- |
+| `h` `j` `k` `l` | scroll left, down, up, right by 60 points |
+| `Shift` + `h` `j` `k` `l` | dash: five times as far |
+| `d`, `u` | half a page down, up |
+| `gg`, `G` | top, bottom |
+| `Tab`, `Down`, `Ctrl-N` / `Shift-Tab`, `Up`, `Ctrl-P` | next, previous area |
+| `0`-`9` | the area of that number |
+| `Esc`, a mouse click | close |
+
+Both modes read the Accessibility tree of the app, so they show what the app gives them. A read looks at most 6000 elements.
+On the first use in a browser wm waits a moment for the page; if it has no labels, press the key again. A web element that is not a link, button or field (a plain `div`
+with a click handler) has no label. Not in wm: Homerow's labels-only mode and its tutor.
+
 ## Mouse
 
 - Drag an edge or corner of a tiled window. When you let go, wm moves the dividers you moved, and the neighbours follow.
@@ -888,8 +1055,10 @@ another app.
 
 ## Command line
 
-`wm help` lists every command and `wm help <command>` has details and examples. The same words work in `wm.bind`, in
-Lua (`wm.dispatch`) and in `wm://` URLs.
+`wm help` lists every command, with examples, the global options, the URL scheme, the exit codes and the environment
+variables. `wm help <command>` is the page of one command: usage, what it does, an `Options` table that explains each
+option, and an example. `wm help window` lists the commands of a group. The same words work in `wm.bind`, in Lua
+(`wm.dispatch`) and in `wm://` URLs.
 
 ```
 FOCUS AND MOVE   focus <dir> | focus back | focus next|prev | focus window <id> | focus monitor <monitor> | focus layer
@@ -919,8 +1088,12 @@ Options for every command: `--window <w>` acts on that window, `--json` prints J
 ### Output
 
 A command that works prints nothing. Errors go to stderr with a non-zero exit code, in up to three lines: what went wrong,
-the `usage:` line, and a `hint:`. Exit code 2 means the command was used wrongly, and 1 means it could not run. Colors
-appear only on a terminal, and never when `NO_COLOR` is set.
+the `usage:` line, and a `hint:`. Exit code 2 means the command was used wrongly, and 1 means it could not run, so a
+script can tell "wrong" from "not now" (`wm daemon status || wm daemon start`). The commands that take `on` and `off`
+(`window float on`, `zen off`) set a state, so running them again changes nothing.
+
+Colors in `wm help` and in errors appear only on a terminal. `NO_COLOR` turns them off, `TERM=dumb` too, and
+`CLICOLOR_FORCE=1` turns them on in a pipe (`wm help | less -R`). The text of a pipe or a file never has colors.
 
 ```
 $ wm layout stak
