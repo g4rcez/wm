@@ -64,6 +64,8 @@ private struct RebootRestore {
 @MainActor
 final class WindowManager {
     var settings = Settings()
+    /// The frames drawn on the picker grid. They are tiling templates and live beside the config ones.
+    var customTemplates = CustomTemplates.load(from: StateStore.templatesURL)
     var rules: [WindowRule] = []
     /// Layout per workspace from `wm.workspace`; other workspaces use `settings.layout`.
     private(set) var workspaceLayouts: [String: LayoutKind] = [:]
@@ -74,6 +76,9 @@ final class WindowManager {
     private(set) var workspaces: [String: Workspace] = [:]
     private(set) var monitors: [Monitor] = []
     private var displayMemory = DisplayMemory()
+    /// The displays that the last `displays_changed` was for, and the pending announcement of a newer set.
+    private var announcedDisplays: Set<UInt32>?
+    private var displayAnnouncement: DispatchWorkItem?
     private(set) var focused: WindowID?
     private(set) var focusedMonitorID: UInt32 = 0 {
         didSet { if oldValue != focusedMonitorID, oldValue != 0 { previousMonitorID = oldValue } }
@@ -266,10 +271,28 @@ final class WindowManager {
             displayMemory.lost(old.id, workspace: old.workspace)
         }
         monitors = next
+        announceDisplays(next)
         setSpecials(specials.filter { shown in next.contains { $0.id == shown.key } })
         if !monitors.contains(where: { $0.id == focusedMonitorID }) {
             focusedMonitorID = monitors.first(where: { $0.frame.origin == .zero })?.id ?? monitors.first?.id ?? 0
         }
+    }
+
+    /// `displays_changed` says that the set of displays is not the one that it announced last (the first scan counts). A dock or
+    /// an undock changes the set more than once in a short time, so the event waits 0.5 s and only the last set goes out.
+    private func announceDisplays(_ monitors: [Monitor]) {
+        let ids = Set(monitors.map(\.id))
+        guard ids != announcedDisplays else { return }
+        announcedDisplays = ids
+        displayAnnouncement?.cancel()
+        let names = monitors.map { LuaValue.string($0.name) }
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                self?.events.emit("displays_changed", ["count": .number(Double(names.count)), "monitors": .array(names)])
+            }
+        }
+        displayAnnouncement = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
     }
 
     /// The workspace that a rule makes the default of this display (`default = true` with a matching `monitor`).
@@ -343,7 +366,7 @@ final class WindowManager {
                 let app = info.bundleID.isEmpty ? "(no bundle id)" : info.bundleID
                 Log.write(
                     .debug,
-                    "window skipped: id=\(info.id) app=\(app) name=\(info.appName) title=\(info.title.debugDescription) role=\(info.role) subrole=\(info.subrole.isEmpty ? "(none)" : info.subrole) fullscreen=\(info.isFullscreen)",
+                    "window skipped: id=\(info.id) app=\(app) name=\(info.appName) title=\(info.title.debugDescription) role=\(info.role) subrole=\(info.subrole.isEmpty ? "(none)" : info.subrole) identifier=\(info.identifier.isEmpty ? "(none)" : info.identifier) fullscreen=\(info.isFullscreen)",
                     source: "window")
             }
             return
@@ -748,9 +771,9 @@ final class WindowManager {
     private func matchingRule(_ info: WindowInfo) -> WindowRule? {
         var merged: WindowRule?
         for rule in rules {
-            if let app = rule.app, app.caseInsensitiveCompare(info.bundleID) != .orderedSame,
-               app.caseInsensitiveCompare(info.appName) != .orderedSame { continue }
-            if let title = rule.title, info.title.range(of: title, options: .regularExpression) == nil { continue }
+            guard rule.matches(
+                bundleID: info.bundleID, appName: info.appName, title: info.title,
+                role: info.role, subrole: info.subrole, identifier: info.identifier) else { continue }
             guard let result = merged else {
                 merged = rule
                 if rule.stop { break }
@@ -1439,6 +1462,14 @@ final class WindowManager {
             (id == focused ? 0 : 1, recent.firstIndex(of: id) ?? Int.max, id)
         }
         return matches.min { rank($0) < rank($1) }
+    }
+
+    /// The window whose title bar (the top `trackpad.title_bar_height` points) is under `point`, when it is in front there.
+    func titleBarWindow(at point: CGPoint) -> WindowID? {
+        let candidates = Set(windows.filter { !$0.value.isOutOfLayout && isVisible($0.value.workspace) }.keys)
+        guard let id = WindowList.topmost(at: point, among: candidates), let frame = currentFrame(of: id),
+              titleBarContains(point, frame: frame, height: CGFloat(settings.trackpad.titleBarHeight)) else { return nil }
+        return id
     }
 
     func window(at point: CGPoint) -> WindowID? {

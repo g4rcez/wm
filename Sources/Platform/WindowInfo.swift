@@ -9,6 +9,8 @@ public struct WindowInfo: Sendable, Equatable {
     public var title: String
     public var role: String
     public var subrole: String
+    /// `AXIdentifier`: tells apart windows that have the same title (a settings window and a document). Empty when the app sets none.
+    public var identifier: String
     public var frame: CGRect
     public var isMinimized: Bool
     public var isFullscreen: Bool

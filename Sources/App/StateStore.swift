@@ -56,6 +56,9 @@ enum StateStore {
         return base.appendingPathComponent("wm/state.json")
     }
 
+    /// The frames that the user drew on the picker grid, next to the state file.
+    static var templatesURL: URL { url.deletingLastPathComponent().appendingPathComponent("custom-templates.json") }
+
     /// `nil` when there is no file, or when it cannot be used (another version, damaged).
     static func load(from url: URL = url) -> SavedState? {
         guard let data = try? Data(contentsOf: url) else { return nil }

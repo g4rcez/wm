@@ -146,6 +146,13 @@ public final class AppWatcher: @unchecked Sendable {
         }
     }
 
+    public func minimize(_ id: WindowID) {
+        thread.async { [self] in
+            guard let window = elements[id] else { return }
+            AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, kCFBooleanTrue)
+        }
+    }
+
     // MARK: - AX helpers (watcher thread only)
 
     private func readWindows() -> [WindowInfo]? {
@@ -167,6 +174,7 @@ public final class AppWatcher: @unchecked Sendable {
                 title: attribute(window, kAXTitleAttribute) ?? "",
                 role: attribute(window, kAXRoleAttribute) ?? "",
                 subrole: attribute(window, kAXSubroleAttribute) ?? "",
+                identifier: attribute(window, "AXIdentifier") ?? "",
                 frame: CGRect(origin: position, size: size),
                 isMinimized: attribute(window, kAXMinimizedAttribute) ?? false,
                 isFullscreen: attribute(window, "AXFullScreen") ?? false

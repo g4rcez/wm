@@ -14,6 +14,8 @@ final class AppController: HostBridge, @unchecked Sendable {
     let configURL: URL
     private let broadcaster = Broadcaster()
     private(set) var input: InputRouter!
+    /// `wm doctor` reports it: the key tap started when wm began to control the windows.
+    @MainActor var keyTapRunning = false
     private(set) var switcher: SwitcherController!
     @MainActor private(set) var palette: PaletteController!
     /// The window that `tile` with no argument (the picker) applies the chosen pattern to.
@@ -21,11 +23,13 @@ final class AppController: HostBridge, @unchecked Sendable {
     @MainActor private lazy var picker: TemplatePicker = {
         let picker = TemplatePicker()
         picker.onChoose = { [unowned self] template in
+            if let template, template.isFrame, !manager.templates(of: pickerTarget).contains(template) { manager.remember(frame: template) }
             _ = run(["layout", "tile", TemplateGlyph.label(template)], target: pickerTarget)
         }
         return picker
     }()
-    @MainActor private lazy var trackpad = TrackpadInput { [unowned self] events in input.handleFinger(events) }
+    @MainActor private lazy var trackpad = TrackpadInput(
+        deliver: { [unowned self] events in input.handleFinger(events) }, pinch: { [unowned self] pinch in input.handlePinch(pinch) })
     @MainActor private lazy var hints = HintController { [unowned self] in manager.settings.hints }
     @MainActor private lazy var scroller = ScrollController { [unowned self] in manager.settings.hints }
     private let menuReader = MenuReader()
@@ -182,6 +186,14 @@ final class AppController: HostBridge, @unchecked Sendable {
         switch args.first {
         case "version": return ok("wm \(Self.version) (Lua 5.4)\n")
         case "noop": return ok()
+        case "doctor":
+            return onMain {
+                let facts = DoctorFacts(
+                    accessibility: AXIsProcessTrusted(), keyTap: keyTapRunning, screenRecording: CGPreflightScreenCaptureAccess(),
+                    loginItemWanted: manager.settings.startAtLogin, loginItemEnabled: SMAppService.mainApp.status == .enabled,
+                    isAppBundle: Bundle.main.bundleURL.pathExtension == "app", onboarded: Onboarding.isDone())
+                return (try? JSONEncoder().encode(facts)).map { ok(String(decoding: $0, as: UTF8.self)) } ?? fail("cannot encode the facts")
+            }
         case "switcher":
             return onMain {
                 switcher.command(Array(args.dropFirst()), preselect: target).map { fail($0, 1, usage: "switcher") } ?? ok()
@@ -221,7 +233,7 @@ final class AppController: HostBridge, @unchecked Sendable {
                 guard let monitor = manager.focusedMonitor else { return fail("there is no monitor") }
                 let id = target ?? manager.focused
                 pickerTarget = id
-                picker.show(on: monitor.workArea, templates: manager.templates(of: id), current: manager.template(of: id))
+                picker.show(on: monitor.workArea, templates: manager.templates(of: id), current: manager.template(of: id), allowsGrid: manager.layoutKind(of: id) == .tiling)
                 return ok()
             }
         case "list" where args.dropFirst().first == "binds":
@@ -597,8 +609,11 @@ final class AppController: HostBridge, @unchecked Sendable {
         input.longPressTimeouts = loaded.longPressTimeouts
         let pad = loaded.settings.trackpad
         let builtIn = pad.enabled ? Gesture.missingDefaults(loaded.gestures, fingers: pad.fingers) : []
+        let titleBar = pad.enabled && pad.titleBar
+            ? loaded.gestures.filter { $0.zone == .titleBar } + Gesture.missingTitleBarDefaults(loaded.gestures) : []
         input.gestures = loaded.gestures + builtIn
-        bindRecords = loaded.bindRecords + builtIn.map(\.bindRecord)
+        input.titleBarGestures = titleBar
+        bindRecords = loaded.bindRecords + builtIn.map(\.bindRecord) + titleBar.filter(\.isBuiltIn).map(\.bindRecord)
         manager.apply(
             settings: loaded.settings, rules: loaded.rules, workspaceLayouts: loaded.workspaceLayouts,
             workspaceRules: loaded.workspaceRules)
