@@ -61,7 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         controller.trayVisible = { [menu] in menu?.isVisible ?? false }
         controller.trayDebug = { [menu] in menu?.details ?? "" }
-        manager.onRelayout = { [menu] workspace, layout in menu?.setWorkspace(workspace ?? "", layout: layout) }
+        manager.onRelayout = { [menu] workspace, layout, label in menu?.setWorkspace(workspace ?? "", layout: layout, label: label) }
         do {
             try controller.startServer()
         } catch SocketError.alreadyRunning {

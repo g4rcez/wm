@@ -18,7 +18,7 @@ wm.config {
   mouse_follows_focus = false,
   start_at_login = true,               -- only when running as wm.app
   mouse = { move_modifier = "alt", resize_modifier = "alt" },   -- both off by default; see Mouse
-  wrap_focus = false,
+  wrap_focus = false,                  -- focus, focus next|prev, move and swap go around at the edge, as if you gave --wrap
   workspace_back_and_forth = false,    -- `workspace N` while N is shown goes back to the previous workspace
   tiling    = { split_ratio = 0.5, preserve_split = true,
                 split_under_pointer = false,      -- a new window splits the tile under the mouse, not the focused one
@@ -40,6 +40,7 @@ wm.config {
   tab_indicator = { enabled = true, position = "left", size = 6, spacing = 3, radius = 3,
                     active = "#89b4fa", inactive = "#9999a599" },   -- the tabs of a tabbed column (left | right | top | bottom)
   switcher  = { thumbnails = true, delay = 0.12, background = "#0000008c", selected = "#89b4fa", max_scale = 0.85 },
+  menubar   = { workspaces = "occupied", current = "{mode}:{name}", other = "{name}", separator = " " },  -- the menu bar icon: see Menu bar icon
   prefix    = { menubar = true,   -- key sequences: show "..." in the menu bar icon
                 label = { enabled = true, show_keys = true,
                           position = "bottom-center",   -- top-left | top-center | top-right | center | bottom-left | bottom-center | bottom-right

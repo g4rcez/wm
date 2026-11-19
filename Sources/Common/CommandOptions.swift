@@ -16,6 +16,8 @@ public struct CommandOption: Sendable, Equatable {
 /// spec table names the options of a command in `flags`; a test checks that every one of them is explained here.
 public let commandOptions: [String: [CommandOption]] = [
     "focus": [CommandOption("--wrap", "Go around to the other side instead of stopping at the edge.")],
+    "move": [CommandOption("--wrap", "At the edge of the workspace, go around to the other end (a tiled window).")],
+    "swap": [CommandOption("--wrap", "At the edge of the workspace, trade places with the window at the other end.")],
     "focus next": [CommandOption("--wrap", "Go from the last window to the first.")],
     "focus prev": [CommandOption("--wrap", "Go from the first window to the last.")],
     "focus app": [CommandOption("--launch", "Start the app when it has no window.")],
@@ -44,6 +46,11 @@ public let commandOptions: [String: [CommandOption]] = [
     "query": [
         CommandOption("--focused", "Only the focused window (with `monitors`: the focused monitor)."),
         CommandOption("--json", "Print JSON for scripts."),
+    ],
+    "memory list": [CommandOption("--json", "Print JSON for scripts.")],
+    "memory forget": [
+        CommandOption("--title=<text>", "Remove the entry that has this exact title, not the entry of the whole app."),
+        CommandOption("--all", "Remove every entry of the app, whatever its title."),
     ],
     "pick": [CommandOption("--json", "Print one JSON object.")],
     "subscribe": [CommandOption("--snapshot", "Start with one line that holds the state of wm now.")],

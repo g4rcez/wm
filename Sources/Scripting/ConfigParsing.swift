@@ -166,7 +166,7 @@ let topLevelConfigKeys = [
     "layout", "workspaces", "gaps", "animations", "border", "focus_follows_mouse", "mouse_follows_focus",
     "start_at_login", "wrap_focus", "mouse", "trackpad", "workspace_back_and_forth", "tiling", "scrolling", "switcher", "prefix", "url",
     "tab_indicator", "binds", "zen", "special", "overview", "hints", "select", "keyboards", "floating", "master",
-    "commands",
+    "commands", "menubar",
 ]
 
 /// Applies the keys that are present; keys that are absent keep their value, so two `wm.config` calls merge.
@@ -333,6 +333,20 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
             if let name = try label.string("font") { settings.prefix.label.fontName = name.isEmpty ? nil : name }
             if let accent = try color(label, "accent") { settings.prefix.label.accent = accent }
         }
+    }
+
+    if let menubar = try top.table("menubar", allowed: ["workspaces", "current", "other", "separator"]) {
+        if let name = try menubar.choice("workspaces", MenuBarSettings.Workspaces.allCases.map(\.rawValue)) {
+            settings.menuBar.workspaces = MenuBarSettings.Workspaces(rawValue: name)!
+        }
+        for (key, assign) in [("current", \MenuBarSettings.current), ("other", \MenuBarSettings.other)] {
+            guard let text = try menubar.string(key) else { continue }
+            if let word = StatusLabel.unknownPlaceholder(in: text) {
+                throw ConfigError(message: "wm.config: 'menubar.\(key)' has {\(word)}; use " + StatusLabel.placeholders.map { "{\($0)}" }.joined(separator: ", "))
+            }
+            settings.menuBar[keyPath: assign] = text
+        }
+        if let text = try menubar.string("separator") { settings.menuBar.separator = text }
     }
 
     if let commands = try top.table("commands", allowed: ["mode", "timeout"]) {

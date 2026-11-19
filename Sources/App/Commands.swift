@@ -17,15 +17,15 @@ extension WindowManager {
         switch command {
         case "focus": return focusCommand(words, flags, target: target)
         case "move":
-            if let bad = unknownOption(flags, allowed: [], usage: "move") { return bad }
+            if let bad = unknownOption(flags, allowed: ["--wrap"], usage: "move") { return bad }
             guard let direction = words.first.flatMap(Direction.init(rawValue:)) else { return fail("move needs a direction", 2, usage: "move") }
             let step = words.dropFirst().first.map { Double($0) }
             if step == .some(nil) || words.count > 2 { return fail("move takes a direction and an optional number of points", 2, usage: "move") }
-            return moveDirection(direction, target: id, step: CGFloat(step.flatMap { $0 } ?? 40))
+            return moveDirection(direction, target: id, step: CGFloat(step.flatMap { $0 } ?? 40), wrap: flags.contains("--wrap") || settings.wrapFocus)
         case "swap":
-            if let bad = unknownOption(flags, allowed: [], usage: "swap") { return bad }
+            if let bad = unknownOption(flags, allowed: ["--wrap"], usage: "swap") { return bad }
             guard let direction = words.first.flatMap(Direction.init(rawValue:)) else { return fail("swap needs a direction", 2, usage: "swap") }
-            return swapDirection(direction, target: id)
+            return swapDirection(direction, target: id, wrap: flags.contains("--wrap") || settings.wrapFocus)
         case "resize":
             if let bad = unknownOption(flags, allowed: [], usage: "resize") { return bad }
             if words == ["maximize"] { return fail("resize maximize is now window maximize", 2, usage: "window maximize") }
@@ -40,6 +40,22 @@ extension WindowManager {
         case "window": return windowCommand(words, flags, id)
         case "layout": return layoutGroup(words, flags, id)
         case "list", "query": return listCommand(words, flags, target: target)
+        case "memory": return memoryCommand(words, flags)
+        case "menubar":
+            if let bad = unknownOption(flags, allowed: [], usage: "menubar") { return bad }
+            switch words.first {
+            case "set":
+                let text = words.dropFirst().joined(separator: " ")
+                guard !text.isEmpty else { return fail("menubar set needs a text", 2, usage: "menubar set", hint: "`wm menubar reset` goes back to the automatic text") }
+                setMenuLabel(text)
+                return ok()
+            case "reset":
+                if words.count > 1 { return fail("menubar reset takes no arguments", 2, usage: "menubar reset") }
+                setMenuLabel(nil)
+                return ok()
+            default:
+                return fail("menubar needs set or reset", 2, usage: "menubar")
+            }
         case "pointer":
             if let bad = unknownOption(flags, allowed: [], usage: "pointer") { return bad }
             return moveMouse(words.first, target: id)
@@ -146,7 +162,7 @@ extension WindowManager {
         case .down: return windowCommand(["minimize"], [], id)
         case .up: return windowCommand([managed.floating ? "fullscreen" : "maximize"], [], id)
         case .left, .right:
-            return managed.floating ? snap(id, direction == .left ? .left : .right) : moveDirection(direction, target: id, step: 40)
+            return managed.floating ? snap(id, direction == .left ? .left : .right) : moveDirection(direction, target: id, step: 40, wrap: false)
         }
     }
 
@@ -610,12 +626,12 @@ extension WindowManager {
     }
 
     /// `swap <direction>`: the window and the tiled window that `focus <direction>` would reach exchange slots. The focus
-    /// stays on the window. At the edge nothing happens (`move` is the command that crosses to the next monitor).
-    private func swapDirection(_ direction: Direction, target id: WindowID?) -> ServerAnswer {
+    /// stays on the window. At the edge nothing happens (`move` is the command that crosses to the next monitor), unless `wrap`
+    /// goes around: then the window trades places with the one at the other end.
+    private func swapDirection(_ direction: Direction, target id: WindowID?, wrap: Bool) -> ServerAnswer {
         guard let id, let managed = windows[id] else { return fail("there is no focused window") }
         guard !managed.floating else { return fail("cannot swap a floating window", 1, hint: "tile it first with `wm window float`") }
         let workspace = workspace(managed.workspace)
-        let wrap = settings.wrapFocus
         guard let other = workspace.engine.neighbor(of: id, direction, wrap: wrap, in: layoutContext(forWorkspace: workspace.name)),
               swapWindows(id, other) else { return ok() }
         workspace.fullscreen = nil
@@ -642,7 +658,9 @@ extension WindowManager {
         return ok()
     }
 
-    private func moveDirection(_ direction: Direction, target id: WindowID?, step: CGFloat) -> ServerAnswer {
+    /// `move <direction>`. A tiled window moves in its layout; at the edge `wrap` sends it around to the other end (it trades places
+    /// with the window that `focus <direction> --wrap` reaches), and without `wrap` it goes on to the next monitor.
+    private func moveDirection(_ direction: Direction, target id: WindowID?, step: CGFloat, wrap: Bool) -> ServerAnswer {
         guard let id, let managed = windows[id] else { return fail("there is no focused window") }
         if managed.floating {
             guard let (frame, area) = floatingFrame(id) else { return fail("this window is not in the layout (minimized or in native fullscreen)") }
@@ -652,6 +670,10 @@ extension WindowManager {
         }
         let workspace = workspace(managed.workspace)
         if workspace.engine.perform(.move(direction), focused: id, in: layoutContext(forWorkspace: workspace.name)) {
+            relayout()
+        } else if wrap, let other = workspace.engine.neighbor(of: id, direction, wrap: true, in: layoutContext(forWorkspace: workspace.name)),
+                  swapWindows(id, other) {
+            workspace.fullscreen = nil
             relayout()
         } else if let monitor = adjacentMonitor(direction) {
             moveWindow(id, to: monitor.workspace)
@@ -811,6 +833,45 @@ extension WindowManager {
         guard let point else { return fail("there is nothing to move the pointer to") }
         CGWarpMouseCursorPosition(point)
         return ok()
+    }
+
+    // MARK: - Memory
+
+    /// `memory [list|forget|clear]`: the entries that `window remember` keeps, seen and removed without a window.
+    private func memoryCommand(_ words: [String], _ flags: Set<String>) -> ServerAnswer {
+        switch words.first ?? "list" {
+        case "list":
+            if let bad = unknownOption(flags, allowed: ["--json"], usage: "memory list") { return bad }
+            if words.count > 1 { return fail("memory list takes no arguments", 2, usage: "memory list") }
+            return listCommand(["memory"], flags, target: nil)
+        case "forget":
+            let titleFlag = flags.first { $0.hasPrefix("--title=") }
+            if let bad = unknownOption(flags.filter { $0 != titleFlag }, allowed: ["--all"], usage: "memory forget") { return bad }
+            let name = words.dropFirst().joined(separator: " ")
+            guard !name.isEmpty else {
+                return fail("memory forget needs the name or the bundle id of an app", 2, usage: "memory forget", hint: "see `wm memory list`")
+            }
+            let title = titleFlag.map { String($0.dropFirst("--title=".count)) }
+            if title?.isEmpty == true { return fail("--title needs a title", 2, usage: "memory forget") }
+            if title != nil, flags.contains("--all") { return fail("--title and --all cannot go together", 2, usage: "memory forget") }
+            let removed = forgetMemory(appNamed: name, title: title, allTitles: flags.contains("--all"))
+            guard let first = removed.first else {
+                let known = memory.hasEntries(ofApp: name)
+                return fail(
+                    "nothing is remembered for \(name)" + (title.map { " with the title \($0.debugDescription)" } ?? ""), 1,
+                    hint: known ? "that app has other entries: pick one with --title=<text>, or remove them all with --all" : "see `wm memory list`")
+            }
+            let what = removed.count == 1 ? (first.title.map { "the entry \($0.debugDescription) of" } ?? "the entry of") : "\(removed.count) entries of"
+            return ok("forgot \(what) \(first.appName)\n")
+        case "clear":
+            if let bad = unknownOption(flags, allowed: [], usage: "memory clear") { return bad }
+            if words.count > 1 { return fail("memory clear takes no arguments", 2, usage: "memory clear") }
+            let count = clearMemory()
+            guard count > 0 else { return ok("nothing is remembered\n") }
+            return ok("forgot \(count) \(count == 1 ? "entry" : "entries")\n")
+        case let other:
+            return fail("unknown memory command '\(other)'", 2, usage: "memory")
+        }
     }
 
     // MARK: - Queries

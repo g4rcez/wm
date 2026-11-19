@@ -13,7 +13,7 @@ option, and an example. `wm help window` lists the commands of a group. The same
 FOCUS AND MOVE   focus <dir> | focus back | focus next|prev | focus window <id> | focus monitor <monitor> | focus layer
                  focus app <name> [--launch]
                  focus column <first|last|n> | focus stack <first|last|n>
-                 move <dir> [points] | swap <dir> | resize <width|height|smart> <+n|-n>
+                 move <dir> [points] [--wrap] | swap <dir> [--wrap] | resize <width|height|smart> <+n|-n>
 WINDOWS          window close | float [on|off] | center | fullscreen | native-fullscreen | maximize | pseudo | raise-floating | rescue
                  window snap <left|right|top|bottom|top-left|top-right|bottom-left|bottom-right|center> | sticky
                  window minimize | swipe <left|right|up|down>
@@ -25,8 +25,9 @@ LAYOUT           layout set <scrolling|tiling> | balance | rotate | flip | tile 
                  layout split <toggle|swap|root|ratio> | column <width|match|expand|center|center-visible>
                  layout stack <join|leave|tabs|equalize|height> | column move <first|last|n>
 INTERFACE        switcher | overview | palette | menu | mode <name|back> | pointer <window|monitor> | zen [on|off]
-                 exec [options] <command> | batch <commands> | set <key> <value> | notify <text> | key send <chord> | key press <chord>
+                 exec [options] <command> | batch <commands> | set <key> <value> | menubar set <text> | menubar reset | notify <text> | key send <chord> | key press <chord>
 INSPECT          doctor [--json] | list [windows|workspaces|monitors|keyboards|memory|binds] | query [what] | subscribe [--snapshot] [event ...] | logs [-n count] [-f] [-o otel|json]
+MEMORY           memory list | forget <app> [--title=<text>] [--all] | clear
 DAEMON           daemon start | stop | status | reload | version
 EDITOR           lsp [--write] [--force]
 CONFIG           init <osx|windows|i3|hyprland|niri> [--mod=<alt|cmd|ctrl|hyper>] [--force]
@@ -40,7 +41,7 @@ config file in a new Lua state without applying it, and prints the first error w
 `config check`, `wm.exec` and `wm.dispatch` do nothing and `wm.query` finds nothing, so a config that needs a query result while
 it loads fails there.
 
-Options for every command: `--window <w>` acts on that window, `--json` prints JSON (`list`, `daemon status`),
+Options for every command: `--window <w>` acts on that window, `--json` prints JSON (`list`, `memory list`, `daemon status`),
 `-v` or `--verbose` prints the state after the command, and `-h` or `--help` shows help.
 
 ## Output

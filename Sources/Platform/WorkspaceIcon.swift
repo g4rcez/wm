@@ -1,7 +1,8 @@
 import AppKit
+import Core
 
-/// The menu bar icons: the workspace name cut out of a filled rounded square, and the name of an active binding mode
-/// inside an outlined one.
+/// The menu bar icons that are pictures: a name cut out of a filled rounded square (`...` while a key sequence waits), and the
+/// name of an active binding mode inside an outlined one. The workspaces (`T:1 2 5`) are one picture too (`strip`); see `StatusLabel`.
 public enum WorkspaceIcon {
     /// A template image, so macOS tints it for light and dark menu bars. Names are cut to three characters.
     @MainActor
@@ -10,6 +11,41 @@ public enum WorkspaceIcon {
     /// Same size as the workspace icon, but outlined with the name drawn inside, so a mode is seen at a glance.
     @MainActor
     public static func modeImage(for name: String) -> NSImage { make(name, outlined: true) }
+
+    /// The state of the workspaces as one picture: plain text, and the piece of the workspace in focus on a filled rounded
+    /// background with the text cut out of it. A template image, so macOS tints it for light and dark menu bars.
+    @MainActor
+    public static func strip(_ segments: [StatusSegment]) -> NSImage {
+        let padding: CGFloat = 5
+        func attributed(_ text: String) -> NSAttributedString {
+            NSAttributedString(string: text, attributes: [
+                .font: NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .regular),
+                .foregroundColor: NSColor.black,
+            ])
+        }
+        let widths = segments.map { ceil(attributed($0.text).size().width) + ($0.isCurrent ? padding * 2 : 0) }
+        let image = NSImage(size: NSSize(width: max(widths.reduce(0, +), 1), height: 18), flipped: false) { rect in
+            var x: CGFloat = 0
+            for (segment, width) in zip(segments, widths) {
+                let text = attributed(segment.text)
+                let size = text.size()
+                let origin = NSPoint(x: x + (segment.isCurrent ? padding : 0), y: (rect.height - size.height) / 2)
+                if segment.isCurrent {
+                    NSColor.black.setFill()
+                    NSBezierPath(roundedRect: NSRect(x: x, y: 1, width: width, height: rect.height - 2), xRadius: 4.5, yRadius: 4.5).fill()
+                    NSGraphicsContext.current?.compositingOperation = .destinationOut
+                    text.draw(at: origin)
+                    NSGraphicsContext.current?.compositingOperation = .sourceOver
+                } else {
+                    text.draw(at: origin)
+                }
+                x += width
+            }
+            return true
+        }
+        image.isTemplate = true
+        return image
+    }
 
     @MainActor
     private static func make(_ name: String, outlined: Bool) -> NSImage {

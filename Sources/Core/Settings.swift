@@ -416,6 +416,24 @@ public struct MouseSettings: Sendable, Equatable {
     }
 }
 
+/// What the menu bar icon shows (`wm.config { menubar = { ... } }`).
+public struct MenuBarSettings: Sendable, Equatable {
+    public enum Workspaces: String, Sendable, CaseIterable {
+        /// Every workspace that has windows, and the one in focus.
+        case occupied
+        /// Only the workspace in focus.
+        case current
+    }
+
+    public var workspaces: Workspaces = .occupied
+    /// The text of the workspace in focus. `{mode}`, `{name}`, `{count}` and `{layout}` are replaced.
+    public var current = "{mode}:{name}"
+    /// The text of every other workspace in the list.
+    public var other = "{name}"
+    public var separator = " "
+    public init() {}
+}
+
 public struct Settings: Sendable, Equatable {
     public var layout: LayoutKind = .tiling
     public var gaps = Gaps(inner: 8, outer: 8)
@@ -435,6 +453,7 @@ public struct Settings: Sendable, Equatable {
     public var scrolling = ScrollingSettings()
     public var switcher = SwitcherSettings()
     public var prefix = PrefixSettings()
+    public var menuBar = MenuBarSettings()
     public var commands = CommandSettings()
     public var binds = BindSettings()
     public var zen = ZenSettings()

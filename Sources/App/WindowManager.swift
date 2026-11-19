@@ -100,7 +100,10 @@ final class WindowManager {
 
     let events = EventHub()
     /// Called after every layout pass with the workspace and layout shown on the focused monitor.
-    var onRelayout: ((_ workspace: String?, _ layout: String?) -> Void)?
+    /// Tells the menu bar the workspace in focus, its layout, and the text of the icon.
+    var onRelayout: ((_ workspace: String?, _ layout: LayoutKind?, _ label: [StatusSegment]) -> Void)?
+    /// The text that `wm menubar set` put in the icon in place of the automatic one. `nil`: the automatic text.
+    private(set) var menuLabelOverride: String?
     var runRuleCommand: ((_ command: [String], _ window: WindowID) -> Void)?
     /// Called after the binding mode is set (also to the mode it already was), for the menu bar icon and the label.
     var onModeChange: ((_ mode: String) -> Void)?
@@ -483,6 +486,20 @@ final class WindowManager {
         let removed = memory.forget(app: info.bundleID, title: withTitle ? info.title : nil)
         if removed { saveMemory() }
         return removed
+    }
+
+    /// `memory forget`: removes the entries of the app that `name` is the bundle id or the name of; no window is needed.
+    func forgetMemory(appNamed name: String, title: String?, allTitles: Bool) -> [MemorizedWindow] {
+        let removed = memory.forget(appNamed: name, title: title, allTitles: allTitles)
+        if !removed.isEmpty { saveMemory() }
+        return removed
+    }
+
+    /// `memory clear`: removes every entry. Returns how many there were.
+    func clearMemory() -> Int {
+        let count = memory.clear()
+        if count > 0 { saveMemory() }
+        return count
     }
 
     private func saveMemory() {
@@ -890,6 +907,7 @@ final class WindowManager {
             // The window belongs to a hidden workspace: show that workspace where the user is looking.
             showWorkspace(managed.workspace, on: monitor.id, focusWindow: false)
         }
+        publishStatus()
         events.emit("window_focus", ["id": .number(Double(id)), "app": .string(managed.info.bundleID), "title": .string(managed.info.title)])
     }
 
@@ -1234,9 +1252,33 @@ final class WindowManager {
         startClockIfNeeded()
         updateBorder()
         updateTabIndicator()
-        let shown = focusedWorkspace
-        onRelayout?(shown?.name, shown?.kind.rawValue)
+        publishStatus()
         scheduleSave()
+    }
+
+    /// Tells the menu bar icon the workspace in focus, its layout, and what to write: every workspace that has windows and the
+    /// one in focus (`menubar` in the config), or the text that `wm menubar set` gave.
+    func publishStatus() {
+        let shown = focusedWorkspace
+        let floating = focused.flatMap { windows[$0] }.map { $0.floating && !$0.isOutOfLayout && ($0.sticky || $0.workspace == shown?.name) } ?? false
+        var label = menuLabelOverride.map { [StatusSegment($0)] }
+        if label == nil, let shown {
+            // A sticky window shows on every workspace and a special workspace is not a place to go to: neither makes a workspace busy.
+            var counts: [String: Int] = [:]
+            for managed in windows.values where !managed.sticky && !SpecialWorkspace.isSpecial(managed.workspace) {
+                counts[managed.workspace, default: 0] += 1
+            }
+            let all = counts.map { WorkspaceStatus(name: $0.key, layout: workspaces[$0.key]?.kind, count: $0.value) }
+            let current = WorkspaceStatus(name: shown.name, layout: shown.kind, count: counts[shown.name] ?? 0)
+            label = StatusLabel.segments(workspaces: all, current: current, floating: floating, settings: settings.menuBar)
+        }
+        onRelayout?(shown?.name, shown?.kind, label ?? [])
+    }
+
+    /// `menubar set <text>` puts the text in the icon until `menubar reset`; `nil` goes back to the automatic text.
+    func setMenuLabel(_ text: String?) {
+        menuLabelOverride = text
+        publishStatus()
     }
 
     /// The context every layout call gets: the work area, the gaps, where a window that must disappear is parked, and the

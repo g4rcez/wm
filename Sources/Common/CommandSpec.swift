@@ -73,9 +73,11 @@ public let commandSections: [CommandSection] = [
             details: "Without an argument it goes to the other layer than the one of the focused window. The window of that layer on this\nworkspace that had the focus last gets it; the command fails when the layer has no window.",
             example: "wm focus layer floating"),
         CommandSpec(
-            "move", "<dir> [points]", "", "Move the window; at the edge it goes to the next monitor.",
-            details: "A floating window moves by `points` (40 if you leave it out) and stops at the edge of its monitor."),
-        CommandSpec("swap", "<dir>", "", "Exchange places with the window in that direction."),
+            "move", "<dir> [points]", "[--wrap]", "Move the window; at the edge it goes to the next monitor.",
+            details: "A floating window moves by `points` (40 if you leave it out) and stops at the edge of its monitor. With --wrap, or wrap_focus in the\nconfig, a tiled window at the edge goes around to the other end of the workspace instead of to the next monitor."),
+        CommandSpec(
+            "swap", "<dir>", "[--wrap]", "Exchange places with the window in that direction.",
+            details: "With --wrap, or wrap_focus in the config, the window at the edge trades places with the window at the other end."),
         CommandSpec(
             "resize", "<width|height|smart> <+n|-n>", "", "Grow or shrink the window by n points.",
             details: "Also for a floating window (`smart` is the width there). It keeps its top left corner and stays on its monitor.",
@@ -124,7 +126,7 @@ public let commandSections: [CommandSection] = [
         CommandSpec("window unmark", "[name]", "", "Remove one mark, or all marks of the window."),
         CommandSpec(
             "window remember", "", "[--title]", "Keep this window's state for the next window of the app.",
-            details: "Keeps the workspace and monitor, floating or tiled, the place and size of a floating window, maximized, pseudo, the column width and\nstrip, and the marks. When a window of the same app opens later, it gets them and the focus. With --title the window must\nalso have this exact title. Remembering again replaces the entry. Windows that are open when wm starts are not moved.\n`wm list memory` shows the entries.",
+            details: "Keeps the workspace and monitor, floating or tiled, the place and size of a floating window, maximized, pseudo, the column width and\nstrip, and the marks. When a window of the same app opens later, it gets them and the focus. With --title the window must\nalso have this exact title. Remembering again replaces the entry. Windows that are open when wm starts are not moved.\n`wm memory list` shows the entries and `wm memory forget` removes one.",
             example: "wm window remember --title"),
         CommandSpec("window forget", "", "[--title]", "Forget what `window remember` kept for this app.", example: "wm window forget"),
         CommandSpec(
@@ -258,6 +260,11 @@ public let commandSections: [CommandSection] = [
             "set", "<key> <value>", "", "Change a config value until the next reload.",
             details: "The key is the config path, for example gaps.inner or tiling.split_ratio. Lists are comma-separated\n(scrolling.presets 0.3,0.5,1). `workspaces` and `url` only change in the config file.",
             example: "wm set gaps.inner 4"),
+        CommandSpec(
+            "menubar set", "<text>", "", "Show this text in the menu bar icon.",
+            details: "The icon shows the text as it is, in place of the workspaces, until `wm menubar reset` or a restart. It is for the\nLua config: a `wm.on` handler can build the text from `wm.query` and call `wm.dispatch(\"menubar set ...\")`.\nThe automatic text is set with `menubar` in `wm.config`.",
+            example: "wm menubar set 'build: ok'"),
+        CommandSpec("menubar reset", "", "", "Go back to the automatic menu bar text."),
         CommandSpec("notify", "<text>", "[--seconds=n]", "Show a message on screen for 2 seconds (or n).", example: "wm notify 'build done'"),
         CommandSpec(
             "key send", "<chord>", "", "Send a key to the window's app, without focusing it.",
@@ -289,6 +296,20 @@ public let commandSections: [CommandSection] = [
             "logs", "", "[--lines=n] [--follow] [--output=otel|json]", "Show the log of the daemon.",
             details: "Short forms: -n, -f, -o. The default output is text in the OpenTelemetry log data model: time, severity, message,\nattributes. -o json prints one JSON object per line (time, level, message, source). It shows the last 100 records;\n-n 0 shows all. --follow waits for new records. It reads the log file ($XDG_STATE_HOME/wm/wm.log, else\n~/.local/state/wm/wm.log), so it works when the daemon is not running.",
             example: "wm logs -f -o json"),
+    ]),
+    CommandSection(title: "Memory", specs: [
+        CommandSpec(
+            "memory list", "", "[--json]", "List the entries that `window remember` kept.",
+            details: "One line for each entry: the app, the title (`-` for an entry of the whole app), the workspace, the monitor, the mode and the\nframe. `wm memory` alone does the same. The entries are in memory.json, next to state.json.",
+            example: "wm memory list --json"),
+        CommandSpec(
+            "memory forget", "<app>", "[--title=<text>] [--all]", "Remove the entry of an app, with no window needed.",
+            details: "`app` is the name or the bundle id of the app, as `wm memory list` shows it (the case does not matter). Without options it removes the\nentry of the whole app. --title removes the entry that has this exact title, and --all every entry of the app. A window that is\nopen is not moved; the next window of the app opens as if nothing was remembered.",
+            example: "wm memory forget com.superlogical.rex"),
+        CommandSpec(
+            "memory clear", "", "", "Remove every entry.",
+            details: "It forgets all the entries that `window remember` kept, for every app. It does not touch the places that floating windows keep\nin float-memory.json.",
+            example: "wm memory clear"),
     ]),
     CommandSection(title: "Daemon", specs: [
         CommandSpec("daemon start", "", "", "Start wm in the background."),

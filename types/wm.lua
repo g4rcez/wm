@@ -238,6 +238,15 @@
 ---@field menubar? boolean Show "..." in the menu bar icon while waiting. Default true.
 ---@field label? wm.PrefixLabel The floating label.
 
+--- The text of the menu bar icon. In the templates, `{mode}` is `T` (tiling), `S` (scrolling), `M` (master) or, for the workspace in
+--- focus while its focused window floats, `F`; `{name}` is the workspace name (cut at 6 characters), `{count}` its windows and `{layout}`
+--- its layout. For a text that you compute, call `wm.dispatch("menubar set <text>")` from a `wm.on` handler (and `menubar reset`).
+---@class (exact) wm.MenuBarConfig
+---@field workspaces? "occupied"|"current" `occupied`: every workspace that has windows, in order (numbers first, then the other names), and the one in focus. `current`: only the one in focus. Default `occupied`.
+---@field current? string The workspace in focus. Default `{mode}:{name}`, as in `T:1`.
+---@field other? string Every other workspace of the list. Default `{name}`.
+---@field separator? string Between two workspaces. Default one space.
+
 ---@class (exact) wm.CommandsConfig
 ---@field mode? "normal"|"persistent" `normal`: the sequence ends after one command. `persistent`: the keys after the prefix stay active until `timeout` passes without a command. Default `normal`.
 ---@field timeout? number Milliseconds without a command after which a persistent sequence ends, 100 to 10000. Default 800.
@@ -318,13 +327,14 @@
 ---@field start_at_login? boolean Only when running as wm.app. Default false.
 ---@field trackpad? wm.TrackpadConfig Swipes with 3 or 4 fingers.
 ---@field mouse? wm.MouseConfig Move and resize windows with a modifier and the mouse.
----@field wrap_focus? boolean `focus <dir>` wraps around at the edge. Default false.
+---@field wrap_focus? boolean `focus`, `focus next|prev`, `move` and `swap` go around at the edge of the workspace, as if `--wrap` were given. Default false.
 ---@field workspace_back_and_forth? boolean `workspace N` while N is shown goes back to the previous workspace. Default false.
 ---@field tiling? wm.TilingConfig
 ---@field scrolling? wm.ScrollingConfig
 ---@field tab_indicator? wm.TabIndicatorConfig The tabs of a tabbed column.
 ---@field switcher? wm.SwitcherConfig The Alt+Tab window switcher.
 ---@field prefix? wm.PrefixConfig Key sequences such as `ctrl-p>h`.
+---@field menubar? wm.MenuBarConfig What the menu bar icon shows: the workspaces with windows, as `T:1 2 5` (the one in focus on a background).
 ---@field binds? wm.BindsConfig
 ---@field zen? wm.ZenConfig The zen mode: the focused window alone, centered.
 ---@field floating? wm.FloatingConfig Floating windows: whether they open where the last one closed.

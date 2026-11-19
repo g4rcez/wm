@@ -17,6 +17,7 @@ order: 2
   moves to the bottom (or the top) of the screen. `window send strip horizontal` and `vertical` keep meaning the main strip
   and the second strip. Swipes with Option scroll along the strip, whichever way it runs.
 - The strip does not loop. Set `wrap_focus = true`, or use `focus left --wrap`, to go from the last column to the first.
+  `move` and `swap` take `--wrap` too (and follow `wrap_focus`): the window at the end trades places with the one at the other end.
 - `layout column move <first|last|n>` moves the column to a place in the strip. `n` counts from 1, and a number that is
   too large means the last place.
 - `focus column <first|last|n>` focuses a column (the window that had the focus last in it). `focus stack <first|last|n>`

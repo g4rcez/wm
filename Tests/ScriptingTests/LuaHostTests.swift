@@ -673,6 +673,36 @@ struct LuaHostTests {
         #expect(config.settings.gaps == Gaps(inner: 4, outer: 2))
     }
 
+    @Test func theMenuBarListsTheOccupiedWorkspacesUntilTheConfigSaysOtherwise() throws {
+        let defaults = try host.load(configURL: dir.write("init.lua", "wm.config { layout = \"tiling\" }"))
+        #expect(defaults.settings.menuBar == MenuBarSettings())
+        #expect(defaults.settings.menuBar.workspaces == .occupied)
+
+        let custom = try host.load(configURL: dir.write("init.lua", """
+        wm.config { menubar = { workspaces = "current", current = "[{name}]", other = "{mode}{name}", separator = "," } }
+        """))
+        #expect(custom.settings.menuBar.workspaces == .current)
+        #expect(custom.settings.menuBar.current == "[{name}]")
+        #expect(custom.settings.menuBar.other == "{mode}{name}")
+        #expect(custom.settings.menuBar.separator == ",")
+    }
+
+    @Test func aMenuBarTemplateWithAnUnknownPlaceholderIsAnError() throws {
+        let error = #expect(throws: ConfigError.self) {
+            try host.load(configURL: dir.write("init.lua", "wm.config { menubar = { current = \"{mode}:{nme}\" } }"))
+        }
+        #expect(error?.message.contains("{nme}") == true)
+    }
+
+    @Test func aMenuBarSettingWithAWrongValueIsAnError() throws {
+        #expect(throws: ConfigError.self) {
+            try host.load(configURL: dir.write("init.lua", "wm.config { menubar = { workspaces = \"all\" } }"))
+        }
+        #expect(throws: ConfigError.self) {
+            try host.load(configURL: dir.write("init.lua", "wm.config { menubar = { color = \"red\" } }"))
+        }
+    }
+
     @Test func workspaceBackAndForthIsOffUntilTheConfigSetsIt() throws {
         let off = try host.load(configURL: dir.write("init.lua", "wm.config { layout = \"tiling\" }"))
         #expect(off.settings.workspaceBackAndForth == false)

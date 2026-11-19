@@ -45,9 +45,15 @@ struct CommandSpecTests {
 
     @Test func helpForACommandHasItsUsageAndExample() {
         #expect(renderHelp(topic: "swap") == """
-        wm swap <dir>
+        wm swap <dir> [--wrap]
 
           Exchange places with the window in that direction.
+
+          With --wrap, or wrap_focus in the config, the window at the edge trades places with the window at
+          the other end.
+
+        Options
+          --wrap  At the edge of the workspace, trade places with the window at the other end.
 
         <dir> is left, right, up or down.
 
@@ -77,9 +83,15 @@ struct CommandSpecTests {
 
     @Test func colorsWrapEachKindOfWordAndNothingElse() {
         #expect(renderHelp(topic: "swap", style: HelpStyle(enabled: true)) == """
-        wm \u{1B}[1mswap\u{1B}[0m \u{1B}[36m<dir>\u{1B}[0m
+        wm \u{1B}[1mswap\u{1B}[0m \u{1B}[36m<dir>\u{1B}[0m \u{1B}[33m[--wrap]\u{1B}[0m
 
           Exchange places with the window in that direction.
+
+          With --wrap, or wrap_focus in the config, the window at the edge trades places with the window at
+          the other end.
+
+        \u{1B}[1;36mOptions\u{1B}[0m
+          \u{1B}[33m--wrap\u{1B}[0m  At the edge of the workspace, trade places with the window at the other end.
 
         \u{1B}[2m<dir> is left, right, up or down.\u{1B}[0m
 
