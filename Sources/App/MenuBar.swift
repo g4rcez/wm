@@ -15,8 +15,9 @@ final class MenuBar: NSObject, NSMenuDelegate {
     /// The tile templates to list, as the config gives them for the layout in focus.
     private let templates: () -> [SplitTemplate]
     private let configFolder: URL
-    private var shown: String?
-    private var shownLayout: String?
+    /// The pieces of the icon: `T:1 2 5`, with the workspace in focus on a background.
+    private var shown: [StatusSegment]?
+    private var shownLayout: LayoutKind?
     private var pendingShown = false
     /// The active binding mode, or `nil` in `main`.
     private var modeShown: String?
@@ -77,7 +78,7 @@ final class MenuBar: NSObject, NSMenuDelegate {
         return "frame=\(window.frame) shownByWindowServer=\(isVisible)"
     }
 
-    /// What the icon shows, by priority: "..." while a key sequence waits, the binding mode, the workspace. All are
+    /// What the icon shows, by priority: "..." while a key sequence waits, the binding mode, the workspaces (`T:1 2 5`). All are
     /// template images, so macOS tints them for light and dark menu bars.
     private func refreshIcon() {
         guard let button = item.button else { return }
@@ -89,19 +90,20 @@ final class MenuBar: NSObject, NSMenuDelegate {
             button.image = WorkspaceIcon.modeImage(for: modeShown)
         } else if let shown, !shown.isEmpty {
             button.title = ""
-            button.image = WorkspaceIcon.image(for: shown)
+            button.image = WorkspaceIcon.strip(shown)
+            button.setAccessibilityLabel("wm: " + shown.map(\.text).joined())
         } else {
             button.image = nil
             button.title = "▦"
         }
     }
 
-    /// Shows `name` in a rounded square.
-    func setWorkspace(_ name: String, layout: String? = nil) {
-        workspaceItem.title = name.isEmpty ? "wm" : "Workspace \(name)" + (layout.map { " · \($0)" } ?? "")
+    /// Shows `label` in the icon (`T:1 2 5`, see `StatusLabel`). `name` and `layout` are for the first line of the menu.
+    func setWorkspace(_ name: String, layout: LayoutKind? = nil, label: [StatusSegment]) {
+        workspaceItem.title = name.isEmpty ? "wm" : "Workspace \(name)" + (layout.map { " · \($0.rawValue)" } ?? "")
         shownLayout = layout
-        guard shown != name else { return }
-        shown = name
+        guard shown != label else { return }
+        shown = label
         refreshIcon()
     }
 
