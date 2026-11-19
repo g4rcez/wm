@@ -58,7 +58,7 @@ final class HintController {
         Task { @MainActor in
             let elements = await reader.clickables(pid: app.processIdentifier, screens: screens)
             guard generation == current, case .loading = phase else { return }
-            search = ElementSearch(elements: elements)
+            search = ElementSearch(elements: elements, keepsLabels: wait)
             if wait { search.beginSearch() }
             phase = .open
             render()
@@ -128,9 +128,6 @@ final class HintController {
                 changed()
             } else if let character = Self.character(key) {
                 switch search.press(character) {
-                case .picked(let element) where wait:
-                    search.focus(element.id)
-                    changed()
                 case .picked(let element): click(element, button: shift ? .right : .left, flags: command ? .maskCommand : [])
                 case .updated: changed()
                 case .ignored: break
@@ -171,19 +168,21 @@ final class HintController {
     private func render() {
         // The wait mode highlights the element that Return clicks, with a label or without.
         let highlighted = wait ? search.target?.id : search.focused
-        var badges = search.matches.compactMap { element -> HintBadge? in
+        // The wait mode shows every label; the elements that the text does not match are dimmed.
+        let shown = wait ? search.elements : search.matches
+        var badges = shown.compactMap { element -> HintBadge? in
             guard let label = search.label(of: element.id) else { return nil }
             let typed = search.typed
-            return HintBadge(
-                frame: element.frame, label: label, typed: typed.count, dimmed: !typed.isEmpty && !label.hasPrefix(typed),
-                focused: element.id == highlighted)
+            let dimmed = wait ? !search.query.isEmpty && !search.matches.contains { $0.id == element.id }
+                : !typed.isEmpty && !label.hasPrefix(typed)
+            return HintBadge(frame: element.frame, label: label, typed: typed.count, dimmed: dimmed, focused: element.id == highlighted)
         }
         if let element = search.matches.first(where: { $0.id == highlighted }), search.label(of: element.id) == nil {
             badges.append(HintBadge(frame: element.frame, label: "", focused: true))
         }
         let keys = wait ? " · ⏎ click · ⇧⏎ right click" : ""
         let note = search.elements.isEmpty ? "Nothing to click here · Esc"
-            : search.searching ? (search.query.isEmpty ? "Type to search" : "/\(search.query) · \(search.matches.count) found") + keys
+            : search.searching ? (search.query.isEmpty ? "Type a label or a title" : "/\(search.query) · \(search.matches.count) found") + keys
             : "Type a label · / to search"
         overlay.show(HintContent(badges: badges, note: note, noteAnchor: CGEvent(source: nil)?.location ?? .zero, colors: colors()))
     }

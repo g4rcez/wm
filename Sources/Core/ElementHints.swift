@@ -54,8 +54,11 @@ public struct ElementSearch: Sendable, Equatable {
     /// The letters of a label that are typed so far.
     public private(set) var typed = ""
     public private(set) var focused: Int?
+    /// The wait mode: every element keeps its label, and the text picks the target by label or by title.
+    public let keepsLabels: Bool
 
-    public init(elements: [HintElement]) {
+    public init(elements: [HintElement], keepsLabels: Bool = false) {
+        self.keepsLabels = keepsLabels
         let ordered = Self.deduplicated(elements).sorted { ($0.frame.minY, $0.frame.minX, $0.id) < ($1.frame.minY, $1.frame.minX, $1.id) }
         self.elements = ordered
         matches = ordered
@@ -89,6 +92,12 @@ public struct ElementSearch: Sendable, Equatable {
 
     /// A character that the user typed: a letter, a digit or a sign.
     public mutating func press(_ character: String) -> Outcome {
+        if keepsLabels {
+            if character == " ", query.isEmpty || query.hasSuffix(" ") { return .ignored }
+            query += character
+            refresh()
+            return .updated
+        }
         let next = typed + character
         if let id = labels.first(where: { $0.value == next })?.key, let element = matches.first(where: { $0.id == id }) {
             typed = ""
@@ -142,6 +151,18 @@ public struct ElementSearch: Sendable, Equatable {
     private mutating func refresh() {
         typed = ""
         let words = Self.words(of: query)
+        if keepsLabels {
+            // The target is the element whose label is the text, else the first match of the words.
+            let wanted = query.lowercased()
+            let labeled = labels.first { $0.value == wanted }?.key
+            matches = elements.filter { element in
+                if element.id == labeled { return true }
+                let text = Array(Self.normalized(element.text))
+                return words.allSatisfy { Self.fuzzyEnd(of: $0, in: text) != nil }
+            }
+            focused = query.isEmpty ? nil : (labeled ?? matches.first?.id)
+            return
+        }
         matches = words.isEmpty ? elements : elements.filter { element in
             let text = Array(Self.normalized(element.text))
             return words.allSatisfy { Self.fuzzyEnd(of: $0, in: text) != nil }
