@@ -38,7 +38,7 @@ struct CompletionTests {
 
     @Test func aPlaceholderIsNotACompletion() {
         // `<name|back>` completes `back`, never the word `name`; `<0.1-0.9|+n|-n>` completes nothing.
-        #expect(words(complete(["workspace", ""])) == ["move", "special", "back", "next", "prev", "empty"])
+        #expect(words(complete(["workspace", ""])) == ["move", "float-all", "special", "back", "next", "prev", "empty"])
         #expect(words(complete(["layout", "split", "ratio", ""])) == [])
     }
 
@@ -81,7 +81,7 @@ struct CompletionTests {
     }
 
     @Test func workspaceCompletesTheExistingWorkspacesButNotTheSpecialOnes() {
-        #expect(words(complete(["workspace", ""], source: source())) == ["move", "special", "back", "next", "prev", "empty", "1", "2"])
+        #expect(words(complete(["workspace", ""], source: source())) == ["move", "float-all", "special", "back", "next", "prev", "empty", "1", "2"])
         #expect(words(complete(["workspace", "special", ""], source: source())) == ["term"])
     }
 
@@ -91,7 +91,7 @@ struct CompletionTests {
 
     @Test func withoutTheDaemonOnlyTheFixedWordsComplete() {
         #expect(words(complete(["focus", "window", ""])) == [])
-        #expect(words(complete(["workspace", ""])) == ["move", "special", "back", "next", "prev", "empty"])
+        #expect(words(complete(["workspace", ""])) == ["move", "float-all", "special", "back", "next", "prev", "empty"])
     }
 
     @Test func theOutputHasOneCandidatePerLine() {

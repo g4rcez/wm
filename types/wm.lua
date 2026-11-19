@@ -31,7 +31,7 @@
 ---| "move left" | "move right" | "move up" | "move down" | "move left 100" | "move right 100" | "move up 100" | "move down 100"
 ---| "swap left" | "swap right" | "swap up" | "swap down"
 ---| "resize smart +50" | "resize smart -50" | "resize width +50" | "resize width -50" | "resize height +50" | "resize height -50"
----| "workspace back" | "workspace special"
+---| "workspace back" | "workspace special" | "workspace float-all" | "workspace float-all on" | "workspace float-all off" | "workspace float-all 2" | "workspace float-all 3" | "workspace float-all 4" | "workspace float-all 2+1" | "workspace float-all 1+2"
 ---| "workspace move monitor left" | "workspace move monitor right" | "workspace move monitor up" | "workspace move monitor down" | "workspace move monitor next" | "workspace move monitor prev" | "workspace move monitor last"
 ---| "window close" | "window float" | "window float on" | "window float off" | "window center" | "window fullscreen" | "window maximize" | "window native-fullscreen"
 ---| "window sticky" | "zen" | "zen on" | "zen off"

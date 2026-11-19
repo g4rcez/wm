@@ -30,6 +30,11 @@ workspace has windows, the window joins the layout and `balance` runs. Add `--ti
 - `window snap <place>` floats the window (a tiled one first) into a part of the work area inside the gaps: `left`, `right`,
   `top`, `bottom`, the four corners, or `center`. The same place again goes on to the next size: half, a third, two thirds
   (`center`: 60%, 80%, 40%).
+- `workspace float-all` floats every window of the workspace that the focused monitor shows, each one where it is.
+  `workspace float-all off` tiles them all again. With a [tile template](/docs/templates) (`workspace float-all 2+1`,
+  `2/3`, `1-over-2`, `corner-tl`, or one of your own), the windows float into its cells instead, the tiled ones in layout order
+  first and then the floating ones; a window past the last cell stays where it is. All forms set the state, so a bind can be
+  repeated safely. A minimized window or one in macOS fullscreen is left alone.
 - `window raise-floating` brings the floating windows of the workspace to the front. `window rescue` moves a floating
   window that is mostly off screen back into the work area of its monitor (a window larger than the area is cut down).
 - `window native-fullscreen` enters or leaves macOS fullscreen. A window in macOS fullscreen has a Space of its own, so

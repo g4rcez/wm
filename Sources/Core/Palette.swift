@@ -169,7 +169,7 @@ public func commandGlyph(for words: [String]) -> CommandGlyph {
     switch path(2) {
     case "focus back": return .focusBack
     case "window close": return .close
-    case "window float", "window raise-floating", "window rescue", "window pseudo": return .float
+    case "window float", "window raise-floating", "window rescue", "window pseudo", "workspace float-all": return .float
     case "window fullscreen": return .fullscreen
     case "window maximize": return .maximize
     case "window native-fullscreen": return .nativeFullscreen

@@ -151,6 +151,10 @@ public let commandSections: [CommandSection] = [
             "workspace move monitor", "<monitor>", "", "Move this workspace to another monitor.",
             details: "That monitor shows the workspace from now on, and this monitor shows the lowest free workspace number. A workspace\nthat a wm.workspace rule binds to a monitor stays there. The monitor is the same as in `wm help focus monitor`.",
             example: "wm workspace move monitor right"),
+        CommandSpec(
+            "workspace float-all", "[on|off|pattern]", "", "Float every window of this workspace, or tile them again.",
+            details: "It acts on the workspace that the focused monitor shows. Each window floats where it is, as `window float on` does. `off` tiles\nthem all again. With a pattern of `layout tile` (2, 2+1, 2/3, 1-over-2, center ...) the windows float into its cells, the tiled ones in\nlayout order first; a window past the last cell stays where it is. All of them set the state, so running them twice changes nothing.\nA minimized window or one in native fullscreen is left alone.",
+            example: "wm workspace float-all 2+1"),
         CommandSpec("workspace special", "[name]", "", "Show or hide a special workspace (default: special).", example: "wm workspace special term"),
     ]),
     CommandSection(title: "Layout", specs: [

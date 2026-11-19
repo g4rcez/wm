@@ -253,6 +253,17 @@ extension WindowManager {
             guard let monitor = monitorArgument(spec) else { return fail("no such monitor", 1, usage: "workspace move monitor") }
             if let reason = moveWorkspace(to: monitor) { return fail(reason) }
             return ok()
+        case "float-all":
+            switch words.dropFirst().first {
+            case nil, "on": return floatAll(true)
+            case "off": return floatAll(false)
+            case let name?:
+                // A pattern: the windows float into the cells of that tile template, as `layout tile` would place them.
+                guard let template = templates(of: nil).first(where: { $0.name == name }) ?? SplitTemplate.builtIn(named: name) else {
+                    return fail("unknown pattern '\(name)'", 2, usage: "workspace float-all", hint: "on, off, or a pattern of `wm help layout tile`")
+                }
+                return floatAll(true, into: template)
+            }
         case "special":
             guard let name = SpecialWorkspace.name(words.dropFirst().first) else { return fail("bad special workspace name", 2, usage: "workspace special") }
             toggleSpecial(name)
@@ -430,6 +441,36 @@ extension WindowManager {
         default:
             return fail("unknown destination '\(kind)'", 2, usage: "window send")
         }
+    }
+
+    /// `workspace float-all [on|off]`: every window of the workspace that the focused monitor shows floats (`off`: tiles again). The
+    /// windows that are minimized or in native fullscreen are not in the layout and stay as they are.
+    /// With a `template`, the windows take its cells in order (the tiled ones as the layout lists them, then the floating ones);
+    /// the windows past the last cell float where they are.
+    private func floatAll(_ on: Bool, into template: SplitTemplate? = nil) -> ServerAnswer {
+        guard let workspace = focusedWorkspace else { return fail("there is no workspace") }
+        let inLayout = Set(windows.filter { $0.value.workspace == workspace.name && !$0.value.isOutOfLayout }.keys)
+        guard !inLayout.isEmpty else { return fail("there is no window on this workspace") }
+        // The order has to be read before the windows float: a floating window leaves the engine.
+        let tiled = workspace.engine.windows.filter(inLayout.contains)
+        let ordered = tiled + inLayout.subtracting(tiled).sorted()
+        for id in ordered { setFloating(id, on) }
+        if let template {
+            let context = layoutContext(forWorkspace: workspace.name)
+            let area = context.gaps.outerArea(context.viewport)
+            guard area.width > 0, area.height > 0 else { return fail("there is no monitor") }
+            let region = CGRect(
+                x: area.minX + template.area.minX * area.width, y: area.minY + template.area.minY * area.height,
+                width: template.area.width * area.width, height: template.area.height * area.height)
+            for (id, cell) in zip(ordered, template.cells) {
+                let frame = CGRect(
+                    x: region.minX + cell.minX * region.width, y: region.minY + cell.minY * region.height,
+                    width: cell.width * region.width, height: cell.height * region.height)
+                setFloatFrame(id, frame.insetBy(dx: context.gaps.inner / 2, dy: context.gaps.inner / 2))
+            }
+        }
+        relayout()
+        return ok()
     }
 
     /// `window raise-floating`: every floating window of the shown workspace comes to the front, the most recent last.

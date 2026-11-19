@@ -20,7 +20,7 @@ WINDOWS          window close | float [on|off] | center | fullscreen | native-fu
                  window mark <name> | unmark [name] | remember [--title] | forget [--title]
                  window send workspace <name> | monitor <monitor> | strip <horizontal|vertical>
 WORKSPACES       workspace <name|back|next|prev|empty> | workspace special [name]
-                 workspace move monitor <monitor>
+                 workspace move monitor <monitor> | workspace float-all [on|off|pattern]
 LAYOUT           layout set <scrolling|tiling> | balance | rotate | flip | tile | preselect <dir>
                  layout split <toggle|swap|root|ratio> | column <width|match|expand|center|center-visible>
                  layout stack <join|leave|tabs|equalize|height> | column move <first|last|n>
