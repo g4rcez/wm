@@ -29,8 +29,11 @@ extension WindowManager {
         case "resize":
             if let bad = unknownOption(flags, allowed: [], usage: "resize") { return bad }
             if words == ["maximize"] { return fail("resize maximize is now window maximize", 2, usage: "window maximize") }
+            if words.count == 2, let side = Direction(rawValue: words[0]), let delta = Double(words[1]) {
+                return resizeSide(id, side, CGFloat(delta))
+            }
             guard words.count == 2, let dimension = ResizeDimension(rawValue: words[0]), let delta = Double(words[1]) else {
-                return fail("resize needs a dimension and an amount", 2, usage: "resize")
+                return fail("resize needs a dimension or a side, and an amount", 2, usage: "resize")
             }
             if let id, let managed = windows[id], managed.floating {
                 return resizeFloating(id, dimension, CGFloat(delta))
@@ -445,7 +448,7 @@ extension WindowManager {
         }
     }
 
-    /// `workspace float-all [on|off]`: every window of the workspace that the focused monitor shows floats (`off`: tiles again). The
+    /// `workspace float-all [on|off|pattern]`: every window of the workspace that the focused monitor shows floats (`off`: tiles again). The
     /// windows that are minimized or in native fullscreen are not in the layout and stay as they are.
     /// With a `template`, the windows take its cells in order (the tiled ones as the layout lists them, then the floating ones);
     /// the windows past the last cell float where they are.
@@ -744,6 +747,28 @@ extension WindowManager {
     private func resizeFloating(_ id: WindowID, _ dimension: ResizeDimension, _ delta: CGFloat) -> ServerAnswer {
         guard let (frame, area) = floatingFrame(id) else { return fail("this window is not in the layout (minimized or in native fullscreen)") }
         setFloatFrame(id, FloatGeometry.resized(frame, dimension, by: delta, in: area))
+        relayout()
+        return ok()
+    }
+
+    /// `resize <left|right|up|down> <+n|-n>`: the edge of the window on that side moves outward by n points (a negative n moves it
+    /// inward); the other edges stay. A tiled window moves the divider on that side, so it fails on the side of the screen's edge,
+    /// where there is no divider. A floating window keeps its other edges and stays inside the work area.
+    private func resizeSide(_ id: WindowID?, _ side: Direction, _ delta: CGFloat) -> ServerAnswer {
+        guard let id, let managed = windows[id] else { return fail("there is no focused window") }
+        if managed.floating {
+            guard let (frame, area) = floatingFrame(id) else { return fail("this window is not in the layout (minimized or in native fullscreen)") }
+            let moved = CGPoint(x: side == .left ? -delta : (side == .right ? delta : 0), y: side == .up ? -delta : (side == .down ? delta : 0))
+            let resized = MonitorGeometry.resized(
+                frame, edges: (side == .left ? .left : .right, side == .up ? .up : .down), by: moved, minimum: CGSize(width: 100, height: 60))
+            setFloatFrame(id, resized.intersection(area).isNull ? frame : resized.intersection(area))
+            relayout()
+            return ok()
+        }
+        let workspace = workspace(managed.workspace)
+        guard workspace.engine.perform(.resizeEdge(side, delta), focused: id, in: layoutContext(forWorkspace: workspace.name)) else {
+            return fail("this window has no divider on its \(side.rawValue) side", 1, hint: "the side of a screen edge cannot move; try the opposite side")
+        }
         relayout()
         return ok()
     }

@@ -73,6 +73,7 @@ private let extraValues: [String: [String]] = [
     "query": ["windows", "workspaces", "monitors", "keyboards", "memory"],
     "zen": ["on", "off"],
     "init": ["i3"],  // a word with a digit is not a literal value of the spec
+    "resize": ["width", "height", "smart", "left", "right", "up", "down"],
     "window place": ["2", "3", "4", "5", "6", "2+1", "1+2", "2/3", "3/4", "1/4", "center"],
     "workspace float-all": ["on", "off", "2", "3", "4", "5", "6", "2+1", "1+2", "2/3", "3/4", "1/4"],
     "window snap": ["left", "right", "top", "bottom", "top-left", "top-right", "bottom-left", "bottom-right", "center"],

@@ -80,7 +80,7 @@ public let commandSections: [CommandSection] = [
             details: "With --wrap, or wrap_focus in the config, the window at the edge trades places with the window at the other end."),
         CommandSpec(
             "resize", "<width|height|smart> <+n|-n>", "", "Grow or shrink the window by n points.",
-            details: "Also for a floating window (`smart` is the width there). It keeps its top left corner and stays on its monitor.",
+            details: "`width`, `height` and `smart` change the size and keep the top left corner of a floating window (`smart` is the width there). A side\n(`left`, `right`, `up` or `down`, as `wm resize left +50`) moves the edge on that side: +n pushes it outward, -n pulls it inward, and the other edges stay.\nA tiled window moves the divider on that side, so a side at the edge of the screen fails (use the opposite side). A floating window stays on its monitor.",
             example: "wm resize width +50"),
     ]),
     CommandSection(title: "Windows", specs: [
@@ -160,7 +160,7 @@ public let commandSections: [CommandSection] = [
             details: "That monitor shows the workspace from now on, and this monitor shows the lowest free workspace number. A workspace\nthat a wm.workspace rule binds to a monitor stays there. The monitor is the same as in `wm help focus monitor`.",
             example: "wm workspace move monitor right"),
         CommandSpec(
-            "workspace float-all", "[on|off|pattern]", "", "Float every window of this workspace, or tile them again.",
+            "workspace float-all", "[off|pattern]", "", "Float every window of this workspace, or tile them again.",
             details: "It acts on the workspace that the focused monitor shows. Each window floats where it is, as `window float on` does. `off` tiles\nthem all again. With a pattern of `layout tile` (2, 2+1, 2/3, 1-over-2, center ...) the windows float into its cells, the tiled ones in\nlayout order first; a window past the last cell stays where it is. All of them set the state, so running them twice changes nothing.\nA minimized window or one in native fullscreen is left alone.",
             example: "wm workspace float-all 2+1"),
         CommandSpec("workspace special", "[name]", "", "Show or hide a special workspace (default: special).", example: "wm workspace special term"),

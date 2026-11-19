@@ -13,7 +13,7 @@ option, and an example. `wm help window` lists the commands of a group. The same
 FOCUS AND MOVE   focus <dir> | focus back | focus next|prev | focus window <id> | focus monitor <monitor> | focus layer
                  focus app <name> [--launch]
                  focus column <first|last|n> | focus stack <first|last|n>
-                 move <dir> [points] [--wrap] | swap <dir> [--wrap] | resize <width|height|smart> <+n|-n>
+                 move <dir> [points] [--wrap] | swap <dir> [--wrap] | resize <width|height|smart|left|right|up|down> <+n|-n>
 WINDOWS          window close | float [on|off] | center | fullscreen | native-fullscreen | maximize | pseudo | raise-floating | rescue
                  window snap <left|right|top|bottom|top-left|top-right|bottom-left|bottom-right|center> | sticky
                  window place <pattern> <n> | move-to <x> <y>
@@ -21,7 +21,7 @@ WINDOWS          window close | float [on|off] | center | fullscreen | native-fu
                  window mark <name> | unmark [name] | remember [--title] | forget [--title]
                  window send workspace <name> | monitor <monitor> | strip <horizontal|vertical>
 WORKSPACES       workspace <name|back|next|prev|empty> | workspace special [name]
-                 workspace move monitor <monitor> | workspace float-all [on|off|pattern]
+                 workspace move monitor <monitor> | workspace float-all [off|pattern]
 LAYOUT           layout set <scrolling|tiling> | balance | rotate | flip | tile | preselect <dir>
                  layout split <toggle|swap|root|ratio> | column <width|match|expand|center|center-visible>
                  layout stack <join|leave|tabs|equalize|height> | column move <first|last|n>
