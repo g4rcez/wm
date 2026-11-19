@@ -1,6 +1,6 @@
 ---
 title: "Install"
-description: "Build wm from source, grant the permissions, sign it, put it on your PATH and start it."
+description: "Install wm with Homebrew or build it from source, grant the permissions, sign it, put it on your PATH and start it."
 group: Start
 order: 2
 ---
@@ -10,7 +10,25 @@ order: 2
 - The Swift 6.2 toolchain (Xcode or the command line tools).
 - Quit any other window manager first (AeroSpace, yabai, Amethyst). Two of them fight over the same windows.
 
-I have not published a binary. You build wm from source.
+I have not published a binary. Homebrew builds wm from source for you, or you build it yourself.
+
+## Homebrew
+
+This repository is its own Homebrew tap:
+
+```sh
+brew tap g4rcez/wm https://github.com/g4rcez/wm
+brew install --HEAD g4rcez/wm/wm
+wm daemon start
+```
+
+The formula needs the Swift 6.2 toolchain (Xcode 26 or newer) and builds the latest `main`. It puts `wm.app` in the
+Homebrew prefix, links `wm` and `wmd` in `$(brew --prefix)/bin` and installs the zsh and bash completions. Update with
+`brew reinstall --HEAD g4rcez/wm/wm`.
+
+Homebrew signs the app ad hoc, so macOS asks for the permissions again after each reinstall (see [Signing](#signing)). To
+keep them, sign it with your own certificate after the install: `codesign --force --sign "<certificate>" "$(brew --prefix)/opt/wm/wm.app"`.
+For `start_at_login`, copy the app to a fixed place: `ditto "$(brew --prefix)/opt/wm/wm.app" /Applications/wm.app`.
 
 ## Build
 
