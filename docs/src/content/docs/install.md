@@ -54,7 +54,7 @@ macOS asks for **Accessibility** when you press Grant in the setup window. Grant
 Accessibility. wm cannot move windows without it.
 
 **Screen Recording** is optional. wm uses it for the window pictures in the Alt+Tab switcher and in the overview. Without
-it those tiles show the app icon and the title.
+it those tiles show the app icon and the title. `wm select` uses it to read the windows that draw their own text.
 
 **Automation** is optional. The palette uses it to read and select the tabs of browsers (and to bring Rex to the front), so
 macOS asks once for each of those apps, the first time the palette opens while the app runs. Without it the palette lists no

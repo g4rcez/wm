@@ -17,6 +17,7 @@ and says what to do for each one that is not ok. `wm config check` loads the con
 - **The menu bar icon is missing.** Switch on `wm` in System Settings > Menu Bar. `wm daemon status` says
   `menu bar: hidden by macOS` when the icon is not on screen.
 - **The switcher shows icons and not pictures.** Grant Screen Recording, or set `switcher = { thumbnails = false }`.
+- **`wm select` finds no text in a terminal.** Grant Screen Recording: wm reads those windows from a picture of the display.
 - **A window hides behind others, or stays out of the layout.** Some windows (dialogs, palettes) float by design. Use
   `wm window float` to toggle one, or add a rule.
 - **A shortcut that I made in the Shortcuts window does nothing.** `wm doctor` says why in its `shortcuts` line: `init.lua` does

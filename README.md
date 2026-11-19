@@ -39,7 +39,7 @@ wm has no default key bindings. Until you bind keys in `init.lua`, it only react
   - [Gestures and mouse](#gestures-and-mouse)
   - [Rules and window memory](#rules-and-window-memory)
   - [Finding and switching windows](#finding-and-switching-windows)
-  - [Keyboard clicking and scrolling](#keyboard-clicking-and-scrolling)
+  - [Keyboard clicking, scrolling and text selection](#keyboard-clicking-scrolling-and-text-selection)
   - [Window tools](#window-tools)
   - [Scripting and automation](#scripting-and-automation)
   - [Reliability](#reliability)
@@ -119,13 +119,14 @@ wm has no default key bindings. Until you bind keys in `init.lua`, it only react
 - **Run or raise:** one key focuses an app, or starts it when it has no window. See [Run or raise](https://wm.garcez.dev/docs/run-or-raise).
 - **Menu Anywhere:** the menus of the focused app as a pop-up at the mouse pointer. See [Menu Anywhere](https://wm.garcez.dev/docs/menu-anywhere).
 
-### Keyboard clicking and scrolling
+### Keyboard clicking, scrolling and text selection
 
 - **Hints:** two-letter labels on every clickable element of a window, the menu bar and the Dock, with fuzzy search. Works as
   Homerow does.
 - **Scroll mode:** number the scroll areas and scroll them with `h` `j` `k` `l`.
+- **Select mode:** search the text on the screen, select it with vim keys or labels, then copy it or right-click it.
 
-See [Hints and scroll mode](https://wm.garcez.dev/docs/hints).
+See [Hints, scroll and select mode](https://wm.garcez.dev/docs/hints).
 
 ### Window tools
 
@@ -240,7 +241,7 @@ Everything is on <https://wm.garcez.dev/docs/overview>. The source of the pages 
 | Start | [Overview](https://wm.garcez.dev/docs/overview), [Install](https://wm.garcez.dev/docs/install), [First five minutes](https://wm.garcez.dev/docs/first-five-minutes) |
 | Configure | [Config reference](https://wm.garcez.dev/docs/config), [Keys, chords and the hyper key](https://wm.garcez.dev/docs/keys), [Key panel and bind options](https://wm.garcez.dev/docs/key-panel), [Gestures](https://wm.garcez.dev/docs/gestures), [Window and workspace rules](https://wm.garcez.dev/docs/rules) |
 | Layouts | [Tiling](https://wm.garcez.dev/docs/tiling), [Scrolling](https://wm.garcez.dev/docs/scrolling), [Master-stack](https://wm.garcez.dev/docs/master-stack), [Tile templates](https://wm.garcez.dev/docs/templates), [Rotate, maximize and floating](https://wm.garcez.dev/docs/floating) |
-| Features | [Switcher and overview](https://wm.garcez.dev/docs/switcher), [Sticky windows and zen mode](https://wm.garcez.dev/docs/sticky-zen), [Run or raise](https://wm.garcez.dev/docs/run-or-raise), [Window memory](https://wm.garcez.dev/docs/window-memory), [Command palette](https://wm.garcez.dev/docs/palette), [Menu Anywhere](https://wm.garcez.dev/docs/menu-anywhere), [Hints and scroll mode](https://wm.garcez.dev/docs/hints), [Mouse](https://wm.garcez.dev/docs/mouse), [Special workspaces](https://wm.garcez.dev/docs/special-workspaces) |
+| Features | [Switcher and overview](https://wm.garcez.dev/docs/switcher), [Sticky windows and zen mode](https://wm.garcez.dev/docs/sticky-zen), [Run or raise](https://wm.garcez.dev/docs/run-or-raise), [Window memory](https://wm.garcez.dev/docs/window-memory), [Command palette](https://wm.garcez.dev/docs/palette), [Menu Anywhere](https://wm.garcez.dev/docs/menu-anywhere), [Hints, scroll and select mode](https://wm.garcez.dev/docs/hints), [Mouse](https://wm.garcez.dev/docs/mouse), [Special workspaces](https://wm.garcez.dev/docs/special-workspaces) |
 | Reference | [Command line](https://wm.garcez.dev/docs/cli), [Lua API](https://wm.garcez.dev/docs/lua-api), [URL scheme](https://wm.garcez.dev/docs/url-scheme), [Saved state](https://wm.garcez.dev/docs/saved-state) |
 | Guides | [Examples](https://wm.garcez.dev/docs/examples), [Replace Karabiner-Elements](https://wm.garcez.dev/docs/karabiner), [Troubleshooting and limits](https://wm.garcez.dev/docs/troubleshooting), [Development](https://wm.garcez.dev/docs/development) |
 
