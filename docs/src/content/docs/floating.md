@@ -35,6 +35,9 @@ workspace has windows, the window joins the layout and `balance` runs. Add `--ti
   `2/3`, `1-over-2`, `corner-tl`, or one of your own), the windows float into its cells instead, the tiled ones in layout order
   first and then the floating ones; a window past the last cell stays where it is. All forms set the state, so a bind can be
   repeated safely. A minimized window or one in macOS fullscreen is left alone.
+- `window place <pattern> <n>` floats the window into cell n of a [tile template](/docs/templates) (cells count from 1 in reading order, so
+  `window place 2+1 3` is the tall cell on the right), and the other windows stay as they are. `window move-to <x> <y>` puts the top left corner of the window at a point of the work
+  area, in points or in percent (`window move-to 50% 10%`); the size stays and the window stays inside the area.
 - `window raise-floating` brings the floating windows of the workspace to the front. `window rescue` moves a floating
   window that is mostly off screen back into the work area of its monitor (a window larger than the area is cut down).
 - `window native-fullscreen` enters or leaves macOS fullscreen. A window in macOS fullscreen has a Space of its own, so

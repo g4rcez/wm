@@ -16,6 +16,7 @@ FOCUS AND MOVE   focus <dir> | focus back | focus next|prev | focus window <id> 
                  move <dir> [points] [--wrap] | swap <dir> [--wrap] | resize <width|height|smart> <+n|-n>
 WINDOWS          window close | float [on|off] | center | fullscreen | native-fullscreen | maximize | pseudo | raise-floating | rescue
                  window snap <left|right|top|bottom|top-left|top-right|bottom-left|bottom-right|center> | sticky
+                 window place <pattern> <n> | move-to <x> <y>
                  window minimize | swipe <left|right|up|down>
                  window mark <name> | unmark [name] | remember [--title] | forget [--title]
                  window send workspace <name> | monitor <monitor> | strip <horizontal|vertical>

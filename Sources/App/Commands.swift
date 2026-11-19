@@ -308,6 +308,8 @@ extension WindowManager {
                 return fail("window snap needs a place", 2, usage: "window snap", hint: "one of " + SnapPlace.allCases.map(\.rawValue).joined(separator: ", "))
             }
             return snap(id, place)
+        case "place": return place(id, Array(words.dropFirst()))
+        case "move-to": return moveTo(id, Array(words.dropFirst()))
         case "remember":
             guard let entry = rememberWindow(id, withTitle: flags.contains("--title")) else {
                 return fail("this window is not in the layout (minimized or in native fullscreen)")
@@ -456,19 +458,66 @@ extension WindowManager {
         let ordered = tiled + inLayout.subtracting(tiled).sorted()
         for id in ordered { setFloating(id, on) }
         if let template {
-            let context = layoutContext(forWorkspace: workspace.name)
-            let area = context.gaps.outerArea(context.viewport)
-            guard area.width > 0, area.height > 0 else { return fail("there is no monitor") }
-            let region = CGRect(
-                x: area.minX + template.area.minX * area.width, y: area.minY + template.area.minY * area.height,
-                width: template.area.width * area.width, height: template.area.height * area.height)
-            for (id, cell) in zip(ordered, template.cells) {
-                let frame = CGRect(
-                    x: region.minX + cell.minX * region.width, y: region.minY + cell.minY * region.height,
-                    width: cell.width * region.width, height: cell.height * region.height)
-                setFloatFrame(id, frame.insetBy(dx: context.gaps.inner / 2, dy: context.gaps.inner / 2))
+            for (index, id) in ordered.prefix(template.count).enumerated() {
+                guard let frame = cellFrame(template, index, workspace: workspace.name) else { return fail("there is no monitor") }
+                setFloatFrame(id, frame)
             }
         }
+        relayout()
+        return ok()
+    }
+
+    /// Where cell `index` of a tile template sits on the screen of the workspace: inside the outer gaps, with half the inner gap
+    /// on each side. `nil` when there is no monitor.
+    private func cellFrame(_ template: SplitTemplate, _ index: Int, workspace name: String) -> CGRect? {
+        let context = layoutContext(forWorkspace: name)
+        let area = context.gaps.outerArea(context.viewport)
+        guard area.width > 0, area.height > 0, template.cells.indices.contains(index) else { return nil }
+        let region = CGRect(
+            x: area.minX + template.area.minX * area.width, y: area.minY + template.area.minY * area.height,
+            width: template.area.width * area.width, height: template.area.height * area.height)
+        let cell = template.cells[index]
+        return CGRect(
+            x: region.minX + cell.minX * region.width, y: region.minY + cell.minY * region.height,
+            width: cell.width * region.width, height: cell.height * region.height
+        ).insetBy(dx: context.gaps.inner / 2, dy: context.gaps.inner / 2)
+    }
+
+    /// `window place <pattern> <n>`: the window floats into cell n (from 1) of a tile pattern. The other windows stay as they are.
+    private func place(_ id: WindowID, _ words: [String]) -> ServerAnswer {
+        guard let managed = windows[id], !managed.isOutOfLayout else {
+            return fail("this window is not in the layout (minimized or in native fullscreen)")
+        }
+        guard words.count == 2 else { return fail("window place needs a pattern and a cell number", 2, usage: "window place") }
+        guard let template = templates(of: id).first(where: { $0.name == words[0] }) ?? SplitTemplate.builtIn(named: words[0]) else {
+            return fail("unknown pattern '\(words[0])'", 2, usage: "window place", hint: "see `wm help layout tile`")
+        }
+        guard let number = Int(words[1]), (1...template.count).contains(number) else {
+            return fail("the pattern '\(template.name)' has \(template.count) cell(s): give a number from 1 to \(template.count)", 2, usage: "window place")
+        }
+        guard let frame = cellFrame(template, number - 1, workspace: managed.workspace) else { return fail("there is no monitor") }
+        setFloating(id, true)
+        setFloatFrame(id, frame)
+        relayout()
+        return ok()
+    }
+
+    /// `window move-to <x> <y>`: the top left corner of the floating window goes to that point of the work area (`50%` is a fraction
+    /// of its width or height). The size stays and the window stays inside the area. A tiled window floats first.
+    private func moveTo(_ id: WindowID, _ words: [String]) -> ServerAnswer {
+        guard let managed = windows[id], !managed.isOutOfLayout, let area = floatArea(of: managed) else {
+            return fail("this window is not in the layout (minimized or in native fullscreen)")
+        }
+        func coordinate(_ text: String, of length: CGFloat) -> CGFloat? {
+            if text.hasSuffix("%") { return Double(text.dropLast()).map { CGFloat($0) / 100 * length } }
+            return Double(text).map { CGFloat($0) }
+        }
+        guard words.count == 2, let x = coordinate(words[0], of: area.width), let y = coordinate(words[1], of: area.height) else {
+            return fail("window move-to needs x and y", 2, usage: "window move-to", hint: "points from the top left of the work area, or a percent such as 50%")
+        }
+        setFloating(id, true)
+        guard let frame = windows[id]?.floatFrame ?? currentFrame(of: id) else { return fail("this window has no frame") }
+        setFloatFrame(id, FloatGeometry.placed(frame, at: CGPoint(x: area.minX + x, y: area.minY + y), in: area))
         relayout()
         return ok()
     }

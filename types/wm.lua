@@ -35,6 +35,7 @@
 ---| "workspace move monitor left" | "workspace move monitor right" | "workspace move monitor up" | "workspace move monitor down" | "workspace move monitor next" | "workspace move monitor prev" | "workspace move monitor last"
 ---| "window close" | "window float" | "window float on" | "window float off" | "window center" | "window fullscreen" | "window maximize" | "window native-fullscreen"
 ---| "window sticky" | "zen" | "zen on" | "zen off"
+---| "window place 2 1" | "window place 2 2" | "window place 2+1 1" | "window place 2+1 2" | "window place 2+1 3" | "window move-to 0 0" | "window move-to 50% 50%"
 ---| "window snap left" | "window snap right" | "window snap top" | "window snap bottom" | "window snap center"
 ---| "window snap top-left" | "window snap top-right" | "window snap bottom-left" | "window snap bottom-right"
 ---| "window raise-floating" | "window rescue" | "window unmark" | "window remember" | "window remember --title"

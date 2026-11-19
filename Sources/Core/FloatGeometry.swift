@@ -33,6 +33,11 @@ public enum FloatGeometry {
         inside(CGRect(x: area.midX - frame.width / 2, y: area.midY - frame.height / 2, width: frame.width, height: frame.height), area)
     }
 
+    /// The frame with the same size and its top left corner at `origin`, moved the least that keeps it in the area.
+    public static func placed(_ frame: CGRect, at origin: CGPoint, in area: CGRect) -> CGRect {
+        inside(CGRect(origin: origin, size: frame.size), area)
+    }
+
     /// The frame moved the least that puts it in the area. A side that is longer than the area sits at its start.
     private static func inside(_ frame: CGRect, _ area: CGRect) -> CGRect {
         let x = frame.width >= area.width ? area.minX : min(max(frame.minX, area.minX), area.maxX - frame.width)

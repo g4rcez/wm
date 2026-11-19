@@ -105,6 +105,14 @@ public let commandSections: [CommandSection] = [
             details: "`place` is left, right, top, bottom, top-left, top-right, bottom-left, bottom-right or center. The window floats (a tiled window\nfirst) and fills that part of the work area inside the gaps. The same place again goes on to the next size: half, a third, two thirds\n(center: 60%, 80%, 40%).",
             example: "wm window snap left"),
         CommandSpec(
+            "window place", "<pattern> <n>", "", "Float the window into cell n of a tile pattern.",
+            details: "`pattern` is one of `layout tile` (2, 2+1, 2/3, 1-over-2, corner-tl ...), or a template of your config. Cells count from 1, in reading\norder. The window floats (a tiled one first) and fills the cell inside the gaps; the other windows do not move.\n`workspace float-all <pattern>` places all the windows at once.",
+            example: "wm window place 2+1 2"),
+        CommandSpec(
+            "window move-to", "<x> <y>", "", "Move the floating window to a point of the work area.",
+            details: "x and y are points from the top left corner of the work area, or a percent of its width and height (`50%`). The size stays\nand the window stays inside the area, so a point near the edge moves it the least that fits. A tiled window floats first.",
+            example: "wm window move-to 40 80"),
+        CommandSpec(
             "window minimize", "", "", "Minimize the window.",
             details: "It sets the minimized state of the window, as the yellow button does. A minimized window has no place in the layout.",
             example: "wm window minimize"),
