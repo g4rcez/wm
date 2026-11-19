@@ -170,7 +170,7 @@ Requirements:
 There is no published binary. With Homebrew, the formula in [g4rcez/homebrew-tap](https://github.com/g4rcez/homebrew-tap) builds wm from source:
 
 ```sh
-brew install --HEAD g4rcez/tap/wm
+brew install g4rcez/tap/wm
 ```
 
 Or build it yourself:
