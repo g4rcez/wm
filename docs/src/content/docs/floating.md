@@ -24,10 +24,16 @@ workspace has windows, the window joins the layout and `balance` runs. Add `--ti
   area gets 60% of it, so you can see it float. Windows that open floating (rules, dialogs) keep their own place.
 - `window float on` and `window float off` float or tile the window and never toggle, so a bind can be repeated safely.
   `window center` floats the window (a tiled one first) and puts it in the middle of its monitor, with the same size.
+- Some tiling and scrolling commands work on a floating window too. `window maximize` fills the work area inside the gaps, and
+  again puts the window back where it was. `resize smart <+n|-n>` is bigger and smaller: both sides change by n points around the
+  center of the window. `layout column width <fraction|cycle>` and `layout stack height <fraction|cycle>` set the width and the
+  height as a share of the work area (`cycle`: a third, a half, two thirds, all of it); `layout column expand` takes the whole
+  width; `layout column center` and `center-visible` center the window like `window center`. The other `layout` commands need a
+  tiled window.
 - `resize <left|right|up|down> <+n|-n>` moves one edge of the window: `+n` pushes the edge on that side outward and `-n` pulls it
   inward, and the other edges stay. It works on tiled windows too, where it moves the divider on that side (see
   [Tiling](/docs/tiling)); a side at the edge of the screen has no divider and fails, so use the opposite side.
-- `move <dir> [points]` and `resize <width|height> <+n|-n>` work on a floating window too: it moves by `points` (40 if you
+- `move <dir> [points]` and `resize <width|height|smart> <+n|-n>` work on a floating window too: it moves by `points` (40 if you
   leave it out) or changes by n points, keeps its top left corner when it resizes, and stays inside the work area of its
   monitor. At the edge `move` stops; it does not go to the next monitor.
 - `window snap <place>` floats the window (a tiled one first) into a part of the work area inside the gaps: `left`, `right`,

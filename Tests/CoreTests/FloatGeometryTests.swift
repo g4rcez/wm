@@ -27,8 +27,18 @@ struct FloatGeometryTests {
         #expect(FloatGeometry.resized(frame, .height, by: -50, in: area) == CGRect(x: 100, y: 100, width: 400, height: 250))
     }
 
-    @Test func smartResizesTheWidth() {
-        #expect(FloatGeometry.resized(frame, .smart, by: 50, in: area) == CGRect(x: 100, y: 100, width: 450, height: 300))
+    @Test func smartResizesBothAroundTheCentre() {
+        #expect(FloatGeometry.resized(frame, .smart, by: 50, in: area) == CGRect(x: 75, y: 75, width: 450, height: 350))
+    }
+
+    @Test func aFractionSetsTheWidthOrTheHeightOfTheArea() {
+        #expect(FloatGeometry.sized(frame, .width, fraction: 0.5, in: area) == CGRect(x: 100, y: 100, width: 500, height: 300))
+        #expect(FloatGeometry.sized(frame, .height, fraction: 1, in: area) == CGRect(x: 100, y: 0, width: 400, height: 600))
+    }
+
+    @Test func cyclingGoesToTheNextFractionAndWrapsAround() {
+        #expect(FloatGeometry.nextFraction(of: frame, .width, in: area) == 1.0 / 2)  // 40% is past a third
+        #expect(FloatGeometry.nextFraction(of: CGRect(x: 0, y: 0, width: 1000, height: 300), .width, in: area) == 1.0 / 3)
     }
 
     @Test func aResizeThatWouldLeaveTheAreaPushesTheWindowBack() {

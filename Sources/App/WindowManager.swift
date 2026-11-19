@@ -15,6 +15,8 @@ struct ManagedWindow {
     var isOutOfLayout: Bool { minimized || nativeFullscreen }
     /// Where a floating window lives; restored when its workspace is shown again.
     var floatFrame: CGRect?
+    /// The frame that a maximized floating window had; `window maximize` again puts it back.
+    var floatRestore: CGRect?
     /// The window shows on every workspace that its monitor shows (`window sticky`). Only a floating window is sticky.
     var sticky = false
     /// The monitor that a sticky window follows.
@@ -1066,6 +1068,9 @@ final class WindowManager {
 
     /// Where a floating window goes at the next layout pass.
     func setFloatFrame(_ id: WindowID, _ frame: CGRect) { windows[id]?.floatFrame = frame }
+
+    /// The frame that `window maximize` puts back for a floating window (`nil`: none).
+    func setFloatRestore(_ id: WindowID, _ frame: CGRect?) { windows[id]?.floatRestore = frame }
 
     func setFloating(_ id: WindowID, _ floating: Bool) {
         guard var managed = windows[id], managed.floating != floating else { return }

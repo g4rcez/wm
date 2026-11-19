@@ -820,7 +820,8 @@ extension WindowManager {
     // MARK: - Layout
 
     private func layoutCommand(_ command: LayoutCommand, target id: WindowID?) -> ServerAnswer {
-        guard let id, let managed = windows[id], !managed.floating else { return fail("there is no tiled window in focus") }
+        if let id, windows[id]?.floating == true, let answer = floatingLayoutCommand(command, id) { return answer }
+        guard let id, let managed = windows[id], !managed.floating else { return fail("there is no tiled window in focus", 1, hint: "this command has no meaning for a floating window") }
         let workspace = workspace(managed.workspace)
         _ = workspace.engine.perform(command, focused: id, in: layoutContext(forWorkspace: workspace.name))
         relayout()
@@ -878,7 +879,8 @@ extension WindowManager {
     /// state when focus moves on.
     private func toggleMaximize(target id: WindowID?) -> ServerAnswer {
         guard let id, let managed = windows[id] else { return fail("there is no focused window") }
-        guard !managed.floating, !managed.isOutOfLayout else { return fail("only a tiled window can be maximized", 1, hint: "tile it first with `wm window float`") }
+        guard !managed.isOutOfLayout else { return fail("this window is not in the layout (minimized or in native fullscreen)") }
+        if managed.floating { return maximizeFloating(id, managed) }
         let workspace = workspace(managed.workspace)
         if workspace.maximized.contains(id) {
             workspace.maximized.remove(id)
@@ -894,6 +896,51 @@ extension WindowManager {
         workspace.maximized.insert(id)
         focus(id)
         return ok()
+    }
+
+    /// A floating window fills the work area inside the gaps; again, it goes back to the frame it had.
+    private func maximizeFloating(_ id: WindowID, _ managed: ManagedWindow) -> ServerAnswer {
+        let context = layoutContext(forWorkspace: managed.workspace)
+        let area = context.gaps.outerArea(context.viewport)
+        guard area.width > 0, area.height > 0 else { return fail("there is no monitor") }
+        let frame = managed.floatFrame ?? currentFrame(of: id) ?? managed.info.frame
+        let near: (CGFloat, CGFloat) -> Bool = { abs($0 - $1) <= 4 }
+        let isMaximized = near(frame.minX, area.minX) && near(frame.minY, area.minY) && near(frame.width, area.width) && near(frame.height, area.height)
+        if isMaximized, let restore = managed.floatRestore {
+            setFloatRestore(id, nil)
+            setFloatFrame(id, restore)
+        } else {
+            // A window that was moved after it was maximized has an old entry: the entry is the frame of now.
+            setFloatRestore(id, isMaximized ? nil : frame)
+            setFloatFrame(id, area)
+        }
+        relayout()
+        focus(id)
+        return ok()
+    }
+
+    /// The tiling and scrolling commands that have a meaning for a floating window do it for the window: the width and height
+    /// fractions, `layout column expand` (the whole width) and the centering. `nil` for the others.
+    private func floatingLayoutCommand(_ command: LayoutCommand, _ id: WindowID) -> ServerAnswer? {
+        guard let (frame, area) = floatingFrame(id) else { return nil }
+        func apply(_ new: CGRect) -> ServerAnswer {
+            setFloatFrame(id, new)
+            relayout()
+            return ok()
+        }
+        func resize(_ dimension: ResizeDimension, _ spec: ColumnWidth) -> ServerAnswer {
+            switch spec {
+            case .cycle: apply(FloatGeometry.sized(frame, dimension, fraction: FloatGeometry.nextFraction(of: frame, dimension, in: area), in: area))
+            case .fraction(let fraction): apply(FloatGeometry.sized(frame, dimension, fraction: fraction, in: area))
+            }
+        }
+        switch command {
+        case .columnWidth(let spec): return resize(.width, spec)
+        case .windowHeight(let spec): return resize(.height, spec)
+        case .expandColumn: return apply(FloatGeometry.sized(frame, .width, fraction: 1, in: area))
+        case .center, .centerVisible: return apply(FloatGeometry.centered(frame, in: area))
+        default: return nil
+        }
     }
 
     /// Maximized by either way: the overlay, or a scrolling column that fills its zone.

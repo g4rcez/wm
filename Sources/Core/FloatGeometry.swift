@@ -18,14 +18,34 @@ public enum FloatGeometry {
     }
 
     /// The frame with `delta` points more (or less) in one dimension. The top left corner stays, unless the window would leave the
-    /// area. `smart` is the width: a floating window has no split direction.
+    /// area. `smart` changes both dimensions by `delta` around the centre of the window: a floating window has no split direction,
+    /// so it is the bigger / smaller control.
     public static func resized(_ frame: CGRect, _ dimension: ResizeDimension, by delta: CGFloat, in area: CGRect) -> CGRect {
         var size = frame.size
+        func clamped(_ length: CGFloat, _ limit: CGFloat) -> CGFloat { min(max(length, min(minimumSize, limit)), limit) }
         switch dimension {
-        case .width, .smart: size.width = min(max(size.width + delta, min(minimumSize, area.width)), area.width)
-        case .height: size.height = min(max(size.height + delta, min(minimumSize, area.height)), area.height)
+        case .width: size.width = clamped(size.width + delta, area.width)
+        case .height: size.height = clamped(size.height + delta, area.height)
+        case .smart:
+            size = CGSize(width: clamped(size.width + delta, area.width), height: clamped(size.height + delta, area.height))
+            let origin = CGPoint(x: frame.midX - size.width / 2, y: frame.midY - size.height / 2)
+            return inside(CGRect(origin: origin, size: size), area)
         }
         return inside(CGRect(origin: frame.origin, size: size), area)
+    }
+
+    /// The frame with the width (or the height) set to `fraction` of the area, keeping its top left corner when it fits.
+    public static func sized(_ frame: CGRect, _ dimension: ResizeDimension, fraction: Double, in area: CGRect) -> CGRect {
+        let length = (dimension == .height ? area.height : area.width) * CGFloat(min(max(fraction, 0.1), 1))
+        return resized(frame, dimension == .height ? .height : .width, by: length - (dimension == .height ? frame.height : frame.width), in: area)
+    }
+
+    /// The next of the usual fractions (a third, a half, two thirds, the whole area) after the current size of `frame`; the first one
+    /// when it is at the last or none matches.
+    public static func nextFraction(of frame: CGRect, _ dimension: ResizeDimension, in area: CGRect) -> Double {
+        let steps = [1.0 / 3, 1.0 / 2, 2.0 / 3, 1.0]
+        let current = Double((dimension == .height ? frame.height / area.height : frame.width / area.width))
+        return steps.first { $0 > current + 0.02 } ?? steps[0]
     }
 
     /// The frame with the same size in the middle of the area.

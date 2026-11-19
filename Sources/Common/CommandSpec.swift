@@ -80,7 +80,7 @@ public let commandSections: [CommandSection] = [
             details: "With --wrap, or wrap_focus in the config, the window at the edge trades places with the window at the other end."),
         CommandSpec(
             "resize", "<width|height|smart> <+n|-n>", "", "Grow or shrink the window by n points.",
-            details: "`width`, `height` and `smart` change the size and keep the top left corner of a floating window (`smart` is the width there). A side\n(`left`, `right`, `up` or `down`, as `wm resize left +50`) moves the edge on that side: +n pushes it outward, -n pulls it inward, and the other edges stay.\nA tiled window moves the divider on that side, so a side at the edge of the screen fails (use the opposite side). A floating window stays on its monitor.",
+            details: "`width`, `height` and `smart` change the size. A floating window keeps its top left corner for `width` and `height`; `smart` changes both\naround its center (bigger and smaller). A side\n(`left`, `right`, `up` or `down`, as `wm resize left +50`) moves the edge on that side: +n pushes it outward, -n pulls it inward, and the other edges stay.\nA tiled window moves the divider on that side, so a side at the edge of the screen fails (use the opposite side). A floating window stays on its monitor.",
             example: "wm resize width +50"),
     ]),
     CommandSection(title: "Windows", specs: [
