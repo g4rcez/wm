@@ -47,9 +47,10 @@ a real mouse click at the center of the element, so it works in web pages, the m
 
 - **`hints`** (search and click): as above. Typing a label clicks the element.
 - **`hints --wait`** (search and wait): the search starts at once, with no `/`. A label does not click: it highlights its
-  element, and so does the first match of the search (the green ring). Tab, Down and Ctrl-N, or Shift-Tab, Up and Ctrl-P,
+  element, and so does the first title match (the green ring). Tab, Down and Ctrl-N, or Shift-Tab, Up and Ctrl-P,
   move the highlight. `Return` clicks it, `Shift-Return` right-clicks and `Cmd-Return` Cmd-clicks. `Return` again within
-  300 ms double-clicks. Typing a word keeps narrowing the matches, and Backspace widens them.
+  300 ms double-clicks. Every label stays visible. Type a label or words of the title: the element that matches is highlighted, and the others
+  are dimmed. Backspace widens the matches.
 
 ```lua
 wm.bind("cmd-shift-space", "hints")
