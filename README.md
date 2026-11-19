@@ -124,7 +124,8 @@ wm has no default key bindings. Until you bind keys in `init.lua`, it only react
 - **Hints:** two-letter labels on every clickable element of a window, the menu bar and the Dock, with fuzzy search. Works as
   Homerow does.
 - **Scroll mode:** number the scroll areas and scroll them with `h` `j` `k` `l`.
-- **Select mode:** search the text on the screen, select it with vim keys or labels, then copy it or right-click it.
+- **Select mode:** search the text on the screen, select it with vim keys or labels, then copy it (`y`, `Cmd-C` or `Return`) or
+  right-click it. Every key of the select step can change with `wm.config { select = { keys = { ... } } }`.
 
 See [Hints, scroll and select mode](https://wm.garcez.dev/docs/hints).
 
