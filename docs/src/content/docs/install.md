@@ -14,14 +14,14 @@ I have not published a binary. Homebrew builds wm from source for you, or you bu
 
 ## Homebrew
 
-This repository is its own Homebrew tap:
+The formula lives in [g4rcez/homebrew-tap](https://github.com/g4rcez/homebrew-tap):
 
 ```sh
 brew install --HEAD g4rcez/tap/wm
 wm daemon start
 ```
 
-The formula lives in [g4rcez/homebrew-tap](https://github.com/g4rcez/homebrew-tap). It needs the Swift 6.2 toolchain (Xcode 26 or newer) and builds the latest `main`. It puts `wm.app` in the
+The formula needs the Swift 6.2 toolchain (Xcode 26 or newer) and builds the latest `main`. It puts `wm.app` in the
 Homebrew prefix, links `wm` and `wmd` in `$(brew --prefix)/bin` and installs the zsh and bash completions. Update with
 `brew reinstall --HEAD g4rcez/tap/wm`.
 
