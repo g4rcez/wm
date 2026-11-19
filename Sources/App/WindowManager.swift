@@ -338,7 +338,9 @@ final class WindowManager {
                 windows[info.id]?.info = managed.info
                 // A snapshot can be older than a workspace switch: never save a parked frame as the home frame.
                 let parked = info.frame.minX >= hiddenCorner().x - 1 && info.frame.minY >= hiddenCorner().y - 1
-                if managed.floating, !managed.isOutOfLayout, !parked, managed.workspaceVisible(self) {
+                // A floating window in fullscreen keeps the frame it will go back to, not the one that fills the screen.
+                if managed.floating, !managed.isOutOfLayout, !parked, managed.workspaceVisible(self),
+                   workspace(managed.workspace).fullscreen != info.id {
                     windows[info.id]?.floatFrame = info.frame
                 }
                 continue
@@ -1234,7 +1236,8 @@ final class WindowManager {
                 }
             }
             for (id, managed) in windows where managed.workspace == workspace.name && managed.floating && !managed.isOutOfLayout {
-                targets[id] = managed.floatFrame ?? managed.info.frame
+                // A floating window in fullscreen keeps its own place for when it leaves fullscreen.
+                targets[id] = workspace.fullscreen == id ? monitor.workArea : (managed.floatFrame ?? managed.info.frame)
                 visible.insert(id)
             }
         }
