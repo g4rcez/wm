@@ -2,19 +2,22 @@
 # Builds .build/wm.app (daemon + CLI). SwiftPM cannot make app bundles, so this wraps its output.
 # Usage: ./build-app.sh [debug|release]   (default: release)
 # It stops a running wm just before it replaces the bundle, and starts the new build when it is done.
-# NO_START=1 builds without starting it.
+# NO_START=1 builds without starting it. NO_STOP=1 does not stop a running wm (the Homebrew formula builds in a temporary folder).
+# SWIFT_BUILD_FLAGS adds flags to `swift build` (the formula passes --disable-sandbox).
 set -euo pipefail
 cd "$(dirname "$0")"
 
 configuration="${1:-release}"
-swift build -c "$configuration"
-bin="$(swift build -c "$configuration" --show-bin-path)"
+# shellcheck disable=SC2086  # the flags are split on purpose
+swift build -c "$configuration" ${SWIFT_BUILD_FLAGS:-}
+# shellcheck disable=SC2086
+bin="$(swift build -c "$configuration" ${SWIFT_BUILD_FLAGS:-} --show-bin-path)"
 
 app=".build/wm.app"
 
 # The running daemon executes from the bundle, so it must stop before the bundle is deleted. `wm daemon stop` lets it put
 # the windows back; if it does not exit in a few seconds it is killed.
-if pgrep -x wmd >/dev/null; then
+if [ -z "${NO_STOP:-}" ] && pgrep -x wmd >/dev/null; then
     echo "Stopping the running wm..."
     if [ -x "$app/Contents/MacOS/wm" ]; then "$app/Contents/MacOS/wm" daemon stop >/dev/null 2>&1 || true; fi
     for _ in 1 2 3 4 5 6 7 8 9 10; do pgrep -x wmd >/dev/null || break; sleep 0.5; done
