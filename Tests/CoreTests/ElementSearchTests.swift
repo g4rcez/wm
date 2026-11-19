@@ -242,4 +242,21 @@ struct ElementSearchTests {
         #expect(search.matches.isEmpty)
         #expect(search.target == nil)
     }
+
+    @Test func keptLabelsStayWhileTheTextPicksATarget() {
+        var search = ElementSearch(elements: toolbar, keepsLabels: true)
+        search.beginSearch()
+        for key in "save" { _ = search.press(String(key)) }
+        #expect(search.label(of: 2) == "aa")
+        #expect(search.label(of: 3) == "sa")
+        #expect(search.label(of: 1) == "da")
+        #expect(search.target?.id == 1)
+    }
+
+    @Test func keptLabelsPickByLabel() {
+        var search = ElementSearch(elements: toolbar, keepsLabels: true)
+        search.beginSearch()
+        for key in "sa" { _ = search.press(String(key)) }
+        #expect(search.target?.id == 3)
+    }
 }
