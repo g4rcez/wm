@@ -167,11 +167,10 @@ Requirements:
 - The Swift 6.2 toolchain (Xcode or the command line tools).
 - No other window manager running (AeroSpace, yabai, Amethyst). Two of them fight over the same windows.
 
-There is no published binary. With Homebrew, the formula in this repository builds wm from source:
+There is no published binary. With Homebrew, the formula in [g4rcez/homebrew-tap](https://github.com/g4rcez/homebrew-tap) builds wm from source:
 
 ```sh
-brew tap g4rcez/wm https://github.com/g4rcez/wm
-brew install --HEAD g4rcez/wm/wm
+brew install --HEAD g4rcez/tap/wm
 ```
 
 Or build it yourself:
