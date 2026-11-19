@@ -52,9 +52,10 @@ final class InputRouter {
     var palette: PaletteController?
     /// Set by the app: the template picker takes over the keys while it is open.
     var picker: TemplatePicker?
-    /// Set by the app: hint mode and scroll mode take over the keys while they are on.
+    /// Set by the app: hint mode, scroll mode and select mode take over the keys while they are on.
     var hints: HintController?
     var scroller: ScrollController?
+    var selector: SelectController?
     /// While set (the Shortcuts window records a shortcut), every key press goes to this closure and nothing else: no bind, remap
     /// or sequence runs, and the app under the window does not see the key. The hyper key counts, as in any chord.
     var capture: ((Chord) -> Void)?
@@ -117,6 +118,7 @@ final class InputRouter {
                 switcher?.pointerPressed(at: event.location)
                 hints?.pointerPressed()
                 scroller?.pointerPressed()
+                selector?.pointerPressed()
             }
             return manager.handleMouse(event)
         }
@@ -191,10 +193,11 @@ final class InputRouter {
         return chord.modifiers.contains(.hyper)
     }
 
-    /// The open panel (hints, scroll, palette, switcher, template picker) takes the key. `nil` when no panel is open.
+    /// The open panel (hints, scroll, select, palette, switcher, template picker) takes the key. `nil` when no panel is open.
     private func overlayKey(_ key: String, flags: CGEventFlags) -> Bool? {
         if let hints, hints.isOpen { return hints.handleKey(key, flags: flags) }
         if let scroller, scroller.isOpen { return scroller.handleKey(key, flags: flags) }
+        if let selector, selector.isOpen { return selector.handleKey(key, flags: flags) }
         if let palette, palette.isOpen { return palette.handleKey(key, flags: flags) }
         if let switcher, switcher.isOpen { return switcher.handleKey(key, flags: flags) }
         if let picker, picker.isOpen { return picker.handleKey(key) }

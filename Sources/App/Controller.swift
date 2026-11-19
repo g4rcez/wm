@@ -32,6 +32,9 @@ final class AppController: HostBridge, @unchecked Sendable {
         deliver: { [unowned self] events in input.handleFinger(events) }, pinch: { [unowned self] pinch in input.handlePinch(pinch) })
     @MainActor private lazy var hints = HintController { [unowned self] in manager.settings.hints }
     @MainActor private lazy var scroller = ScrollController { [unowned self] in manager.settings.hints }
+    @MainActor private lazy var selector = SelectController(
+        colors: { [unowned self] in manager.settings.hints }, keys: { [unowned self] in manager.settings.select }, display: { [unowned self] in manager.focusedMonitor.map { ($0.id, $0.frame) } },
+        notify: { [unowned self] text in onNotify(text, 2) })
     private let menuReader = MenuReader()
     @MainActor private lazy var menuPopup = MenuPopup()
     private lazy var host = LuaHost(bridge: self)
@@ -72,6 +75,7 @@ final class AppController: HostBridge, @unchecked Sendable {
         input.picker = picker
         input.hints = hints
         input.scroller = scroller
+        input.selector = selector
         switcher.chordFlags = { [unowned input = input!] in input.currentFlags }
         manager.runRuleCommand = { [unowned self] command, window in _ = run(command, target: window) }
         manager.events.add { [unowned self] name, payload in
@@ -213,7 +217,8 @@ final class AppController: HostBridge, @unchecked Sendable {
                 return fail("\(args[0]) takes open, close or toggle", 2, usage: args[0])
             }
             return onMain {
-                // One mode at a time: both take every key.
+                // One mode at a time: each takes every key.
+                if mode != "close" { selector.close() }
                 let error: String?
                 if args[0] == "hints" {
                     if mode != "close" { scroller.close() }
@@ -223,6 +228,18 @@ final class AppController: HostBridge, @unchecked Sendable {
                     error = scroller.command(mode ?? "toggle")
                 }
                 return error.map { fail($0) } ?? ok()
+            }
+        case "select":
+            let mode = args.dropFirst().first
+            guard args.count <= 2, mode == nil || ["open", "close", "toggle"].contains(mode) else {
+                return fail("select takes open, close or toggle", 2, usage: "select")
+            }
+            return onMain {
+                if mode != "close" {
+                    hints.close()
+                    scroller.close()
+                }
+                return selector.command(mode ?? "toggle").map { fail($0) } ?? ok()
             }
         case "menu":
             return onMain { showMenu(of: target) }

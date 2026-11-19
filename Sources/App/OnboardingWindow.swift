@@ -86,7 +86,7 @@ final class OnboardingWindow: NSObject, NSWindowDelegate {
         let stack = NSStackView(views: [
             title, intro,
             row("Accessibility", "Required: wm moves windows and reads keys with it.", accessibilityStatus, accessibilityGrant),
-            row("Screen Recording", "Optional: only for the thumbnails of the switcher and the overview.", screenStatus, screenGrant),
+            row("Screen Recording", "Optional: for the thumbnails of the switcher and the overview, and for `wm select` in apps that draw their own text.", screenStatus, screenGrant),
             NSTextField(labelWithString: "Config").withFont(.systemFont(ofSize: 13, weight: .semibold)),
             configStatus, presetRow,
             startButton,

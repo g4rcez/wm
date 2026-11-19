@@ -803,6 +803,29 @@ struct LuaHostTests {
         #expect(set.settings.hints.focus == HintSettings().focus)
     }
 
+    @Test func theSelectKeysHaveDefaultsThatTheConfigReplacesOneActionAtATime() throws {
+        let plain = try host.load(configURL: dir.write("init.lua", "wm.config { layout = 'tiling' }"))
+        #expect(plain.settings.select.keys[.copy] == ["y", "cmd-c", "enter"])
+        let set = try host.load(configURL: dir.write(
+            "init.lua", "wm.config { select = { keys = { copy = 'ctrl-shift-c', extend = { 'v', 'x' }, search = {} } } }"))
+        #expect(set.settings.select.keys[.copy] == ["ctrl-shift-c"])
+        #expect(set.settings.select.keys[.extend] == ["v", "x"])
+        #expect(set.settings.select.keys[.search] == [])
+        #expect(set.settings.select.keys[.rightClick] == ["shift-enter"])
+    }
+
+    @Test(arguments: [
+        ("wm.config { select = { keys = { copy = 'c', extend = 'c' } } }", "'c' is bound to both"),
+        ("wm.config { select = { keys = { copy = 'hyper-c' } } }", "uses hyper"),
+        ("wm.config { select = { keys = { copy = 'nope' } } }", "unknown key 'nope'"),
+        ("wm.config { select = { keys = { copy = 3 } } }", "'select.keys.copy' must be a chord or a list of chords"),
+        ("wm.config { select = { keys = { paste = 'p' } } }", "unknown key 'select.keys.paste'"),
+    ])
+    func selectKeyErrorsNameTheKey(script: String, expected: String) {
+        let error = #expect(throws: ConfigError.self) { try host.load(configURL: dir.write("init.lua", script)) }
+        #expect(error?.message.contains(expected) == true)
+    }
+
     @Test func aHintColorThatIsNotAColorIsAnError() throws {
         #expect(throws: (any Error).self) {
             try host.load(configURL: dir.write("init.lua", "wm.config { hints = { background = \"red\" } }"))

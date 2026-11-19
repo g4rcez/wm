@@ -274,6 +274,57 @@ public struct HintSettings: Sendable, Equatable {
     public init() {}
 }
 
+/// What a key does in the select step of `wm select`. The raw value is the name in `wm.config { select = { keys = { ... } } }`.
+public enum SelectAction: String, Sendable, CaseIterable {
+    case copy, rightClick = "right_click", extend, search
+    case left, right, down, up
+    case nextWord = "next_word", previousWord = "previous_word", wordEnd = "word_end"
+    case lineStart = "line_start", lineEnd = "line_end"
+}
+
+/// The keys of the select step (`wm.config { select = { keys = { ... } } }`). A key is a chord name made by `chordName`.
+/// Escape always closes the mode: it cannot be changed.
+public struct SelectSettings: Sendable, Equatable {
+    public static let defaultKeys: [SelectAction: [String]] = [
+        .copy: ["y", "cmd-c", "enter"], .rightClick: ["shift-enter"], .extend: ["v"], .search: ["slash", "backspace"],
+        .left: ["h", "left"], .right: ["l", "right"], .down: ["j", "down"], .up: ["k", "up"],
+        .nextWord: ["w"], .previousWord: ["b"], .wordEnd: ["e"],
+        .lineStart: ["0", "cmd-left"], .lineEnd: ["4", "shift-4", "cmd-right"],
+    ]
+
+    public var keys = SelectSettings.defaultKeys
+    public init() {}
+
+    /// The name of a chord, as the keys of the settings are written: the modifiers in the order ctrl, alt, shift, cmd, then the key.
+    public static func chordName(key: String, control: Bool, option: Bool, shift: Bool, command: Bool) -> String {
+        ((control ? ["ctrl"] : []) + (option ? ["alt"] : []) + (shift ? ["shift"] : []) + (command ? ["cmd"] : []) + [key]).joined(separator: "-")
+    }
+
+    /// The action of each chord.
+    public var actions: [String: SelectAction] {
+        var result: [String: SelectAction] = [:]
+        for (action, chords) in keys { for chord in chords { result[chord] = action } }
+        return result
+    }
+
+    /// The first chord that two actions share, with both actions.
+    public var conflict: (chord: String, first: SelectAction, second: SelectAction)? {
+        var seen: [String: SelectAction] = [:]
+        for action in SelectAction.allCases {
+            for chord in keys[action] ?? [] {
+                if let other = seen[chord], other != action { return (chord, other, action) }
+                seen[chord] = action
+            }
+        }
+        return nil
+    }
+
+    /// The letters that no label may start with: a plain letter or digit that is a key of an action.
+    public var reservedLetters: Set<Character> {
+        Set(keys.values.joined().compactMap { $0.count == 1 ? $0.first : nil })
+    }
+}
+
 /// Floating windows (`wm.config { floating = { ... } }`).
 public struct FloatingSettings: Sendable, Equatable {
     /// A window that opens floating because of a rule (`wm.floating.defaultRules` too) opens where the last floating window of its
@@ -392,6 +443,7 @@ public struct Settings: Sendable, Equatable {
     public var keyboards = KeyboardSettings()
     public var overview = OverviewSettings()
     public var hints = HintSettings()
+    public var select = SelectSettings()
     public var master = MasterSettings()
     /// Commands a `wm://` URL may run besides the always-allowed ones. `exec` and `reload` are denied by default.
     public var urlAllow: [String] = []

@@ -90,7 +90,7 @@ public func daemonChecks(_ facts: DoctorFacts) -> [DoctorCheck] {
     checks.append(
         facts.screenRecording
             ? DoctorCheck("screen recording", .ok, "granted")
-            : DoctorCheck("screen recording", .warn, "not granted: the switcher and the overview show no thumbnails", hint: "optional: turn wm on in \(privacy) > Screen & System Audio Recording"))
+            : DoctorCheck("screen recording", .warn, "not granted: the switcher and the overview show no thumbnails, and `select` reads no terminal", hint: "optional: turn wm on in \(privacy) > Screen & System Audio Recording"))
     if !facts.isAppBundle {
         checks.append(DoctorCheck("login item", .skip, "this wmd does not run from a wm.app"))
     } else if facts.loginItemWanted == facts.loginItemEnabled {

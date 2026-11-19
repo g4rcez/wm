@@ -61,6 +61,7 @@
 ---| "overview" | "overview open" | "overview close"
 ---| "hints" | "hints open" | "hints close"
 ---| "scroll" | "scroll open" | "scroll close"
+---| "select" | "select open" | "select close"
 ---| "mode main"
 ---| "pointer window" | "pointer monitor"
 ---| "daemon reload"
@@ -264,10 +265,33 @@
 ---@field backdrop? wm.Color The dim layer behind the workspaces. Default "#0f0f14db".
 
 ---@class (exact) wm.HintsConfig
----@field background? wm.Color The background of a label in hint mode. Default "#ffd60af5".
+---@field background? wm.Color The background of a label in hint mode, and the places of the text in select mode. Default "#ffd60af5".
 ---@field text? wm.Color The text of a label. Default "#141414".
----@field focus? wm.Color The label of the focused element and the ring around that element. Default "#30d158".
+---@field focus? wm.Color The label of the focused element, the ring around that element, and the selection in select mode. Default "#30d158".
 ---@field area? wm.Color The rings and the numbers of the scroll areas in scroll mode. Default "#0a84ff".
+
+--- A chord ("y", "cmd-c", "shift-enter") or a list of chords for one action of the select step. Hyper cannot be used. `{}` unbinds it.
+---@alias wm.SelectKey string|string[]
+
+--- The keys of the select step of `wm select`. A key that is absent keeps its default. A chord can belong to one action only.
+--- Escape always closes the mode. A plain letter that is a key here is never the start of a label.
+---@class (exact) wm.SelectKeys
+---@field copy? wm.SelectKey Copy the selection. Default {"y", "cmd-c", "enter"}.
+---@field right_click? wm.SelectKey Right-click on the first word of the selection. Default "shift-enter".
+---@field extend? wm.SelectKey Start or stop to extend the selection. Default "v".
+---@field search? wm.SelectKey Back to the search. Default {"slash", "backspace"}.
+---@field left? wm.SelectKey One character left. Default {"h", "left"}.
+---@field right? wm.SelectKey One character right. Default {"l", "right"}.
+---@field down? wm.SelectKey The line below. Default {"j", "down"}.
+---@field up? wm.SelectKey The line above. Default {"k", "up"}.
+---@field next_word? wm.SelectKey Next word. Default "w".
+---@field previous_word? wm.SelectKey Previous word. Default "b".
+---@field word_end? wm.SelectKey End of the word. Default "e".
+---@field line_start? wm.SelectKey Start of the line. Default {"0", "cmd-left"}.
+---@field line_end? wm.SelectKey End of the line. Default {"4", "shift-4", "cmd-right"}.
+
+---@class (exact) wm.SelectConfig
+---@field keys? wm.SelectKeys
 
 ---@class (exact) wm.SpecialConfig
 ---@field size? number Size of a shown special workspace as a fraction of the work area, 0.5 to 1. Default 0.9.
@@ -307,6 +331,7 @@
 ---@field keyboards? wm.KeyboardsConfig Which keyboards wm manages: `{ default = true, ["Keyboard name"] = false, ["046d:c52b"] = true }`. See `wm query keyboards`.
 ---@field overview? wm.OverviewConfig The overview (`wm overview`): all workspaces, one under the other.
 ---@field hints? wm.HintsConfig The colors of the labels of `hints` and of the areas of `scroll`.
+---@field select? wm.SelectConfig The keys of the select step of `wm select`.
 ---@field special? wm.SpecialConfig Special workspaces (`workspace special`): size, dim backdrop, when they hide.
 ---@field master? wm.MasterConfig The `master` layout.
 ---@field url? wm.UrlConfig

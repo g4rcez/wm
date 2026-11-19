@@ -136,11 +136,36 @@ private func color(_ fields: Fields, _ key: String) throws -> Color? {
     return color
 }
 
+/// One chord or a list of chords for an action of the select step, as the names that `SelectSettings` compares. Hyper is not a flag
+/// of macOS, so the select step cannot see it.
+private func selectChords(_ value: LuaValue, action: SelectAction) throws -> [String] {
+    let name = "wm.config: 'select.keys.\(action.rawValue)'"
+    var texts: [String] = []
+    switch value {
+    case .string(let text): texts = [text]
+    case .array(let items):
+        for item in items {
+            guard case .string(let text) = item else { throw ConfigError(message: "\(name) must be a chord or a list of chords") }
+            texts.append(text)
+        }
+    case .table(let table) where table.isEmpty: break
+    default: throw ConfigError(message: "\(name) must be a chord or a list of chords")
+    }
+    return try texts.map { text in
+        let chord: Chord
+        do { chord = try parseChord(text) } catch { throw ConfigError(message: "\(name): \(error)") }
+        guard !chord.modifiers.contains(.hyper) else { throw ConfigError(message: "\(name): '\(text)' uses hyper, which select mode cannot see") }
+        return SelectSettings.chordName(
+            key: chord.key, control: chord.modifiers.contains(.control), option: chord.modifiers.contains(.option),
+            shift: chord.modifiers.contains(.shift), command: chord.modifiers.contains(.command))
+    }
+}
+
 /// The keys of `wm.config`. `types/wm.lua` must describe every one of them (a test checks it).
 let topLevelConfigKeys = [
     "layout", "workspaces", "gaps", "animations", "border", "focus_follows_mouse", "mouse_follows_focus",
     "start_at_login", "wrap_focus", "mouse", "trackpad", "workspace_back_and_forth", "tiling", "scrolling", "switcher", "prefix", "url",
-    "tab_indicator", "binds", "zen", "special", "overview", "hints", "keyboards", "floating", "master",
+    "tab_indicator", "binds", "zen", "special", "overview", "hints", "select", "keyboards", "floating", "master",
     "commands",
 ]
 
@@ -357,6 +382,18 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
         if let text = try color(hints, "text") { settings.hints.text = text }
         if let focus = try color(hints, "focus") { settings.hints.focus = focus }
         if let area = try color(hints, "area") { settings.hints.area = area }
+    }
+
+    if let select = try top.table("select", allowed: ["keys"]),
+       let keys = try select.table("keys", allowed: SelectAction.allCases.map(\.rawValue)) {
+        for action in SelectAction.allCases {
+            guard let value = keys.values[action.rawValue] else { continue }
+            settings.select.keys[action] = try selectChords(value, action: action)
+        }
+        if let clash = settings.select.conflict {
+            throw ConfigError(
+                message: "wm.config: 'select.keys': '\(clash.chord)' is bound to both '\(clash.first.rawValue)' and '\(clash.second.rawValue)'")
+        }
     }
 
     if let special = try top.table("special", allowed: ["size", "backdrop", "hide_on_other_monitor"]) {
