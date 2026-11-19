@@ -63,6 +63,11 @@ public struct MemorizedWindow: Codable, Equatable, Sendable {
 }
 
 extension MemorizedWindow {
+    /// Whether `name` is the bundle id or the name of the app, ignoring case.
+    func isEntry(ofApp name: String) -> Bool {
+        app.caseInsensitiveCompare(name) == .orderedSame || appName.caseInsensitiveCompare(name) == .orderedSame
+    }
+
     /// How the window is kept: `floating`, `maximized`, `pseudo` or `tiled`.
     public var mode: String {
         if floating { return "floating" }
@@ -112,6 +117,31 @@ public struct WindowMemory: Codable, Sendable, Equatable {
         let before = windows.count
         windows.removeAll { $0.app == app && $0.title == title }
         return windows.count != before
+    }
+
+    /// Removes the entries of the app that `name` is the bundle id or the name of (ignoring case): the one with exactly this
+    /// `title` (`nil` is the entry without a title), or with `allTitles` every entry of the app. Returns what was removed.
+    @discardableResult
+    public mutating func forget(appNamed name: String, title: String?, allTitles: Bool = false) -> [MemorizedWindow] {
+        var removed: [MemorizedWindow] = []
+        windows.removeAll { entry in
+            let hit = entry.isEntry(ofApp: name) && (allTitles || entry.title == title)
+            if hit { removed.append(entry) }
+            return hit
+        }
+        return removed
+    }
+
+    /// Removes every entry. Returns how many there were.
+    @discardableResult
+    public mutating func clear() -> Int {
+        defer { windows.removeAll() }
+        return windows.count
+    }
+
+    /// Whether there is an entry of the app that `name` is the bundle id or the name of.
+    public func hasEntries(ofApp name: String) -> Bool {
+        windows.contains { $0.isEntry(ofApp: name) }
     }
 
     /// The entry for a window that opens: the one with the same app and exactly the same title, else the one of the app

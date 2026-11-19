@@ -24,9 +24,30 @@ wm.bind("alt-space>shift-r", "window forget", { description = "Forget this windo
   `window remember` do not reach any other window (some games and helper windows). From a key bind, `window remember` and
   `window forget` show a notification with what they did, or why they could not (`the focused window is not managed by wm`).
   `wm logs` has a `window skipped` line, with the role and the subrole, for each new window that wm left alone.
+- `wm memory` manages the entries from the command line, with no window needed (see [below](#managing-the-entries)).
 - `wm list memory` (`--json` for scripts) shows the entries, and `wm.query("memory")` returns them to the config. They are in
   `~/.local/state/wm/memory.json` (`$XDG_STATE_HOME/wm/memory.json`), next to `state.json`. The file has no window ids, so it
   survives a reboot.
+
+### Managing the entries
+
+An entry applies to every new window of its app, so a wrong one (a Rex window that always floats) is easy to miss. `wm memory`
+shows and removes entries without a window to focus:
+
+```sh
+wm memory list                         # the same as `wm list memory`; --json for scripts
+wm memory forget com.superlogical.rex  # the entry of the whole app (the name of the app works too, as `list` shows it)
+wm memory forget Kitty --title=mail    # only the entry that has this exact title
+wm memory forget Kitty --all           # every entry of the app, whatever its title
+wm memory clear                        # every entry of every app
+```
+
+- **App:** the bundle id or the name, whatever the case. `wm memory list` shows the names. When the app has no entry of that kind,
+  the command fails (exit 1); if the app has other entries, the error says to use `--title=<text>` or `--all`.
+- **Windows that are open** stay where they are. Only the next window of the app opens as if nothing was remembered; use
+  `wm window float off` or `wm window float on` to change one that is open.
+- **Floating places:** `memory clear` does not touch `float-memory.json`, the places that closed floating windows keep.
+- `wm memory` needs the daemon, which owns the file: editing `memory.json` by hand while wm runs is overwritten.
 
 ### Floating windows remember their place
 

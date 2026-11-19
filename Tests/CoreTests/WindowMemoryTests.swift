@@ -106,4 +106,54 @@ struct WindowMemoryTests {
         #expect(MemorizedWindow(app: "a", appName: "A", workspace: "1", maximized: true).mode == "maximized")
         #expect(MemorizedWindow(app: "a", appName: "A", workspace: "1", pseudo: CGSize(width: 800, height: 600)).mode == "pseudo")
     }
+
+    private func rex() -> WindowMemory {
+        var memory = WindowMemory()
+        memory.remember(MemorizedWindow(app: "com.superlogical.rex", appName: "Rex Beta", workspace: "2", floating: true))
+        memory.remember(MemorizedWindow(app: "com.superlogical.rex", appName: "Rex Beta", title: "mail", workspace: "3"))
+        memory.remember(entry("kitty"))
+        return memory
+    }
+
+    @Test func forgettingAnAppWithoutATitleKeepsItsTitleEntries() {
+        var memory = rex()
+        let removed = memory.forget(appNamed: "com.superlogical.rex", title: nil)
+        #expect(removed.count == 1)
+        #expect(removed[0].floating)
+        #expect(memory.windows.map(\.title) == ["mail", nil])
+    }
+
+    @Test func forgettingFindsTheAppByItsNameWhateverTheCase() {
+        var memory = rex()
+        #expect(memory.forget(appNamed: "rex BETA", title: "mail").count == 1)
+        #expect(memory.windows.count == 2)
+        #expect(memory.forget(appNamed: "Kitty", title: nil).count == 1)
+    }
+
+    @Test func forgettingWithAllTitlesRemovesEveryEntryOfTheAppOnly() {
+        var memory = rex()
+        #expect(memory.forget(appNamed: "Rex Beta", title: nil, allTitles: true).count == 2)
+        #expect(memory.windows.map(\.app) == ["kitty"])
+    }
+
+    @Test func forgettingAnUnknownAppOrTitleRemovesNothing() {
+        var memory = rex()
+        #expect(memory.forget(appNamed: "safari", title: nil).isEmpty)
+        #expect(memory.forget(appNamed: "kitty", title: "mail").isEmpty)
+        #expect(memory.windows.count == 3)
+    }
+
+    @Test func hasEntriesSeesAnAppByBundleIdOrName() {
+        let memory = rex()
+        #expect(memory.hasEntries(ofApp: "com.superlogical.rex"))
+        #expect(memory.hasEntries(ofApp: "rex beta"))
+        #expect(!memory.hasEntries(ofApp: "safari"))
+    }
+
+    @Test func clearRemovesEverythingAndCountsIt() {
+        var memory = rex()
+        #expect(memory.clear() == 3)
+        #expect(memory.windows.isEmpty)
+        #expect(memory.clear() == 0)
+    }
 }
