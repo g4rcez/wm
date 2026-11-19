@@ -135,5 +135,7 @@ wm daemon stop     # quits wm; hidden windows come back on screen
 wmd --background   # from a terminal: a detached daemon that survives closing the terminal
 ```
 
-While the daemon runs, a rounded square with the workspace name is in the menu bar. Its menu has reload, the tile
-pictures, and quit.
+While the daemon runs, the menu bar shows the workspaces that have windows, lowest first, and the one in focus as
+`<mode>:<workspace>` on a background: `T:1 2 5` is the tiling layout on workspace 1, with windows on workspaces 2 and 5. `S` is scrolling, `M`
+master, and `F` a focused window that floats. [Menu bar icon](/docs/menubar) shows how to change the text. The menu has reload,
+the tile pictures, and quit.

@@ -108,7 +108,8 @@ wm has no default key bindings. Until you bind keys in `init.lua`, it only react
 - **Window rules** match new windows by app or title and decide the workspace, monitor, size, floating and focus. wm also ships
   [default floating rules](https://wm.garcez.dev/docs/rules) for browser popups, Finder, System Settings and similar windows.
 - **Window memory:** `window remember` gives the next window of an app the same workspace, monitor, size and place.
-  Floating windows also remember where they closed. See [Window memory](https://wm.garcez.dev/docs/window-memory).
+  Floating windows also remember where they closed. `wm memory list`, `forget` and `clear` manage the entries from the command line.
+  See [Window memory](https://wm.garcez.dev/docs/window-memory).
 
 ### Finding and switching windows
 
@@ -248,7 +249,7 @@ Everything is on <https://wm.garcez.dev/docs/overview>. The source of the pages 
 | Start | [Overview](https://wm.garcez.dev/docs/overview), [Install](https://wm.garcez.dev/docs/install), [First five minutes](https://wm.garcez.dev/docs/first-five-minutes) |
 | Configure | [Config reference](https://wm.garcez.dev/docs/config), [Keys, chords and the hyper key](https://wm.garcez.dev/docs/keys), [Key panel and bind options](https://wm.garcez.dev/docs/key-panel), [Gestures](https://wm.garcez.dev/docs/gestures), [Window and workspace rules](https://wm.garcez.dev/docs/rules) |
 | Layouts | [Tiling](https://wm.garcez.dev/docs/tiling), [Scrolling](https://wm.garcez.dev/docs/scrolling), [Master-stack](https://wm.garcez.dev/docs/master-stack), [Tile templates](https://wm.garcez.dev/docs/templates), [Rotate, maximize and floating](https://wm.garcez.dev/docs/floating) |
-| Features | [Switcher and overview](https://wm.garcez.dev/docs/switcher), [Sticky windows and zen mode](https://wm.garcez.dev/docs/sticky-zen), [Run or raise](https://wm.garcez.dev/docs/run-or-raise), [Window memory](https://wm.garcez.dev/docs/window-memory), [Command palette](https://wm.garcez.dev/docs/palette), [Menu Anywhere](https://wm.garcez.dev/docs/menu-anywhere), [Hints, scroll and select mode](https://wm.garcez.dev/docs/hints), [Mouse](https://wm.garcez.dev/docs/mouse), [Special workspaces](https://wm.garcez.dev/docs/special-workspaces) |
+| Features | [Switcher and overview](https://wm.garcez.dev/docs/switcher), [Sticky windows and zen mode](https://wm.garcez.dev/docs/sticky-zen), [Run or raise](https://wm.garcez.dev/docs/run-or-raise), [Window memory](https://wm.garcez.dev/docs/window-memory), [Menu bar icon](https://wm.garcez.dev/docs/menubar), [Command palette](https://wm.garcez.dev/docs/palette), [Menu Anywhere](https://wm.garcez.dev/docs/menu-anywhere), [Hints, scroll and select mode](https://wm.garcez.dev/docs/hints), [Mouse](https://wm.garcez.dev/docs/mouse), [Special workspaces](https://wm.garcez.dev/docs/special-workspaces) |
 | Reference | [Command line](https://wm.garcez.dev/docs/cli), [Lua API](https://wm.garcez.dev/docs/lua-api), [URL scheme](https://wm.garcez.dev/docs/url-scheme), [Saved state](https://wm.garcez.dev/docs/saved-state) |
 | Guides | [Examples](https://wm.garcez.dev/docs/examples), [Replace Karabiner-Elements](https://wm.garcez.dev/docs/karabiner), [Troubleshooting and limits](https://wm.garcez.dev/docs/troubleshooting), [Development](https://wm.garcez.dev/docs/development) |
 
@@ -263,6 +264,7 @@ wm window send workspace 3               # move the focused window
 wm layout set scrolling                  # scrolling | tiling | master
 wm switcher                              # also: overview, palette, menu, zen
 wm list windows --json                   # windows, workspaces, monitors, keyboards, memory, binds
+wm memory forget com.apple.Notes        # list | forget <app> | clear: what `window remember` kept
 wm --window app:com.apple.Notes window close
 wm batch 'workspace 2; layout set tiling'
 wm subscribe --snapshot window_focus     # one JSON event per line
