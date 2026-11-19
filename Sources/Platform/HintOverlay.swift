@@ -36,6 +36,9 @@ public struct AreaBadge: Sendable, Equatable {
 public struct HintContent: Sendable, Equatable {
     public var badges: [HintBadge] = []
     public var areas: [AreaBadge] = []
+    /// The select mode: the places of the search text, and the lines of the selection.
+    public var matches: [CGRect] = []
+    public var selection: [CGRect] = []
     /// A line of text in a pill, on the display that holds `noteAnchor` (the center of the window).
     public var note: String?
     public var noteAnchor: CGPoint = .zero
@@ -131,9 +134,16 @@ private final class HintView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         for area in content.areas where area.frame.intersects(display) { draw(area) }
+        fill(content.matches, amber.withAlphaComponent(0.35))
+        fill(content.selection, green.withAlphaComponent(0.45))
         // The focused one goes last, so nothing covers it.
         for badge in content.badges.sorted(by: { !$0.focused && $1.focused }) where badge.frame.intersects(display) { draw(badge) }
         if let note = content.note { drawNote(note) }
+    }
+
+    private func fill(_ rects: [CGRect], _ color: NSColor) {
+        color.setFill()
+        for rect in rects where rect.intersects(display) { NSBezierPath(roundedRect: local(rect), xRadius: 2, yRadius: 2).fill() }
     }
 
     private func draw(_ area: AreaBadge) {

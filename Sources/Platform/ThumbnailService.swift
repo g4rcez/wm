@@ -4,7 +4,8 @@ import Foundation
 import PrivateApi
 @preconcurrency import ScreenCaptureKit
 
-/// Takes pictures of single windows with ScreenCaptureKit for the window switcher, the overview and the palette. A window
+/// Takes pictures of single windows with ScreenCaptureKit for the window switcher, the overview and the palette, and of a
+/// whole display for the select mode. A window
 /// that ScreenCaptureKit cannot give (one that wm parked off screen) comes from SkyLight instead.
 /// It never calls ScreenCaptureKit without the Screen Recording permission, because that would show the system prompt.
 public actor ThumbnailService {
@@ -55,6 +56,20 @@ public actor ThumbnailService {
             }
         }
         return result
+    }
+
+    /// A picture of a whole display at its own resolution, for the select mode. The windows of wm itself are not in it.
+    /// `nil` without the permission.
+    public func captureDisplay(_ id: UInt32) async -> CGImage? {
+        guard Self.hasPermission, let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true),
+              let display = content.displays.first(where: { $0.displayID == id }) else { return nil }
+        let own = content.applications.filter { $0.processID == ProcessInfo.processInfo.processIdentifier }
+        let filter = SCContentFilter(display: display, excludingApplications: own, exceptingWindows: [])
+        let config = SCStreamConfiguration()
+        config.width = Int(CGFloat(display.width) * CGFloat(filter.pointPixelScale))
+        config.height = Int(CGFloat(display.height) * CGFloat(filter.pointPixelScale))
+        config.showsCursor = false
+        return try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
     }
 
     /// The picture of a window that is not on screen. Blank pictures are left out, like in `shoot`.

@@ -188,7 +188,7 @@ final class HintController {
     }
 
     /// The character that a key types, or `nil` for a key that is not text.
-    private static func character(_ key: String) -> String? {
+    static func character(_ key: String) -> String? {
         switch key {
         case "space": return " "
         case "minus": return "-"

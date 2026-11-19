@@ -14,8 +14,8 @@ public struct ScrollTarget: Sendable, Equatable {
 /// at the top left.
 public final class ElementReader: @unchecked Sendable {
     /// The most nodes that one read looks at, and the deepest level of the walk.
-    private static let maxNodes = 6000
-    private static let maxDepth = 40
+    static let maxNodes = 6000
+    static let maxDepth = 40
     /// Smaller scroll areas are not worth a number.
     private static let minScrollSide: CGFloat = 40
 
@@ -24,32 +24,37 @@ public final class ElementReader: @unchecked Sendable {
         "AXTextArea", "AXComboBox", "AXDisclosureTriangle", "AXSlider", "AXIncrementor", "AXRow", "AXTab", "AXDockItem",
     ]
     private static let rowRoles: Set<String> = ["AXTable", "AXOutline"]
-    private static let scrollRoles: Set<String> = ["AXScrollArea", "AXWebArea"]
+    static let scrollRoles: Set<String> = ["AXScrollArea", "AXWebArea"]
     /// The order is the one of `Slot`.
     private static let attributeNames: [String] = [
         kAXRoleAttribute, kAXTitleAttribute, kAXDescriptionAttribute, kAXValueAttribute, kAXHelpAttribute, kAXPositionAttribute,
-        kAXSizeAttribute, kAXEnabledAttribute, kAXChildrenAttribute, "AXVisibleRows",
+        kAXSizeAttribute, kAXEnabledAttribute, kAXChildrenAttribute, "AXVisibleRows", kAXSubroleAttribute,
     ]
 
-    private enum Slot: Int { case role, title, description, value, help, position, size, enabled, children, visibleRows }
+    private enum Slot: Int { case role, title, description, value, help, position, size, enabled, children, visibleRows, subrole }
 
-    private struct Node {
+    struct Node {
         var role = ""
+        var subrole = ""
+        /// Title, description, value and help, cut to `maxText`: what the search of the hints looks at.
         var text = ""
+        /// The title and the value alone, not cut: the text that the element shows.
+        var title = ""
+        var value = ""
         var frame: CGRect?
         var enabled = true
         var children: [AXUIElement] = []
     }
 
-    private let thread = AXThread(name: "wm-hints")
+    let thread = AXThread(name: "wm-hints")
     /// The rest is used on the thread only.
-    private var budget = 0
+    var budget = 0
     private var nextID = 0
     private var found: [HintElement] = []
     private var areas: [CGRect] = []
     private var screens: [CGRect] = []
     /// A web area with no children was seen: the app has not built the tree of its page.
-    private var sawEmptyWebArea = false
+    var sawEmptyWebArea = false
     /// Apps that were asked for their web content tree.
     private var prepared: Set<pid_t> = []
 
@@ -114,7 +119,7 @@ public final class ElementReader: @unchecked Sendable {
         self.screens = screens
     }
 
-    private func application(_ pid: pid_t) -> AXUIElement {
+    func application(_ pid: pid_t) -> AXUIElement {
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, 1)
         return app
@@ -128,7 +133,7 @@ public final class ElementReader: @unchecked Sendable {
     /// Chrome and Electron; `AXEnhancedUserInterface` is the one that others (Helium) answer to. wm turns the second one off
     /// and on again around its own moves (`AppWatcher.setFrame`), so the animations do not slow down. Asked once for each app:
     /// returns `true` when it asked now, after a wait for the tree.
-    private func enableWebContent(_ app: AXUIElement, pid: pid_t) -> Bool {
+    func enableWebContent(_ app: AXUIElement, pid: pid_t) -> Bool {
         guard prepared.insert(pid).inserted else { return false }
         AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
         AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
@@ -225,7 +230,7 @@ public final class ElementReader: @unchecked Sendable {
     // MARK: - Attributes
 
     /// The attributes of a node in one call, because each call to a slow app costs a round trip.
-    private func read(_ element: AXUIElement) -> Node {
+    func read(_ element: AXUIElement) -> Node {
         var values: CFArray?
         guard AXUIElementCopyMultipleAttributeValues(element, Self.attributeNames as CFArray, [], &values) == .success,
               let list = values as? [CFTypeRef], list.count == Self.attributeNames.count else { return Node() }
@@ -237,6 +242,9 @@ public final class ElementReader: @unchecked Sendable {
         }
         var node = Node()
         node.role = value(.role) as? String ?? ""
+        node.subrole = value(.subrole) as? String ?? ""
+        node.title = value(.title) as? String ?? ""
+        node.value = value(.value) as? String ?? ""
         node.text = [.title, .description, .value, .help]
             .compactMap { value($0) as? String }
             .filter { !$0.isEmpty }
@@ -258,7 +266,7 @@ public final class ElementReader: @unchecked Sendable {
         return node
     }
 
-    private func attribute<T>(_ element: AXUIElement, _ name: String) -> T? {
+    func attribute<T>(_ element: AXUIElement, _ name: String) -> T? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success else { return nil }
         return value as? T
