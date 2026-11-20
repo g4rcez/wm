@@ -108,7 +108,8 @@
 
 ---@class (exact) wm.Animations
 ---@field enabled? boolean Default true.
----@field rate? number Spring stiffness, >= 0.1; higher is faster. A long move ends in about 10 / rate seconds. Default 14.
+---@field fps? number Frames per second, 30 to 240; the display caps it (a 60 Hz screen ticks at 60). Default 120.
+---@field rate? number Spring stiffness, >= 0.1; higher is faster. A long move ends in about 10 / rate seconds. Default 16.
 
 ---@class (exact) wm.Border
 ---@field enabled? boolean Default false.

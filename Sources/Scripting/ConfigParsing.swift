@@ -256,9 +256,10 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
         }
     }
 
-    if let animations = try top.table("animations", allowed: ["enabled", "fps"]) {
+    if let animations = try top.table("animations", allowed: ["enabled", "fps", "rate"]) {
         if let flag = try animations.bool("enabled") { settings.animations.enabled = flag }
         if let fps = try animations.number("fps", min: 30, max: 240) { settings.animations.fps = fps }
+        if let rate = try animations.number("rate", min: 0.1) { settings.animations.rate = rate }
     }
 
     if let border = try top.table("border", allowed: ["enabled", "width", "radius", "active", "inactive"]) {

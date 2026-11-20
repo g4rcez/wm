@@ -55,7 +55,7 @@ local mod = "alt"
 wm.config {
   layout = "scrolling",
   gaps = { inner = 10, outer = { top = 12, right = 8, bottom = 6, left = 4 } },
-  animations = { enabled = true, fps = 90 },
+  animations = { enabled = true, fps = 90, rate = 20 },
   border = { enabled = true, width = 3, radius = 12, active = "#89b4fa", inactive = "#00000000" },
   focus_follows_mouse = true,
   tab_indicator = { enabled = false, position = "right", size = 8, spacing = 2, radius = 4, active = "#ff0000", inactive = "#00000080" },
@@ -119,6 +119,7 @@ struct LuaHostTests {
         #expect(settings.layout == .scrolling)
         #expect(settings.gaps == Gaps(inner: 10, top: 12, right: 8, bottom: 6, left: 4))
         #expect(settings.animations.fps == 90)
+        #expect(settings.animations.rate == 20)
         #expect(settings.border.enabled == true)
         #expect(settings.border.width == 3)
         #expect(settings.border.radius == 12)

@@ -153,6 +153,8 @@ public struct AnimationSettings: Sendable, Equatable {
     public var enabled: Bool = true
     /// Frames per second of the window animation. The display caps it (a 60 Hz screen ticks at 60).
     public var fps: Double = 120
+    /// Spring stiffness of the window animation (16 = an Apple spring with a response of 0.4 s): higher is faster.
+    public var rate: Double = 16
     public init() {}
 }
 

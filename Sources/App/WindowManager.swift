@@ -177,6 +177,7 @@ final class WindowManager {
         if let saved = pendingRestore, saved.mode != SavedState.workspaceMode { pendingRestore = nil }
         self.rules = rules
         animator.enabled = new.animations.enabled
+        animator.rate = new.animations.rate
         let previousLayouts = workspaceLayouts
         workspaceLayouts = newLayouts
         workspaceRules = newRules
