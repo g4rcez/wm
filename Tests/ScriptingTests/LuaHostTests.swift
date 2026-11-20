@@ -653,6 +653,31 @@ struct LuaHostTests {
         #expect(error?.message.contains(expected) == true)
     }
 
+    @Test func aRuleCanColorTheBorderOfItsWindow() throws {
+        let config = try host.load(configURL: dir.write("init.lua", """
+        wm.rule { app = "com.example.prod", border = "#ff0000" }
+        wm.rule { app = "com.example.dev", border = { "#00ff00", "#0000ff" } }
+        wm.rule { app = "com.example.none", float = true }
+        """))
+        let rules = config.rules.prefix(3)
+        #expect(rules.map(\.border) == [
+            [Color(red: 1, green: 0, blue: 0)], [Color(red: 0, green: 1, blue: 0), Color(red: 0, green: 0, blue: 1)], nil,
+        ])
+        let merged = rules[0].merging(rules[1])
+        #expect(merged.border?.count == 2)
+        #expect(rules[1].merging(rules[2]).border?.count == 2)
+    }
+
+    @Test(arguments: [
+        ("wm.rule { app = 'x', border = false }", "'border' must be a color"),
+        ("wm.rule { app = 'x', border = { '#ff0000' } }", "'border' must be a color"),
+        ("wm.rule { app = 'x', border = 'red' }", "got \"red\""),
+    ])
+    func badRuleBordersAreErrors(script: String, expected: String) {
+        let error = #expect(throws: ConfigError.self) { try host.load(configURL: dir.write("init.lua", script)) }
+        #expect(error?.message.contains(expected) == true)
+    }
+
     @Test func zenSettingsSetTheWidthAndCheckIt() throws {
         let config = try host.load(configURL: dir.write("init.lua", "wm.config { zen = { width = 0.6 } }"))
         #expect(config.settings.zen.width == 0.6)

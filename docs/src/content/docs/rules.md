@@ -21,6 +21,7 @@ order: 5
 | `focus = false` | Open without taking the focus. The window that had it gets it back. |
 | `run` | A command or a list of commands to run after the other actions. |
 | `stop = false` | Let later rules add to this one. By default the first match is the last. |
+| `border` | The color of the focus border of the window: `"#f38ba8"`, or `{ "#f38ba8", "#fab387" }` for a gradient (`border.angle` in [`wm.config`](/docs/config) sets its direction). It needs `border.enabled` in the config. It is not the `border = false` of `wm.workspace`, which turns the border off for a workspace. |
 | `dynamic = true` | Check the rule again when the title of the window changes. See [Dynamic rules](#dynamic-rules). |
 | `name` | A label. It shows in `wm logs` (`rule=finder float,center`) and is what `wm.floating.disable` takes. It matches nothing. |
 
@@ -44,7 +45,7 @@ wm.rule { app = "org.mozilla.firefox", title = "^Picture-in-Picture$", float = t
 wm.rule { app = "us.zoom.xos", title = "^Zoom Meeting$", workspace = 5, dynamic = true }
 ```
 
-- When a window starts to match, it gets `float`, `size`, `center`, `workspace` and `monitor` of the rule. `run`, `layout`,
+- When a window starts to match, it gets `float`, `size`, `center`, `workspace`, `monitor` and `border` of the rule. `run`, `layout`,
   `width`, `maximize` and `focus` are for the moment a window opens only.
 - When it stops matching, it floats or tiles as it did before the rule. It stays on the workspace that the rule sent it to.
 - wm acts on a change, not on every title: a window that keeps matching is left alone, so a window that you moved by hand stays
@@ -52,6 +53,7 @@ wm.rule { app = "us.zoom.xos", title = "^Zoom Meeting$", workspace = 5, dynamic 
   alone for that second.
 - wm listens to the title changes of the apps that a dynamic rule can match, so an app with `app` set is cheap. A dynamic rule
   without `app` listens to every app, and each title change reads the windows again.
+- `border` follows the same rule: a window that matches gets the color, and has its old one back when it stops matching.
 - A rule that is not dynamic still applies once, when the window opens.
 
 ### Rules for one command

@@ -378,7 +378,8 @@
 ---@field focus? boolean `false`: the window opens without taking the focus.
 ---@field run? wm.Command|wm.Command[] Commands that run after the other actions.
 ---@field stop? boolean `false` lets later rules add to this one. Default true.
----@field dynamic? boolean Check the rule again when the title of the window changes: the window gets `float`, `size`, `center`, `workspace` and `monitor` when it starts to match, and floats or tiles as before when it stops. Default false.
+---@field border? wm.Color|wm.Color[] The color of the focus border of the window: one color, or a list of two or more for a gradient (`border.angle` in `wm.config` sets the direction). Not the `border = false` of `wm.workspace`.
+---@field dynamic? boolean Check the rule again when the title of the window changes: the window gets `float`, `size`, `center`, `workspace`, `monitor` and `border` when it starts to match, and floats or tiles as before when it stops. Default false.
 
 --- The actions of `wm.Rule` for the window that a command opens, plus how to find the window. `timeout` and `app` need at least one action.
 ---@class (exact) wm.ExecOptions

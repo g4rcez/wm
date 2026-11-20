@@ -172,6 +172,8 @@ public struct WindowRule: Sendable, Equatable {
     public var monitor: String?
     /// `false`: the window opens without taking the focus.
     public var focus: Bool?
+    /// The color of the focus border of the window: one color, or two or more for a gradient.
+    public var border: [Color]?
     /// Commands that run after the other actions.
     public var commands: [String]
     /// `true`: no later rule applies to a window that matched this one.
@@ -184,7 +186,7 @@ public struct WindowRule: Sendable, Equatable {
         identifier: String? = nil, float: Bool? = nil, workspace: String? = nil,
         layout: LayoutKind? = nil, size: RuleSize? = nil, center: Bool = false,
         maximize: Bool? = nil, width: Double? = nil, monitor: String? = nil, focus: Bool? = nil,
-        commands: [String] = [], stop: Bool = true, name: String? = nil, dynamic: Bool = false
+        commands: [String] = [], stop: Bool = true, name: String? = nil, dynamic: Bool = false, border: [Color]? = nil
     ) {
         self.name = name
         self.app = app
@@ -204,6 +206,7 @@ public struct WindowRule: Sendable, Equatable {
         self.commands = commands
         self.stop = stop
         self.dynamic = dynamic
+        self.border = border
     }
 }
 
@@ -233,6 +236,7 @@ public extension WindowRule {
         result.width = later.width ?? result.width
         result.monitor = later.monitor ?? result.monitor
         result.focus = later.focus ?? result.focus
+        result.border = later.border ?? result.border
         result.commands += later.commands
         return result
     }

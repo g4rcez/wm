@@ -21,6 +21,8 @@ struct ManagedWindow {
     var sticky = false
     /// The monitor that a sticky window follows.
     var stickyMonitor: UInt32?
+    /// The color of the focus border of this window, from a rule: one color, or two or more for a gradient. `nil`: the config's.
+    var borderColors: [Color]?
 }
 
 final class Workspace {
@@ -143,7 +145,7 @@ final class WindowManager {
     private var spawnClaims = SpawnClaims<WindowRule>()
     /// Which dynamic rules (indices in `rules`) matched each window at the last look, and how the window was before they applied.
     private var dynamicTracker = DynamicRuleTracker()
-    private var dynamicSaved: [WindowID: (floating: Bool, floatFrame: CGRect?)] = [:]
+    private var dynamicSaved: [WindowID: (floating: Bool, floatFrame: CGRect?, border: [Color]?)] = [:]
     /// The window that had the focus when a window with `focus = false` opened: it gets the focus back.
     private var refocusAfterOpen: WindowID?
     private var saveTimer: Timer?
@@ -445,8 +447,9 @@ final class WindowManager {
         let dynamic = dynamicRuleIndices(for: info)
         if !dynamic.isEmpty {
             _ = dynamicTracker.update(window: info.id, matching: dynamic, now: ProcessInfo.processInfo.systemUptime)
-            dynamicSaved[info.id] = (floating: info.kind == .floating || floatsByDefault, floatFrame: nil)
+            dynamicSaved[info.id] = (floating: info.kind == .floating || floatsByDefault, floatFrame: nil, border: nil)
         }
+        windows[info.id]?.borderColors = rule?.border
         // A window that opens after the start: what `wm logs` needs to say why it was floated, tiled or moved. The first scan
         // reads every window that is open already, and says nothing.
         if didFirstScan {
@@ -817,6 +820,7 @@ final class WindowManager {
         if let width = rule.width { parts.append("width \(width)") }
         if let monitor = rule.monitor { parts.append("monitor \(monitor)") }
         if rule.focus == false { parts.append("no-focus") }
+        if let border = rule.border { parts.append("border \(border.count == 1 ? "color" : "gradient")") }
         return parts.isEmpty ? "matched (no options)" : parts.joined(separator: ",")
     }
 
@@ -880,7 +884,9 @@ final class WindowManager {
     /// `layout`, `width`, `maximize` and `focus` are for the moment a window opens and are not repeated.
     private func applyDynamic(_ rule: WindowRule, to id: WindowID) {
         guard let managed = windows[id] else { return }
-        if dynamicSaved[id] == nil { dynamicSaved[id] = (floating: managed.floating, floatFrame: managed.floatFrame) }
+        if dynamicSaved[id] == nil { dynamicSaved[id] = (floating: managed.floating, floatFrame: managed.floatFrame, border: managed.borderColors) }
+        // The rules that apply now set the color; without one, the window has the color it had before the rules.
+        windows[id]?.borderColors = rule.border ?? dynamicSaved[id]?.border
         Log.write(.debug, "dynamic rule applied: id=\(id) title=\(managed.info.title.debugDescription) rule=\(Self.describe(rule))", source: "window")
         let destination = rule.workspace ?? rule.monitor.flatMap(monitor(matching:)).map(activeWorkspace(of:))
         if let destination, destination != managed.workspace {
@@ -903,6 +909,7 @@ final class WindowManager {
         Log.write(.debug, "dynamic rule undone: id=\(id) title=\(managed.info.title.debugDescription)", source: "window")
         if managed.floating != saved.floating { setFloating(id, saved.floating) }
         if saved.floating, let frame = saved.floatFrame { setFloatFrame(id, frame) }
+        windows[id]?.borderColors = saved.border
         relayout()
     }
 
@@ -1493,7 +1500,13 @@ final class WindowManager {
             border.hide()
             return
         }
-        border.show(around: frame, settings(forWorkspace: managed.workspace).border)
+        var style = settings(forWorkspace: managed.workspace).border
+        // A rule can give this window its own color: one color, or two or more for a gradient.
+        if let colors = managed.borderColors, let first = colors.first {
+            style.active = first
+            style.gradient = colors.count >= 2 ? colors : []
+        }
+        border.show(around: frame, style)
     }
 
     /// Brings every parked window back on screen. Runs when the daemon quits, so no window stays hidden.
