@@ -12,7 +12,7 @@ For a whole file, see the [author's configuration](https://github.com/g4rcez/dot
 wm.config {
   layout = "tiling",                   -- scrolling | tiling | master | monocle
   gaps = { inner = 8, outer = 8, smart = false },  -- outer can also be { top=, right=, bottom=, left= }; smart: no gaps around a lone tiled window
-  animations = { enabled = true, fps = 120, rate = 16 },  -- fps: frames per second, 30-240, the display caps it (60 Hz screen: 60); rate: spring stiffness, higher is faster
+  animations = { enabled = true, fps = 120, rate = 16 },  -- fps: frames per second, 30-240, the display caps it (60 Hz screen: 60); rate: spring stiffness, higher is faster; also windows = {}, workspaces = {}, special = {}: see Animations
   border = { enabled = true, width = 2, radius = 10, active = "#89b4fa", inactive = "#00000000" },  -- active: one color, or { "#89b4fa", "#cba6f7" } for a gradient (angle = 45, degrees as in CSS)
   focus_follows_mouse = false,         -- or { enabled = true, only_fully_visible = true }: only windows that are fully on screen
   mouse_follows_focus = false,
@@ -51,6 +51,29 @@ wm.config {
   url       = { allow = {} },          -- extra commands that wm:// URLs may run
 }
 ```
+
+## Animations
+
+`animations` has a switch and a spring stiffness for all motion, and a table for each kind of motion that can differ:
+
+```lua
+wm.config {
+  animations = {
+    enabled = true, rate = 16,                       -- all motion; higher rate is faster
+    windows    = { enabled = true, rate = 20 },      -- a window that opens, closes or changes size
+    workspaces = { style = "slide", rate = 14 },     -- the windows that a workspace switch shows
+    special    = { style = "slidevert" },            -- the windows that a special workspace toggle shows
+  },
+}
+```
+
+- `style` is `"none"` (the windows jump, the default), `"slide"` or `"slidevert"`. With `slide`, the windows of the workspace that you go
+  to come in from the right (from the left when the workspace is an earlier one: numbers by value, other names in alphabetical order).
+  With `slidevert` they come in from the bottom. The windows of the workspace that you leave jump away at once.
+- A window never slides in from a side that has another monitor, because it would show on that monitor while it moves. Without a free
+  side the windows jump.
+- `enabled = false` in one table makes that kind of motion jump. `rate` in one table is the stiffness for that kind only.
+- wm moves real windows, so it cannot fade them: there is no `fade` style and no opacity (see [Troubleshooting](/docs/troubleshooting)).
 
 ## shortcuts.toml
 

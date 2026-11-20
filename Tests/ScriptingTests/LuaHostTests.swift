@@ -701,6 +701,40 @@ struct LuaHostTests {
         #expect(error?.message.contains(expected) == true)
     }
 
+    @Test func animationsHaveASettingForEachKindOfMotion() throws {
+        let defaults = try host.load(configURL: dir.write("init.lua", "wm.config { layout = 'tiling' }"))
+        #expect(defaults.settings.animations.windows == AnimationKind())
+        #expect(defaults.settings.animations.workspaces.style == .none)
+        let config = try host.load(configURL: dir.write("init.lua", """
+        wm.config { animations = {
+          rate = 14,
+          windows = { enabled = false, rate = 30 },
+          workspaces = { style = "slide", rate = 25 },
+          special = { style = "slidevert", enabled = true },
+        } }
+        """))
+        let animations = config.settings.animations
+        #expect(animations.rate == 14)
+        #expect(animations.windows.enabled == false)
+        #expect(animations.windows.rate == 30)
+        #expect(animations.workspaces.style == .slide)
+        #expect(animations.workspaces.rate == 25)
+        #expect(animations.special.style == .slidevert)
+        #expect(animations.special.rate == nil)
+    }
+
+    @Test(arguments: [
+        ("wm.config { animations = { workspaces = { style = 'fade' } } }", "'animations.workspaces.style' must be one of"),
+        ("wm.config { animations = { windows = { style = 'slide' } } }", "unknown key 'animations.windows.style'"),
+        ("wm.config { animations = { special = { rate = 0 } } }", "'animations.special.rate' must be at least 0.1"),
+        ("wm.config { animations = { windows = { enabled = 'no' } } }", "'animations.windows.enabled' must be true or false"),
+        ("wm.config { animations = { other = {} } }", "unknown key 'animations.other'"),
+    ])
+    func badAnimationKindsAreErrors(script: String, expected: String) {
+        let error = #expect(throws: ConfigError.self) { try host.load(configURL: dir.write("init.lua", script)) }
+        #expect(error?.message.contains(expected) == true)
+    }
+
     @Test func zenSettingsSetTheWidthAndCheckIt() throws {
         let config = try host.load(configURL: dir.write("init.lua", "wm.config { zen = { width = 0.6 } }"))
         #expect(config.settings.zen.width == 0.6)

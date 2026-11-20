@@ -144,6 +144,12 @@ private func hintLetters(_ text: String) throws -> [Character] {
     return letters
 }
 
+/// `enabled` and `rate` of one kind of animation.
+private func animationKind(_ fields: Fields, into kind: inout AnimationKind) throws {
+    if let flag = try fields.bool("enabled") { kind.enabled = flag }
+    if let rate = try fields.number("rate", min: 0.1) { kind.rate = rate }
+}
+
 /// A color, or a list of two or more colors for a gradient. A list of one is an error: it would be a color.
 func colorList(_ fields: Fields, _ key: String) throws -> [Color]? {
     guard let value = fields.values[key] else { return nil }
@@ -281,10 +287,18 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
         }
     }
 
-    if let animations = try top.table("animations", allowed: ["enabled", "fps", "rate"]) {
+    if let animations = try top.table("animations", allowed: ["enabled", "fps", "rate", "windows", "workspaces", "special"]) {
         if let flag = try animations.bool("enabled") { settings.animations.enabled = flag }
         if let fps = try animations.number("fps", min: 30, max: 240) { settings.animations.fps = fps }
         if let rate = try animations.number("rate", min: 0.1) { settings.animations.rate = rate }
+        if let windows = try animations.table("windows", allowed: ["enabled", "rate"]) {
+            try animationKind(windows, into: &settings.animations.windows)
+        }
+        for (key, keyPath) in [("workspaces", \AnimationSettings.workspaces), ("special", \AnimationSettings.special)] {
+            guard let table = try animations.table(key, allowed: ["enabled", "rate", "style"]) else { continue }
+            try animationKind(table, into: &settings.animations[keyPath: keyPath])
+            if let style = try table.choice("style", WorkspaceSlide.Style.self) { settings.animations[keyPath: keyPath].style = style }
+        }
     }
 
     if let border = try top.table("border", allowed: ["enabled", "width", "radius", "active", "inactive", "angle"]) {

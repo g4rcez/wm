@@ -106,8 +106,24 @@
 ---@field outer? number|wm.GapSides Points between windows and the screen edge, >= 0 (one number: all sides). Default 8.
 ---@field smart? boolean A workspace with one tiled window has no gaps. Default false.
 
+---@alias wm.SlideStyle "none"|"slide"|"slidevert"
+
+--- The animation of the moves inside a layout: a window that opens, closes or changes size.
+---@class (exact) wm.WindowsAnimation
+---@field enabled? boolean `false`: these moves jump. Default true.
+---@field rate? number Spring stiffness for these moves, >= 0.1. Default: the `rate` of `animations`.
+
+--- The animation of the windows that a workspace switch (`workspaces`) or a special workspace toggle (`special`) shows.
+---@class (exact) wm.WorkspaceAnimation
+---@field enabled? boolean `false`: the windows jump. Default true.
+---@field rate? number Spring stiffness of the slide, >= 0.1. Default: the `rate` of `animations`.
+---@field style? wm.SlideStyle `none`: the windows jump. `slide`: they come in from the right when you go to a later workspace and from the left for an earlier one. `slidevert`: from the bottom. A side with another monitor is not used: the windows jump. Default "none".
+
 ---@class (exact) wm.Animations
 ---@field enabled? boolean Default true.
+---@field windows? wm.WindowsAnimation Moves inside a layout.
+---@field workspaces? wm.WorkspaceAnimation Windows that a workspace switch shows.
+---@field special? wm.WorkspaceAnimation Windows that a special workspace toggle shows.
 ---@field fps? number Frames per second, 30 to 240; the display caps it (a 60 Hz screen ticks at 60). Default 120.
 ---@field rate? number Spring stiffness, >= 0.1; higher is faster. A long move ends in about 10 / rate seconds. Default 16.
 

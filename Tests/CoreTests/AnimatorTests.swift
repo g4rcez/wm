@@ -140,4 +140,51 @@ struct AnimatorTests {
         #expect(animator.frames == [1: goal])
         #expect(!animator.isSettled)
     }
+
+    @Test func aWindowThatStartsFromAFrameMovesFromThere() {
+        var animator = Animator(rate: 20)
+        animator.setTargets([1: goal])
+        animator.start(1, from: CGRect(x: 900, y: 0, width: 100, height: 100))
+
+        #expect(animator.frames[1]?.minX == 900)
+        let moved = animator.step(dt: 1.0 / 60)
+        #expect(moved[1]!.minX < 900 && moved[1]!.minX > 100)
+        #expect(!animator.isSettled)
+    }
+
+    @Test func aWindowWithItsOwnRateMovesAtThatRate() {
+        var slow = Animator(rate: 20)
+        slow.setTargets([1: goal])
+        slow.start(1, from: start)
+        var fast = Animator(rate: 20)
+        fast.setTargets([1: goal])
+        fast.start(1, from: start, rate: 60)
+
+        let slowStep = slow.step(dt: 1.0 / 60)[1]!.minX
+        let fastStep = fast.step(dt: 1.0 / 60)[1]!.minX
+        #expect(fastStep > slowStep)
+    }
+
+    @Test func theOwnRateEndsWhenTheWindowArrives() {
+        var animator = Animator(rate: 20)
+        animator.setTargets([1: goal])
+        animator.start(1, from: start, rate: 200)
+        for _ in 0..<600 where !animator.isSettled { _ = animator.step(dt: 1.0 / 60) }
+        #expect(animator.isSettled)
+
+        // The next move of this window uses the rate of the animator again.
+        animator.setTargets([1: start])
+        let again = animator.step(dt: 1.0 / 60)[1]!.minX
+        var reference = Animator(rate: 20)
+        reference.setTargets([1: goal])
+        reference.setTargets([1: start])
+        #expect(abs(again - reference.step(dt: 1.0 / 60)[1]!.minX) < 1e-9)
+    }
+
+    @Test func startDoesNothingWhenAnimationsAreOff() {
+        var animator = Animator(rate: 20, enabled: false)
+        animator.setTargets([1: goal])
+        animator.start(1, from: start)
+        #expect(animator.frames == [1: goal])
+    }
 }

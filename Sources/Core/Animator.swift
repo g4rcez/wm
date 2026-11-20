@@ -12,6 +12,8 @@ public struct Animator: Sendable {
     private var target: [WindowID: CGRect] = [:]
     /// Points per second of x, y, width and height of each window that moves.
     private var speed: [WindowID: Speed] = [:]
+    /// A rate that one window uses until it arrives, instead of `rate` (a window that slides in with the rate of its kind).
+    private var ownRate: [WindowID: Double] = [:]
 
     private struct Speed: Sendable {
         var x = 0.0, y = 0.0, width = 0.0, height = 0.0
@@ -35,10 +37,23 @@ public struct Animator: Sendable {
         target = targets
         current = current.filter { targets[$0.key] != nil }
         speed = speed.filter { targets[$0.key] != nil }
+        ownRate = ownRate.filter { targets[$0.key] != nil }
         for (id, frame) in targets where !enabled || snap.contains(id) || current[id] == nil {
             current[id] = frame
         }
-        for (id, frame) in targets where current[id] == frame { speed[id] = nil }
+        for (id, frame) in targets where current[id] == frame {
+            speed[id] = nil
+            ownRate[id] = nil
+        }
+    }
+
+    /// Starts the move of a window toward its target from `frame`, for a window that slides in. With a `rate` this window uses it
+    /// until it arrives. Does nothing when animations are off or the window has no target.
+    public mutating func start(_ id: WindowID, from frame: CGRect, rate: Double? = nil) {
+        guard enabled, target[id] != nil, target[id] != frame else { return }
+        current[id] = frame
+        speed[id] = nil
+        ownRate[id] = rate
     }
 
     /// Starts a window's animation from `frame` (its real position) instead of jumping to the first target.
@@ -61,10 +76,11 @@ public struct Animator: Sendable {
         for (id, goal) in target {
             guard let from = current[id], from != goal else { continue }
             var moving = speed[id] ?? Speed()
-            let next = Self.advance(from, to: goal, speed: &moving, rate: rate, time: time)
+            let next = Self.advance(from, to: goal, speed: &moving, rate: ownRate[id] ?? rate, time: time)
             if Self.close(next, to: goal) {
                 current[id] = goal
                 speed[id] = nil
+                ownRate[id] = nil
                 changed[id] = goal
             } else {
                 current[id] = next

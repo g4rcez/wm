@@ -151,8 +151,23 @@ public struct ScrollingSettings: Sendable, Equatable {
     public init() {}
 }
 
+/// The animation of one kind of motion. `rate` is `nil` for the rate of `animations`.
+public struct AnimationKind: Sendable, Equatable {
+    public var enabled = true
+    public var rate: Double?
+    /// How the windows of a workspace come in (`workspaces` and `special`); `windows` has no style.
+    public var style: WorkspaceSlide.Style = .none
+    public init() {}
+}
+
 public struct AnimationSettings: Sendable, Equatable {
     public var enabled: Bool = true
+    /// Moves inside a layout: a window that opens, closes, or changes size.
+    public var windows = AnimationKind()
+    /// Windows of the workspace that a switch shows.
+    public var workspaces = AnimationKind()
+    /// Windows of a special workspace that a toggle shows.
+    public var special = AnimationKind()
     /// Frames per second of the window animation. The display caps it (a 60 Hz screen ticks at 60).
     public var fps: Double = 120
     /// Spring stiffness of the window animation (16 = an Apple spring with a response of 0.4 s): higher is faster.

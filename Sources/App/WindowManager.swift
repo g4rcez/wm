@@ -150,6 +150,9 @@ final class WindowManager {
     /// Which dynamic rules (indices in `rules`) matched each window at the last look, and how the window was before they applied.
     /// When a terminal window was swallowed (`systemUptime`). The focus that macOS still reports on it for a moment is not a request to bring it back.
     private var swallowedAt: [WindowID: TimeInterval] = [:]
+    /// A workspace switch or a special workspace toggle that the next layout pass slides in (`animations.workspaces.style`).
+    private var pendingSlide: (kind: SlideKind, workspace: String, forward: Bool)?
+    private enum SlideKind { case workspace, special }
     private var dynamicTracker = DynamicRuleTracker()
     private var dynamicSaved: [WindowID: (floating: Bool, floatFrame: CGRect?, border: [Color]?)] = [:]
     /// The window that had the focus when a window with `focus = false` opened: it gets the focus back.
@@ -190,7 +193,7 @@ final class WindowManager {
         self.rules = rules
         updateTitleWatching()
         animator.enabled = new.animations.enabled
-        animator.rate = new.animations.rate
+        animator.rate = new.animations.windows.rate ?? new.animations.rate
         let previousLayouts = workspaceLayouts
         workspaceLayouts = newLayouts
         workspaceRules = newRules
@@ -1200,6 +1203,7 @@ final class WindowManager {
         }
         for (monitor, name) in next where old[monitor] != name {
             _ = workspace(name)
+            pendingSlide = (.special, name, true)
             events.emit("special_changed", ["workspace": .string(name), "monitor": .number(Double(monitor)), "visible": .bool(true)])
         }
         updateBackdrop()
@@ -1268,6 +1272,7 @@ final class WindowManager {
         focusedMonitorID = monitorID
         if old != name {
             previousWorkspace = old
+            pendingSlide = (.workspace, name, WorkspaceSlide.isForward(from: old, to: name))
             events.emit("workspace_changed", ["workspace": .string(name), "previous": .string(old), "monitor": .number(Double(monitorID))])
         }
         if focusWindow {
@@ -1489,19 +1494,50 @@ final class WindowManager {
             targets[id] = CGRect(origin: corner, size: size)
         }
         let parkedNow = Set(visible.filter { targets[$0]?.origin == corner })
-        let snap = visible.symmetricDifference(lastVisible)
+        // The windows that a workspace switch shows slide in from the side, if the config says so; the others jump.
+        let slides = slideStarts(targets: targets, visible: visible, corner: corner)
+        var snap = visible.symmetricDifference(lastVisible)
             .union(targets.keys.filter { !visible.contains($0) })
             .union(parkedNow).union(lastParked)
+        // `animations.windows.enabled = false`: the moves inside a layout jump too.
+        if !settings.animations.windows.enabled { snap.formUnion(targets.keys) }
+        snap.subtract(slides.keys)
         lastVisible = visible
         lastParked = parkedNow
         for id in visible where !parkedNow.contains(id) { lastShownFrame[id] = targets[id] }
         animator.setTargets(targets, snap: snapAll ? Set(targets.keys) : snap)
+        if !snapAll { for (id, slide) in slides { animator.start(id, from: slide.from, rate: slide.rate) } }
         applier.send(animator.frames, windows: windows)
         startClockIfNeeded()
         updateBorder()
         updateTabIndicator()
         publishStatus()
         scheduleSave()
+    }
+
+    /// Where the windows that a workspace switch (or a special workspace toggle) shows start their slide. Empty when the style is `none`,
+    /// when animations are off, or when no free side is left (another monitor is there): those windows jump. Uses the switch once.
+    private func slideStarts(
+        targets: [WindowID: CGRect], visible: Set<WindowID>, corner: CGPoint
+    ) -> [WindowID: (from: CGRect, rate: Double)] {
+        guard let request = pendingSlide else { return [:] }
+        pendingSlide = nil
+        let animations = settings.animations
+        let kind = request.kind == .workspace ? animations.workspaces : animations.special
+        guard animations.enabled, kind.enabled, kind.style != .none,
+              let monitor = monitor(showing: request.workspace) else { return [:] }
+        // A special workspace has a smaller area; the slide runs along the edge of the monitor.
+        let edges = layoutContext(for: monitor).sliverEdges
+        var starts: [WindowID: (from: CGRect, rate: Double)] = [:]
+        for id in visible where !lastVisible.contains(id) {
+            guard let managed = windows[id], managed.workspace == request.workspace, let target = targets[id],
+                  target.origin != corner,
+                  let from = WorkspaceSlide.start(
+                    of: target, viewport: monitor.workArea, style: kind.style, forward: request.forward, freeEdges: edges)
+            else { continue }
+            starts[id] = (from, kind.rate ?? animations.rate)
+        }
+        return starts
     }
 
     /// Tells the menu bar icon the workspace in focus, its layout, and what to write: every workspace that has windows and the
