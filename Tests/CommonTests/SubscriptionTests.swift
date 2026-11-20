@@ -30,8 +30,8 @@ struct SubscriptionTests {
     }
 
     @Test func theEventsThatTheWindowManagerSendsAreAllKnown() {
-        #expect(subscribableEvents.count == 16)
-        #expect(Set(subscribableEvents).count == 16)
+        #expect(subscribableEvents.count == 17)
+        #expect(Set(subscribableEvents).count == 17)
         #expect(subscribableEvents.contains("displays_changed"))
     }
 

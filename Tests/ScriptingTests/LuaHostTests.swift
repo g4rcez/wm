@@ -735,6 +735,26 @@ struct LuaHostTests {
         #expect(error?.message.contains(expected) == true)
     }
 
+    @Test func theDockIsReadForUrgentAppsUnlessTheConfigSaysNo() throws {
+        let defaults = try host.load(configURL: dir.write("init.lua", "wm.config { layout = 'tiling' }"))
+        #expect(defaults.settings.urgent == UrgentSettings())
+        #expect(defaults.settings.urgent.enabled)
+        #expect(defaults.settings.urgent.interval == 2)
+        let config = try host.load(configURL: dir.write("init.lua", "wm.config { urgent = { enabled = false, interval = 10 } }"))
+        #expect(config.settings.urgent.enabled == false)
+        #expect(config.settings.urgent.interval == 10)
+    }
+
+    @Test(arguments: [
+        ("wm.config { urgent = { interval = 0 } }", "'urgent.interval' must be between 1 and 60"),
+        ("wm.config { urgent = { interval = 61 } }", "'urgent.interval' must be between 1 and 60"),
+        ("wm.config { urgent = { enabled = 1 } }", "'urgent.enabled' must be true or false"),
+    ])
+    func badUrgentSettingsAreErrors(script: String, expected: String) {
+        let error = #expect(throws: ConfigError.self) { try host.load(configURL: dir.write("init.lua", script)) }
+        #expect(error?.message.contains(expected) == true)
+    }
+
     @Test func zenSettingsSetTheWidthAndCheckIt() throws {
         let config = try host.load(configURL: dir.write("init.lua", "wm.config { zen = { width = 0.6 } }"))
         #expect(config.settings.zen.width == 0.6)

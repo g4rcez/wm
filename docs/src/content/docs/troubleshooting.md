@@ -30,7 +30,11 @@ and says what to do for each one that is not ok. `wm config check` loads the con
 
 - Animations move real windows through the Accessibility API, one call per frame. Slow apps (Electron) can stutter, and a
   window with an AX call still running skips frames.
-- wm cannot blur, fade or shadow other apps' windows.
+- wm cannot blur, fade or shadow other apps' windows. That is why `animations` has no `fade` style.
+- `focus urgent` finds the apps that ask for attention from the badge on their Dock icon: a badge that appears or grows while you are
+  in another app. It works per app, not per window, and only for apps that show a badge (Mail, Slack, Messages, Telegram). A Dock
+  bounce without a badge cannot be seen, because macOS has no public way to read it. wm reads the Dock every 2 seconds, so an app is
+  urgent up to 2 seconds late; `urgent = { enabled = false }` stops the reading.
 - The border and the tab indicator are separate overlay windows above normal windows.
 - A window with a minimum size larger than its tile overlaps its neighbours.
 - Gestures with `mods` see only a modifier and a scroll direction, not the finger count. Gestures with `fingers` read the

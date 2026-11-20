@@ -49,6 +49,8 @@ wm subscribe --snapshot workspace_changed window_focus | jq -c '
 | A special workspace | `special_changed` (`workspace`, `monitor`, `visible`) |
 | The layout of a workspace | `layout_changed` (`workspace`, `layout`) |
 | One bar for each monitor | `displays_changed` (`count`, `monitors`), and the `monitors` list of `wm list --json` |
+| An app that asks for attention | `window_urgent` (`id`, `app`, `badge`): the badge on its Dock icon appeared or grew |
+| A terminal that a program took over | `window_swallow` (`id`, `terminal`, `workspace`) and `window_unswallow` (`id`, `program`, `workspace`) |
 | Config errors | `config_reloaded` |
 
 `displays_changed` also fires once when wm starts, and one dock or undock gives one event. A bar that is drawn on each monitor

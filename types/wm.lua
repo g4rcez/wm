@@ -22,7 +22,7 @@
 ---| ""
 ---| "focus left" | "focus right" | "focus up" | "focus down"
 ---| "focus left --wrap" | "focus right --wrap" | "focus up --wrap" | "focus down --wrap"
----| "focus back" | "focus layer" | "focus layer floating" | "focus layer tiling"
+---| "focus back" | "focus urgent" | "focus urgent-or-last" | "focus layer" | "focus layer floating" | "focus layer tiling"
 ---| "focus next" | "focus prev" | "focus next --wrap" | "focus prev --wrap"
 ---| "focus column first" | "focus column last" | "focus column 1" | "focus column 2" | "focus column 3"
 ---| "focus stack first" | "focus stack last" | "focus stack 1" | "focus stack 2" | "focus stack 3"
@@ -279,6 +279,10 @@
 ---@field terminals? string[] Bundle ids or names of the terminals that can be swallowed. Default: Ghostty, Terminal, iTerm2, kitty, Alacritty and WezTerm.
 ---@field exceptions? string[] Bundle ids or names of apps that never swallow a terminal. Default none.
 
+---@class (exact) wm.UrgentConfig
+---@field enabled? boolean Read the badges of the Dock to find the apps that ask for attention (`focus urgent`, the `window_urgent` event). Default true.
+---@field interval? number Seconds between two readings of the Dock, 1 to 60. Default 2.
+
 ---@class (exact) wm.UrlConfig
 ---@field allow? string[] Commands that `wm://` URLs may run besides the default ones. `exec`, `key`, `daemon` and `subscribe` are blocked by default.
 
@@ -376,6 +380,7 @@
 ---@field special? wm.SpecialConfig Special workspaces (`workspace special`): size, dim backdrop, when they hide.
 ---@field master? wm.MasterConfig The `master` layout.
 ---@field url? wm.UrlConfig
+---@field urgent? wm.UrgentConfig Apps that ask for attention, from the badges of the Dock.
 ---@field swallow? wm.SwallowConfig Window swallowing: a program started in a terminal takes the terminal's place.
 ---@field commands? wm.CommandsConfig What a key sequence does after a command: one command (`normal`) or many until a pause (`persistent`).
 
@@ -460,6 +465,7 @@
 ---| "window_moved"
 ---| "window_swallow"
 ---| "window_unswallow"
+---| "window_urgent"
 ---| "workspace_changed"
 ---| "special_changed"
 ---| "monitor_changed"
@@ -525,6 +531,11 @@
 ---@field id integer The terminal window that is back in the layout.
 ---@field program integer The window that gave the place back (it closed, or you went to the terminal).
 ---@field workspace string
+
+---@class wm.WindowUrgentEvent
+---@field id integer The window of the app that asks for attention.
+---@field app string Bundle id.
+---@field badge string The text of the badge on the Dock icon.
 
 ---@class wm.WorkspaceChangedEvent
 ---@field workspace string
@@ -728,6 +739,8 @@ function wm.workspace(name, spec) end
 ---@overload fun(event: "window_swallow", filter: wm.EventFilter, handler: fun(e: wm.WindowSwallowEvent))
 ---@overload fun(event: "window_unswallow", handler: fun(e: wm.WindowUnswallowEvent))
 ---@overload fun(event: "window_unswallow", filter: wm.EventFilter, handler: fun(e: wm.WindowUnswallowEvent))
+---@overload fun(event: "window_urgent", handler: fun(e: wm.WindowUrgentEvent))
+---@overload fun(event: "window_urgent", filter: wm.EventFilter, handler: fun(e: wm.WindowUrgentEvent))
 ---@overload fun(event: "workspace_changed", handler: fun(e: wm.WorkspaceChangedEvent))
 ---@overload fun(event: "workspace_changed", filter: wm.EventFilter, handler: fun(e: wm.WorkspaceChangedEvent))
 ---@overload fun(event: "special_changed", handler: fun(e: wm.SpecialChangedEvent))

@@ -153,6 +153,10 @@ final class WindowManager {
     /// A workspace switch or a special workspace toggle that the next layout pass slides in (`animations.workspaces.style`).
     private var pendingSlide: (kind: SlideKind, workspace: String, forward: Bool)?
     private enum SlideKind { case workspace, special }
+    /// The apps that ask for attention, from the badges that the Dock shows.
+    private var urgent = UrgentTracker()
+    private var badgeTimer: Timer?
+    private var badgeInterval: Double = 0
     private var dynamicTracker = DynamicRuleTracker()
     private var dynamicSaved: [WindowID: (floating: Bool, floatFrame: CGRect?, border: [Color]?)] = [:]
     /// The window that had the focus when a window with `focus = false` opened: it gets the focus back.
@@ -192,6 +196,7 @@ final class WindowManager {
         if let saved = pendingRestore, saved.mode != SavedState.workspaceMode { pendingRestore = nil }
         self.rules = rules
         updateTitleWatching()
+        updateBadgeWatching()
         animator.enabled = new.animations.enabled
         animator.rate = new.animations.windows.rate ?? new.animations.rate
         let previousLayouts = workspaceLayouts
@@ -854,6 +859,57 @@ final class WindowManager {
         return CGRect(origin: origin, size: size)
     }
 
+    // MARK: - Urgent windows
+
+    /// Reads the badges of the Dock every `urgent.interval` seconds while `urgent.enabled`. Off, nothing is read and no app is urgent.
+    private func updateBadgeWatching() {
+        let wanted = settings.urgent.enabled ? settings.urgent.interval : 0
+        guard wanted != badgeInterval else { return }
+        badgeTimer?.invalidate()
+        badgeTimer = nil
+        badgeInterval = wanted
+        guard wanted > 0 else {
+            urgent = UrgentTracker()
+            return
+        }
+        badgeTimer = Timer.scheduledTimer(withTimeInterval: wanted, repeats: true) { [weak self] _ in
+            DispatchQueue.global(qos: .utility).async {
+                let badges = DockBadges.read()
+                DispatchQueue.main.async { MainActor.assumeIsolated { self?.badgesRead(badges) } }
+            }
+        }
+    }
+
+    private func badgesRead(_ badges: [String: String]) {
+        guard badgeInterval > 0, tracker?.isPaused != true else { return }
+        let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        for alert in urgent.update(badges: badges, frontmost: frontmost) {
+            guard let id = windowOf(app: alert.app) else { continue }
+            events.emit("window_urgent", [
+                "id": .number(Double(id)), "app": .string(windows[id]?.info.bundleID ?? alert.app), "badge": .string(alert.badge),
+            ])
+        }
+    }
+
+    /// The window of an app (its bundle id or name) that was used last; any window of it when none was used yet.
+    private func windowOf(app: String) -> WindowID? {
+        let isApp = { (id: WindowID) -> Bool in
+            guard let window = self.windows[id], !window.minimized, window.swallowedBy == nil else { return false }
+            return window.info.bundleID.caseInsensitiveCompare(app) == .orderedSame || window.info.appName.caseInsensitiveCompare(app) == .orderedSame
+        }
+        return recent.first(where: isApp) ?? windows.keys.sorted().first(where: isApp)
+    }
+
+    /// The window of the app that asked for attention last, or `nil` when no app with a window does.
+    func urgentWindow() -> WindowID? {
+        urgent.urgentApps.lazy.compactMap { self.windowOf(app: $0) }.first
+    }
+
+    /// The window that had the focus before the focused one, on any workspace.
+    func previousWindowAnywhere() -> WindowID? {
+        recent.first { $0 != focused && windows[$0].map { !$0.isOutOfLayout } == true }
+    }
+
     // MARK: - Swallowing
 
     /// The terminal window that a new window takes the place of, if `swallow` is on and the window was started from a terminal.
@@ -1125,6 +1181,7 @@ final class WindowManager {
         }
         guard let managed = windows[id] else { return }
         focused = id
+        urgent.focused(managed.info.bundleID, managed.info.appName)
         let workspace = workspace(managed.workspace)
         workspace.history.removeAll { $0 == id }
         workspace.history.insert(id, at: 0)

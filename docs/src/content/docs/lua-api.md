@@ -22,7 +22,7 @@ order: 2
   local here = wm.query("monitor")   -- the focused monitor: here.name, here.index, here.role
   ```
 - Events: `window_open`, `window_close`, `window_focus`, `window_title`, `window_floating`, `window_fullscreen`,
-  `window_moved`, `window_swallow`, `window_unswallow`, `workspace_changed`, `special_changed`, `monitor_changed`, `displays_changed`, `layout_changed`, `mode_changed` and
+  `window_moved`, `window_swallow`, `window_unswallow`, `window_urgent`, `workspace_changed`, `special_changed`, `monitor_changed`, `displays_changed`, `layout_changed`, `mode_changed` and
   `config_reloaded`. `wm.on(event, [filter,] handler)` takes an optional table of fields that must match.
 - `wm.exec(command [, options])` runs a shell command and returns nothing. It does not wait for the command and it drops its output.
   wm runs it as `/bin/zsh -c "<command>"`, which does not read `.zshrc`: use absolute paths (`/opt/homebrew/bin/htop`).

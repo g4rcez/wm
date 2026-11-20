@@ -11,7 +11,7 @@ option, and an example. `wm help window` lists the commands of a group. The same
 
 ```
 FOCUS AND MOVE   focus <dir> | focus back | focus next|prev | focus window <id> | focus monitor <monitor> | focus layer
-                 focus app <name> [--launch]
+                 focus app <name> [--launch] | focus urgent | focus urgent-or-last
                  focus column <first|last|n> | focus stack <first|last|n>
                  move <dir> [points] [--wrap] | swap <dir> [--wrap] | resize <width|height|smart|left|right|up|down> <+n|-n>
                  resize dir <left|right|up|down> <n>

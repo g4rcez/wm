@@ -124,6 +124,14 @@ extension WindowManager {
             return ok()
         case "next", "prev":
             return focusStep(first == "next" ? 1 : -1, wrap: flags.contains("--wrap") || settings.wrapFocus)
+        case "urgent", "urgent-or-last":
+            guard let id = urgentWindow() ?? (first == "urgent-or-last" ? previousWindowAnywhere() : nil) else {
+                return fail(
+                    first == "urgent" ? "no app asks for attention" : "there is no window to go back to", 1,
+                    hint: first == "urgent" ? "an app is urgent when its Dock badge appears or grows while you are in another app" : nil)
+            }
+            focus(id)
+            return ok()
         case "back":
             guard let workspace = focusedWorkspace,
                   let previous = workspace.history.dropFirst().first(where: { windows[$0] != nil }) else { return fail("there is no previous window") }

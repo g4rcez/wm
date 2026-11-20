@@ -48,6 +48,14 @@ public let commandSections: [CommandSection] = [
             details: "The window that had the focus before this one on the workspace. It fails when there is none.",
             example: "wm focus back"),
         CommandSpec(
+            "focus urgent", "", "", "Focus the window of the app that asks for attention.",
+            details: "An app asks for attention when the badge on its Dock icon appears or grows while you are in another app, as for new mail\nor a message. The app that asked last wins, and it stops asking when you go to it. wm reads the Dock every 2 seconds\n(`urgent` in the config). It fails when no app with a window asks. A Dock bounce without a badge cannot be seen.",
+            example: "wm focus urgent"),
+        CommandSpec(
+            "focus urgent-or-last", "", "", "Focus the urgent window, or else the one used before.",
+            details: "Like `focus urgent`; when no app asks for attention, it goes back to the window that had the focus before this one, on any\nworkspace (`focus back` only looks at this workspace).",
+            example: "wm focus urgent-or-last"),
+        CommandSpec(
             "focus next", "", "[--wrap]", "Focus the next window in layout order.",
             details: "The order is the tiled windows as the layout lists them (columns from left to right), then the floating windows.\nWith --wrap, or wrap_focus in the config, the last window goes on to the first."),
         CommandSpec("focus prev", "", "[--wrap]", "Focus the previous window in layout order."),

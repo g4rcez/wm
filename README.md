@@ -261,6 +261,7 @@ The same words work in `wm.bind`, in Lua (`wm.dispatch`) and in `wm://` URLs. `w
 
 ```sh
 wm focus left --wrap                     # focus, move, swap, resize
+wm focus urgent                          # the app whose Dock badge appeared or grew; also urgent-or-last
 wm workspace 2                           # show a workspace; also next, prev, back, empty, special <name>
 wm window send workspace 3               # move the focused window
 wm layout set scrolling                  # scrolling | tiling | master | monocle | floating

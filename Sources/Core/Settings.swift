@@ -202,6 +202,14 @@ public struct SwallowSettings: Sendable, Equatable {
     public init() {}
 }
 
+/// Which apps ask for attention (`focus urgent`): wm reads the badges of the Dock now and then.
+public struct UrgentSettings: Sendable, Equatable {
+    public var enabled = true
+    /// Seconds between two readings of the Dock.
+    public var interval: Double = 2
+    public init() {}
+}
+
 public enum TabIndicatorPosition: String, Sendable, CaseIterable {
     case left, right, top, bottom
 }
@@ -487,6 +495,7 @@ public struct Settings: Sendable, Equatable {
     public var animations = AnimationSettings()
     public var border = BorderSettings()
     public var swallow = SwallowSettings()
+    public var urgent = UrgentSettings()
     public var tabIndicator = TabIndicatorSettings()
     public var focusFollowsMouse = FocusFollowsMouse()
     public var mouseFollowsFocus = false

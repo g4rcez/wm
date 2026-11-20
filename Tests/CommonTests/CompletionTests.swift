@@ -25,7 +25,7 @@ struct CompletionTests {
     }
 
     @Test func aCommandWithSubcommandsAndADirectionCompletesBoth() {
-        #expect(words(complete(["focus", ""])) == ["back", "next", "prev", "mark", "app", "column", "stack", "window", "monitor", "layer", "left", "right", "up", "down"])
+        #expect(words(complete(["focus", ""])) == ["back", "urgent", "urgent-or-last", "next", "prev", "mark", "app", "column", "stack", "window", "monitor", "layer", "left", "right", "up", "down"])
     }
 
     @Test func aGroupCompletesItsSubcommandsWithTheirSummary() {
