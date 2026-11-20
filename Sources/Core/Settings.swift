@@ -486,6 +486,9 @@ public struct MenuBarSettings: Sendable, Equatable {
     /// The text of every other workspace in the list.
     public var other = "{name}"
     public var separator = " "
+    /// What `{mode}` says for a layout, by layout. A layout that is missing has its letter (`T`, `S`, `M`, `O`, `F`). `floating` is
+    /// also what `{mode}` says while the focused window floats.
+    public var modes: [LayoutKind: String] = [:]
     public init() {}
 }
 

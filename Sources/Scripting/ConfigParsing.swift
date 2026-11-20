@@ -385,7 +385,7 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
         }
     }
 
-    if let menubar = try top.table("menubar", allowed: ["workspaces", "current", "other", "separator"]) {
+    if let menubar = try top.table("menubar", allowed: ["workspaces", "current", "other", "separator", "modes"]) {
         if let value = try menubar.choice("workspaces", MenuBarSettings.Workspaces.self) { settings.menuBar.workspaces = value }
         for (key, assign) in [("current", \MenuBarSettings.current), ("other", \MenuBarSettings.other)] {
             guard let text = try menubar.string(key) else { continue }
@@ -395,6 +395,11 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
             settings.menuBar[keyPath: assign] = text
         }
         if let text = try menubar.string("separator") { settings.menuBar.separator = text }
+        if let modes = try menubar.table("modes", allowed: LayoutKind.allCases.map(\.rawValue)) {
+            for kind in LayoutKind.allCases {
+                if let text = try modes.string(kind.rawValue) { settings.menuBar.modes[kind] = text }
+            }
+        }
     }
 
     if let commands = try top.table("commands", allowed: ["mode", "timeout"]) {

@@ -13,7 +13,8 @@ T:1 2 5      workspace 1 is in focus (tiling); workspaces 2 and 5 have windows
 F:9          the focused window floats, on workspace 9
 ```
 
-- **Mode:** `T` is the tiling layout, `S` scrolling and `M` master. `F` replaces it while the focused window floats.
+- **Mode:** `T` is the tiling layout, `S` scrolling, `M` master and `O` monocle. `F` replaces it while the focused window floats.
+  `menubar.modes` changes these texts (see below).
 - **Order:** workspaces that are numbers come first, from the lowest (`2` before `10`), then the other names in ASCII order
   (`Mail` before `web`). The workspace in focus is always in the list, even when it is empty.
 - **What counts as a window:** every window that belongs to the workspace, minimized ones too. A sticky window belongs to no
@@ -32,18 +33,27 @@ wm.config {
     current    = "{mode}:{name}",
     other      = "{name}",
     separator  = " ",
+    modes      = { tiling = "T", scrolling = "S", master = "M", monocle = "O", floating = "F" },   -- what {mode} says; all optional
   },
 }
+```
+
+`modes` gives the text of `{mode}` for each layout, so you can write words or symbols. A layout that you leave out keeps its letter.
+`floating` is also the text while the focused window floats. The text can be anything, even empty:
+
+```lua
+menubar = { modes = { tiling = "tiling", scrolling = "scroll", floating = "float" } }   -- tiling:1 2 5, scroll:2, float:9
+menubar = { current = "{mode}{name}", modes = { tiling = "󰆾 ", scrolling = "󰕘 " } }       -- symbols from a font
 ```
 
 `current` is the text of the workspace in focus and `other` the text of every other workspace in the list. They can use:
 
 | Word       | Value                                                                                   |
 | ---------- | --------------------------------------------------------------------------------------- |
-| `{mode}`   | `T`, `S`, `M` or `F` for the layout, and `F` for the workspace in focus while its focused window floats |
+| `{mode}`   | `T`, `S`, `M`, `O` or `F` for the layout (or your `modes` text), and `F` for the workspace in focus while its focused window floats |
 | `{name}`   | the name of the workspace, cut at 7 characters                                          |
 | `{count}`  | how many windows it has                                                                 |
-| `{layout}` | `tiling`, `scrolling` or `master`                                                       |
+| `{layout}` | `tiling`, `scrolling`, `master`, `monocle` or `floating`                                |
 
 Any other word in braces is a config error. For example, `current = "[{name}:{count}]"` and `separator = " | "` give `1 | [2:3] | 5`.
 

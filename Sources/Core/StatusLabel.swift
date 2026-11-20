@@ -36,8 +36,10 @@ public enum StatusLabel {
     /// The words that a template may use in braces.
     public static let placeholders = ["mode", "name", "count", "layout"]
 
-    public static func letter(layout: LayoutKind?, floating: Bool) -> String {
-        if floating { return "F" }
+    /// What `{mode}` says. `modes` is the text that the config chose for a layout; the letter is the default.
+    public static func letter(layout: LayoutKind?, floating: Bool, modes: [LayoutKind: String] = [:]) -> String {
+        if floating { return modes[.floating] ?? "F" }
+        if let layout, let chosen = modes[layout] { return chosen }
         switch layout {
         case .tiling: return "T"
         case .scrolling: return "S"
@@ -86,14 +88,14 @@ public enum StatusLabel {
         for status in listed {
             if !pieces.isEmpty, !settings.separator.isEmpty { pieces.append(StatusSegment(settings.separator)) }
             let focused = status.name == current.name
-            pieces.append(StatusSegment(render(focused ? settings.current : settings.other, status, floating: focused && floating), isCurrent: focused))
+            pieces.append(StatusSegment(render(focused ? settings.current : settings.other, status, floating: focused && floating, modes: settings.modes), isCurrent: focused))
         }
         return pieces
     }
 
-    private static func render(_ template: String, _ status: WorkspaceStatus, floating: Bool) -> String {
+    private static func render(_ template: String, _ status: WorkspaceStatus, floating: Bool, modes: [LayoutKind: String]) -> String {
         template
-            .replacingOccurrences(of: "{mode}", with: letter(layout: status.layout, floating: floating))
+            .replacingOccurrences(of: "{mode}", with: letter(layout: status.layout, floating: floating, modes: modes))
             .replacingOccurrences(of: "{name}", with: String(status.name.prefix(maxNameLength)))
             .replacingOccurrences(of: "{count}", with: String(status.count))
             .replacingOccurrences(of: "{layout}", with: status.layout?.rawValue ?? "")

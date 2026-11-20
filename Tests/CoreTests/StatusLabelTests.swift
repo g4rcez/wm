@@ -96,4 +96,14 @@ struct StatusLabelTests {
         let current = WorkspaceStatus(name: "1", layout: .tiling, count: 0)
         #expect(text([empty], current: current) == "T:1 3")
     }
+
+    @Test func theConfigCanChooseTheTextOfAMode() {
+        var settings = MenuBarSettings()
+        settings.modes = [.tiling: "tiling", .floating: "float", .scrolling: ""]
+        #expect(text([status("2", .scrolling)], current: status("1"), settings) == "tiling:1 2")
+        #expect(text([], current: status("5", .scrolling), settings) == ":5")
+        #expect(text([], current: status("3", .master), settings) == "M:3")
+        #expect(text([], current: status("9"), floating: true, settings) == "float:9")
+        #expect(StatusLabel.letter(layout: .monocle, floating: false, modes: [:]) == "O")
+    }
 }

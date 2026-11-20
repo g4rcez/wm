@@ -269,6 +269,15 @@
 ---@field current? string The workspace in focus. Default `{mode}:{name}`, as in `T:1`.
 ---@field other? string Every other workspace of the list. Default `{name}`.
 ---@field separator? string Between two workspaces. Default one space.
+---@field modes? wm.MenuBarModes The text of `{mode}` for each layout, for example `{ tiling = "tiling", scrolling = "S" }`.
+
+--- What `{mode}` says in the menu bar. A layout that is missing keeps its letter. `floating` is also the text while the focused window floats.
+---@class (exact) wm.MenuBarModes
+---@field tiling? string Default "T".
+---@field scrolling? string Default "S".
+---@field master? string Default "M".
+---@field monocle? string Default "O".
+---@field floating? string Default "F".
 
 ---@class (exact) wm.CommandsConfig
 ---@field mode? "normal"|"persistent" `normal`: the sequence ends after one command. `persistent`: the keys after the prefix stay active until `timeout` passes without a command. Default `normal`.

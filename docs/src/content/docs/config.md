@@ -42,7 +42,7 @@ wm.config {
   tab_indicator = { enabled = true, position = "left", size = 6, spacing = 3, radius = 3,
                     active = "#89b4fa", inactive = "#9999a599" },   -- the tabs of a tabbed column (left | right | top | bottom)
   switcher  = { thumbnails = true, delay = 0.12, background = "#0000008c", selected = "#89b4fa", max_scale = 0.85 },
-  menubar   = { workspaces = "occupied", current = "{mode}:{name}", other = "{name}", separator = " " },  -- the menu bar icon: see Menu bar icon
+  menubar   = { workspaces = "occupied", current = "{mode}:{name}", other = "{name}", separator = " ", modes = { tiling = "T" } },  -- the menu bar icon, modes: the text of {mode} per layout: see Menu bar icon
   prefix    = { menubar = true,   -- key sequences: show "..." in the menu bar icon
                 label = { enabled = true, show_keys = true,
                           position = "bottom-center",   -- top-left | top-center | top-right | center | bottom-left | bottom-center | bottom-right

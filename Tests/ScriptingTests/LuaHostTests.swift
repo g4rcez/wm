@@ -830,6 +830,25 @@ struct LuaHostTests {
         #expect(error?.message.contains(expected) == true)
     }
 
+    @Test func theMenuBarTextOfEachModeCanChange() throws {
+        let defaults = try host.load(configURL: dir.write("init.lua", "wm.config { layout = 'tiling' }"))
+        #expect(defaults.settings.menuBar.modes.isEmpty)
+        let config = try host.load(configURL: dir.write("init.lua", """
+        wm.config { menubar = { modes = { tiling = "tiling", floating = "float", monocle = "" } } }
+        """))
+        #expect(config.settings.menuBar.modes == [.tiling: "tiling", .floating: "float", .monocle: ""])
+    }
+
+    @Test(arguments: [
+        ("wm.config { menubar = { modes = { grid = 'G' } } }", "unknown key 'menubar.modes.grid'"),
+        ("wm.config { menubar = { modes = { tiling = 1 } } }", "'menubar.modes.tiling' must be a string"),
+        ("wm.config { menubar = { modes = 'T' } }", "'menubar.modes' must be a table"),
+    ])
+    func badMenuBarModesAreErrors(script: String, expected: String) {
+        let error = #expect(throws: ConfigError.self) { try host.load(configURL: dir.write("init.lua", script)) }
+        #expect(error?.message.contains(expected) == true)
+    }
+
     @Test func zenSettingsSetTheWidthAndCheckIt() throws {
         let config = try host.load(configURL: dir.write("init.lua", "wm.config { zen = { width = 0.6 } }"))
         #expect(config.settings.zen.width == 0.6)
