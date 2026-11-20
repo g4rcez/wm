@@ -261,7 +261,7 @@ The same words work in `wm.bind`, in Lua (`wm.dispatch`) and in `wm://` URLs. `w
 wm focus left --wrap                     # focus, move, swap, resize
 wm workspace 2                           # show a workspace; also next, prev, back, empty, special <name>
 wm window send workspace 3               # move the focused window
-wm layout set scrolling                  # scrolling | tiling | master
+wm layout set scrolling                  # scrolling | tiling | master | floating
 wm switcher                              # also: overview, palette, menu, zen
 wm list windows --json                   # windows, workspaces, monitors, keyboards, memory, binds
 wm memory forget com.apple.Notes        # list | forget <app> | clear: what `window remember` kept

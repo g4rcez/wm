@@ -41,7 +41,9 @@ wm.config { overview = {
 - **Search:** type, and the cards that do not match (their title, app, workspace name or marks) are dimmed. The selection
   goes to the most recent match, and the number in the field shows how many there are. Backspace deletes a letter. Escape always
   closes the overview, also when nothing matches.
-- **Keys:** the arrow keys and Tab move the selection (up and down also go to the workspace above and below), Return focuses
+- **Keys:** the arrow keys and Tab move the selection (up and down also go to the workspace above and below). Ctrl with
+  `h` `j` `k` `l` (vim) or `a` `s` `w` `d` (WASD) moves like the left, down, up and right arrows, because plain letters go into
+  the search. Return focuses
   the window and shows its workspace, Cmd+W closes it. The column scrolls to put the workspace of the selection in the middle.
 - **Mouse:** move the pointer onto a card to select it, and a red button appears at its corner that closes the window. Click a
   card to focus it. A click on the dark backdrop closes the overview, and the click goes on to what is under it (so you can

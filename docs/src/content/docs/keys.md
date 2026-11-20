@@ -11,6 +11,10 @@ A chord is modifiers and a key joined by `-` or `+`: `alt-h`, `cmd+ctrl-2`. The 
 `left`, `right`, `up`, `down`, `minus`, `equal`, `comma`, `period`, `slash`, `backslash`, `semicolon`, `quote`,
 `backtick`, `leftsquarebracket`, `rightsquarebracket`, `f1` to `f20`, `home`, `end`, `pageup` and `pagedown`.
 
+The last key can also be the symbol itself: `[` `]` `-` `=` `,` `.` `/` `\` `;` `'` or `` ` ``. `"cmd-shift-["` is
+`"cmd-shift-leftsquarebracket"` and `"cmd-shift--"` is `"cmd-shift-minus"`. The symbol has to be the last key of the chord. `+` is
+always a separator (it is Shift with `=` on a US keyboard), so type `shift-equal`.
+
 A bind can also be a sequence of chords separated by `>`: `"ctrl-p>h"`, `"alt-space > t > n"`. wm takes the first chord of
 a sequence from every app, so choose one your apps do not need. A key that continues no sequence cancels it and is
 swallowed, as in tmux, so a typo never reaches the app you are typing in. A sequence waits until the next key or Escape:

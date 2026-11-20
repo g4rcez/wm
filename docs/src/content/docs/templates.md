@@ -5,6 +5,7 @@ group: Layouts
 order: 4
 ---
 `layout tile <pattern>` makes the focused window and the windows after it fill one screen in a fixed pattern.
+In the tiling layout a workspace with a single window works too: the window moves and resizes to the first cell of the pattern.
 `layout tile chain` goes back to single columns. `layout tile` with no pattern opens a picker.
 
 | Pattern | Windows | Picture |

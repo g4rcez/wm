@@ -18,6 +18,18 @@ work area with no gaps and no border.
 A window that you send to another workspace arrives maximized when that workspace has no other tiled window. When the
 workspace has windows, the window joins the layout and `balance` runs. Add `--tile` to join the layout without either.
 
+## The floating layout
+
+`wm layout set floating` (or `layout = "floating"`, per workspace with `wm.workspace`) makes floating the default of the workspace.
+
+- Switching to it floats every window of the workspace where it is.
+- A window that opens floats in the frame that the [tiling layout](/docs/tiling) would give it, as if it split the window that
+  you focused last. Only the new window moves: the windows that are open stay where they are, so it can cover one of them. A
+  window that a rule or `window remember` placed keeps that place, and a rule with `float = false` tiles the window.
+- Switching to another layout leaves the windows floating. Only the windows that open later are tiled. `workspace float-all off`
+  tiles them all again.
+- `window float off` tiles a window into the hidden tiling layout of the workspace. The menu bar `{mode}` letter is `F`.
+
 ## Floating windows, native fullscreen and marks
 
 - `window float` moves the window to the middle of its screen. It keeps its size, but a window that fills (about) the whole work
@@ -30,6 +42,7 @@ workspace has windows, the window joins the layout and `balance` runs. Add `--ti
   height as a share of the work area (`cycle`: a third, a half, two thirds, all of it); `layout column expand` takes the whole
   width; `layout column center` and `center-visible` center the window like `window center`. The other `layout` commands need a
   tiled window.
+- `resize dir <left|right|up|down> <n>` grows a floating window for right and down and shrinks it for left and up, keeping its top left corner.
 - `resize <left|right|up|down> <+n|-n>` moves one edge of the window: `+n` pushes the edge on that side outward and `-n` pulls it
   inward, and the other edges stay. It works on tiled windows too, where it moves the divider on that side (see
   [Tiling](/docs/tiling)); a side at the edge of the screen has no divider and fails, so use the opposite side.
@@ -37,7 +50,7 @@ workspace has windows, the window joins the layout and `balance` runs. Add `--ti
   leave it out) or changes by n points, keeps its top left corner when it resizes, and stays inside the work area of its
   monitor. At the edge `move` stops; it does not go to the next monitor.
 - `window snap <place>` floats the window (a tiled one first) into a part of the work area inside the gaps: `left`, `right`,
-  `top`, `bottom`, the four corners, or `center`. The same place again goes on to the next size: half, a third, two thirds
+  `top`, `bottom`, the four corners, `top-center`, `bottom-center` (a quarter of the area, centered on the top or bottom edge), or `center`. The same place again goes on to the next size: half, a third, two thirds
   (`center`: 60%, 80%, 40%).
 - `workspace float-all` floats every window of the workspace that the focused monitor shows, each one where it is.
   `workspace float-all off` tiles them all again. With a [tile template](/docs/templates) (`workspace float-all 2+1`,

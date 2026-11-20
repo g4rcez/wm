@@ -19,3 +19,5 @@ order: 1
   It does not need `smart_split`. A `layout preselect` still wins.
 - `tiling.force_split = "first"` puts new windows on the left or top. `tiling.split_width_multiplier = 2` keeps columns
   on an ultrawide screen before the first stacked split.
+- After a [tile pattern](/docs/templates) with columns (`30/40/30`), a window that opens in a column goes on stacking in it, one
+  above the other. Without this rule the short cells of a stack would put the new window beside the others, as a row.

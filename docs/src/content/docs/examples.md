@@ -11,14 +11,16 @@ A complete configuration in use, with binds, a prefix key, binding modes, window
 
 ```lua
 wm.mode("resize", {
-  h = { "resize width +50", description = "Wider" },
-  l = { "resize width -50", description = "Narrower" },
-  j = { "resize height +50", description = "Taller" },
-  k = { "resize height -50", description = "Shorter" },
+  h = { "resize dir left 50", description = "Divider left" },
+  l = { "resize dir right 50", description = "Divider right" },
+  j = { "resize dir down 50", description = "Divider down" },
+  k = { "resize dir up 50", description = "Divider up" },
   esc = { "mode main", description = "Exit" },
 })
 wm.bind("alt-shift-r", "mode resize")
 ```
+
+`resize dir <left|right|up|down> <n>` moves the nearest divider on that axis toward the key, so the same key grows a window on one side of the divider and shrinks the one on the other. It passes to the next split when one is at its limit, and fails when the axis has no divider. In a scrolling layout the key moves a column's trailing edge (right and down grow it); on a floating window right and down grow it, left and up shrink it.
 
 While the mode is active, a panel lists its keys with the text from `description`. See [The key panel](/docs/key-panel#the-key-panel).
 

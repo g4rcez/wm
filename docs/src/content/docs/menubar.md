@@ -40,8 +40,8 @@ wm.config {
 
 | Word       | Value                                                                                   |
 | ---------- | --------------------------------------------------------------------------------------- |
-| `{mode}`   | `T`, `S` or `M` for the layout, and `F` for the workspace in focus while its focused window floats |
-| `{name}`   | the name of the workspace, cut at 6 characters                                          |
+| `{mode}`   | `T`, `S`, `M` or `F` for the layout, and `F` for the workspace in focus while its focused window floats |
+| `{name}`   | the name of the workspace, cut at 7 characters                                          |
 | `{count}`  | how many windows it has                                                                 |
 | `{layout}` | `tiling`, `scrolling` or `master`                                                       |
 

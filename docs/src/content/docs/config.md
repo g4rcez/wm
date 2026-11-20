@@ -81,7 +81,7 @@ recording ends with Esc, with the **Stop** button, or when no key comes for a mo
 needs its next key in time (or type it). Recording needs Accessibility (the key tap); a few macOS system shortcuts never
 reach wm, so type those. With **Type key**, Record fills the key that the shortcut types.
 
-The action field suggests the wm commands as you type: `foc` offers `focus`, and `layout set ` offers `scrolling`, `tiling` and `master`
+The action field suggests the wm commands as you type: `foc` offers `focus`, and `layout set ` offers `scrolling`, `tiling`, `master` and `floating`
 (the same words as the shell completion). Tab or Return takes the suggestion. The list has the fixed words only: it does not know
 the names of your modes or workspaces.
 

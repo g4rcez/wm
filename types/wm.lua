@@ -3,7 +3,7 @@
 -- diagnostics for `~/.config/wm/init.lua`. wm never loads this file: it is only a description of the API.
 -- Keep it in step with Sources/Scripting (ConfigParsing.swift, LuaState.swift, Chord.swift) and Sources/App.
 
----@alias wm.Layout "tiling"|"scrolling"|"master"
+---@alias wm.Layout "tiling"|"scrolling"|"master"|"floating"
 ---@alias wm.WorkspaceMode "emulated"
 ---@alias wm.CenterMode "never"|"always"|"on-overflow"
 ---@alias wm.Side "left"|"right"
@@ -31,6 +31,7 @@
 ---| "move left" | "move right" | "move up" | "move down" | "move left 100" | "move right 100" | "move up 100" | "move down 100"
 ---| "swap left" | "swap right" | "swap up" | "swap down"
 ---| "resize smart +50" | "resize smart -50" | "resize width +50" | "resize width -50" | "resize height +50" | "resize height -50"
+---| "resize dir left 50" | "resize dir right 50" | "resize dir up 50" | "resize dir down 50"
 ---| "resize left +50" | "resize left -50" | "resize right +50" | "resize right -50" | "resize up +50" | "resize up -50" | "resize down +50" | "resize down -50"
 ---| "workspace back" | "workspace special" | "workspace float-all" | "workspace float-all on" | "workspace float-all off" | "workspace float-all 2" | "workspace float-all 3" | "workspace float-all 4" | "workspace float-all 2+1" | "workspace float-all 1+2"
 ---| "workspace move monitor left" | "workspace move monitor right" | "workspace move monitor up" | "workspace move monitor down" | "workspace move monitor next" | "workspace move monitor prev" | "workspace move monitor last"
@@ -39,12 +40,13 @@
 ---| "window place 2 1" | "window place 2 2" | "window place 2+1 1" | "window place 2+1 2" | "window place 2+1 3" | "window move-to 0 0" | "window move-to 50% 50%"
 ---| "window snap left" | "window snap right" | "window snap top" | "window snap bottom" | "window snap center"
 ---| "window snap top-left" | "window snap top-right" | "window snap bottom-left" | "window snap bottom-right"
+---| "window snap top-center" | "window snap bottom-center"
 ---| "window raise-floating" | "window rescue" | "window unmark" | "window remember" | "window remember --title"
 ---| "window forget" | "window forget --title"
 ---| "window send monitor left" | "window send monitor right" | "window send monitor up" | "window send monitor down" | "window send monitor next" | "window send monitor prev" | "window send monitor last"
 ---| "window send monitor main" | "window send monitor secondary" | "window send monitor tertiary"
 ---| "window send strip horizontal" | "window send strip vertical"
----| "layout set tiling" | "layout set scrolling" | "layout set master"
+---| "layout set tiling" | "layout set scrolling" | "layout set master" | "layout set floating"
 ---| "layout master promote" | "layout master count +1" | "layout master count -1" | "layout master ratio +0.05" | "layout master ratio -0.05"
 ---| "layout master orientation" | "layout master orientation left" | "layout master orientation right" | "layout master orientation top"
 ---| "layout master orientation bottom" | "layout master orientation center"
@@ -74,7 +76,8 @@
 
 --- Last key of a chord (the part after the modifiers): a letter, a digit, or one of these names.
 --- A chord is modifiers and a key joined by `-` or `+`: `"alt-shift-h"`. Modifiers: `alt` (`opt`, `option`), `cmd`
---- (`command`), `ctrl` (`control`), `shift`. A sequence joins chords with `>`: `"ctrl-p>h"`.
+--- (`command`), `ctrl` (`control`), `shift`. A sequence joins chords with `>`: `"ctrl-p>h"`. The last key can be a symbol
+--- (`[ ] - = , . / \ ; ' ``): `"cmd-shift-["`, `"cmd-shift--"`.
 ---@alias wm.Key
 ---| "esc" | "space" | "tab" | "enter" | "backspace" | "delete"
 ---| "left" | "right" | "up" | "down"
@@ -240,8 +243,8 @@
 ---@field menubar? boolean Show "..." in the menu bar icon while waiting. Default true.
 ---@field label? wm.PrefixLabel The floating label.
 
---- The text of the menu bar icon. In the templates, `{mode}` is `T` (tiling), `S` (scrolling), `M` (master) or, for the workspace in
---- focus while its focused window floats, `F`; `{name}` is the workspace name (cut at 6 characters), `{count}` its windows and `{layout}`
+--- The text of the menu bar icon. In the templates, `{mode}` is `T` (tiling), `S` (scrolling), `M` (master), `F` (floating) or, for the workspace in
+--- focus while its focused window floats, `F`; `{name}` is the workspace name (cut at 7 characters), `{count}` its windows and `{layout}`
 --- its layout. For a text that you compute, call `wm.dispatch("menubar set <text>")` from a `wm.on` handler (and `menubar reset`).
 ---@class (exact) wm.MenuBarConfig
 ---@field workspaces? "occupied"|"current" `occupied`: every workspace that has windows, in order (numbers first, then the other names), and the one in focus. `current`: only the one in focus. Default `occupied`.
