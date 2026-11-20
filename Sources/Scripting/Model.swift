@@ -284,6 +284,8 @@ public struct LoadedConfig: Sendable {
     public var workspaceLayouts: [String: LayoutKind]
     /// Everything `wm.workspace` set, by workspace name.
     public var workspaceRules: [String: WorkspaceRule]
+    /// The `seconds` of the `wm.on("idle", { seconds = N }, ...)` handlers, sorted: how long the idle time must be for each one.
+    public var idleThresholds: [Double]
 
     public init(
         settings: Settings = Settings(),
@@ -301,8 +303,10 @@ public struct LoadedConfig: Sendable {
         modeOptions: [String: ModeOptions] = [:],
         longPressTimeouts: [String: [Chord: Double]] = [:],
         overrides: [BindOverride] = [],
-        shortcutsImported: Bool = false
+        shortcutsImported: Bool = false,
+        idleThresholds: [Double] = []
     ) {
+        self.idleThresholds = idleThresholds
         self.overrides = overrides
         self.shortcutsImported = shortcutsImported
         self.modeOptions = modeOptions

@@ -787,6 +787,30 @@ struct LuaHostTests {
         #expect(error?.message.contains(expected) == true)
     }
 
+    @Test func idleHandlersGiveTheirThresholdsToTheApp() throws {
+        let config = try host.load(configURL: dir.write("init.lua", """
+        wm.on("idle", { seconds = 300 }, function() end)
+        wm.on("idle", { seconds = 60 }, function() end)
+        wm.on("idle", { seconds = 300 }, function() end)
+        wm.on("resume", function() end)
+        """))
+        #expect(config.idleThresholds == [60, 300])
+        let none = try host.load(configURL: dir.write("init.lua", "wm.on('resume', function() end)"))
+        #expect(none.idleThresholds.isEmpty)
+    }
+
+    @Test(arguments: [
+        ("wm.on('idle', function() end)", "'idle' needs a filter { seconds = N }"),
+        ("wm.on('idle', { seconds = 0 }, function() end)", "'idle' needs a filter { seconds = N }"),
+        ("wm.on('idle', { seconds = '60' }, function() end)", "'idle' needs a filter { seconds = N }"),
+        ("wm.on('idle', { seconds = 60, other = 1 }, function() end)", "'idle' needs a filter { seconds = N }"),
+        ("wm.on('idle', { seconds = 700000 }, function() end)", "'idle' needs a filter { seconds = N }"),
+    ])
+    func badIdleHandlersAreErrors(script: String, expected: String) {
+        let error = #expect(throws: ConfigError.self) { try host.load(configURL: dir.write("init.lua", script)) }
+        #expect(error?.message.contains(expected) == true)
+    }
+
     @Test func zenSettingsSetTheWidthAndCheckIt() throws {
         let config = try host.load(configURL: dir.write("init.lua", "wm.config { zen = { width = 0.6 } }"))
         #expect(config.settings.zen.width == 0.6)

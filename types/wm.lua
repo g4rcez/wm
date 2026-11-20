@@ -472,6 +472,8 @@
 ---| "window_swallow"
 ---| "window_unswallow"
 ---| "window_urgent"
+---| "idle"
+---| "resume"
 ---| "workspace_changed"
 ---| "special_changed"
 ---| "monitor_changed"
@@ -494,6 +496,7 @@
 ---@field native? boolean
 ---@field layout? wm.Layout
 ---@field mode? string
+---@field seconds? number For `idle`: the idle time that the handler waits for. Required there, and the only field.
 
 ---@class wm.WindowOpenEvent
 ---@field id integer Window id.
@@ -542,6 +545,12 @@
 ---@field id integer The window of the app that asks for attention.
 ---@field app string Bundle id.
 ---@field badge string The text of the badge on the Dock icon.
+
+---@class wm.IdleEvent
+---@field seconds number The threshold that the idle time passed.
+
+---@class wm.ResumeEvent
+---@field idle number The idle time, in seconds, at the last reading before the input.
 
 ---@class wm.WorkspaceChangedEvent
 ---@field workspace string
@@ -747,6 +756,9 @@ function wm.workspace(name, spec) end
 ---@overload fun(event: "window_unswallow", filter: wm.EventFilter, handler: fun(e: wm.WindowUnswallowEvent))
 ---@overload fun(event: "window_urgent", handler: fun(e: wm.WindowUrgentEvent))
 ---@overload fun(event: "window_urgent", filter: wm.EventFilter, handler: fun(e: wm.WindowUrgentEvent))
+---@overload fun(event: "idle", filter: { seconds: number }, handler: fun(e: wm.IdleEvent))
+---@overload fun(event: "resume", handler: fun(e: wm.ResumeEvent))
+---@overload fun(event: "resume", filter: wm.EventFilter, handler: fun(e: wm.ResumeEvent))
 ---@overload fun(event: "workspace_changed", handler: fun(e: wm.WorkspaceChangedEvent))
 ---@overload fun(event: "workspace_changed", filter: wm.EventFilter, handler: fun(e: wm.WorkspaceChangedEvent))
 ---@overload fun(event: "special_changed", handler: fun(e: wm.SpecialChangedEvent))

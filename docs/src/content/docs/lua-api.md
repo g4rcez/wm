@@ -24,6 +24,17 @@ order: 2
 - Events: `window_open`, `window_close`, `window_focus`, `window_title`, `window_floating`, `window_fullscreen`,
   `window_moved`, `window_swallow`, `window_unswallow`, `window_urgent`, `workspace_changed`, `special_changed`, `monitor_changed`, `displays_changed`, `layout_changed`, `mode_changed` and
   `config_reloaded`. `wm.on(event, [filter,] handler)` takes an optional table of fields that must match.
+- `idle` and `resume` follow the keyboard and the mouse, as hypridle does. `wm.on("idle", { seconds = 300 }, handler)` runs once when
+  there has been no input for 300 seconds, and `wm.on("resume", handler)` runs when input comes back after an `idle`. `idle` needs
+  the `seconds` filter, from 1 to 604800, and a config can have several. Their events are `{ seconds }` and `{ idle }` (the idle
+  seconds at the last reading before the input). wm reads the idle time every few seconds, so an event can be late by that much. Input
+  that a program posts as an event (`wm key send`, a keyboard remapper) may count as activity like a real key. Nothing is read while
+  the Mac sleeps or is locked.
+
+  ```lua
+  wm.on("idle", { seconds = 600 }, function() wm.exec("pmset displaysleepnow") end)
+  wm.on("resume", function() wm.exec("open -g raycast://extensions/raycast/confetti") end)
+  ```
 - `wm.exec(command [, options])` runs a shell command and returns nothing. It does not wait for the command and it drops its output.
   wm runs it as `/bin/zsh -c "<command>"`, which does not read `.zshrc`: use absolute paths (`/opt/homebrew/bin/htop`).
   `$HOME` and `$(...)` work. A folder such as `/Applications/Foo.app` is not a command: use `open -a Foo`, or the program

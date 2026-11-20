@@ -127,6 +127,8 @@ final class WindowManager {
     var onModeChange: ((_ mode: String) -> Void)?
 
     private var tracker: AppTracker?
+    /// The Mac sleeps, its screens sleep, or it is locked.
+    var isPaused: Bool { tracker?.isPaused == true }
     let applier = FrameApplier()
     var animator = Animator()
     private let border = BorderOverlay()

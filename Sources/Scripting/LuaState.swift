@@ -310,6 +310,8 @@ final class LuaState {
     fileprivate var workspaceLayouts: [String: LayoutKind] = [:]
     fileprivate var workspaceRules: [String: WorkspaceRule] = [:]
     private var handlers: [Handler] = []
+    /// The `seconds` of the handlers of the `idle` event.
+    fileprivate var idleThresholds: [Double] = []
     /// `wm.config`, `wm.bind`, `wm.mode`, `wm.rule` and `wm.workspace` work only while the config file runs.
     fileprivate var loading = true
 
@@ -346,7 +348,7 @@ final class LuaState {
             sequences: sequences,
             releaseBinds: releaseBinds, longPressBinds: longPressBinds, holdBinds: holdBinds, noRepeat: noRepeat, bindRecords: bindRecords,
             gestures: gestures, modeOptions: modeOptions, longPressTimeouts: longPressTimeouts,
-            overrides: overrides, shortcutsImported: shortcutsImported)
+            overrides: overrides, shortcutsImported: shortcutsImported, idleThresholds: idleThresholds.sorted())
     }
 
     /// `wm.commands = { ... }` is the same as `wm.config { commands = { ... } }`; it is read after the config file has run.
@@ -759,8 +761,16 @@ private func nativeOn(_ L: OpaquePointer?) -> Int32 {
         default:
             throw ConfigError(message: "wm.on: the filter must be a table of key = value")
         }
+        let event = readString(L, 1) ?? ""
+        if event == "idle" {
+            // The idle time is read by wm, so it needs to know the thresholds before the config runs its handlers.
+            guard filter.count == 1, case .number(let seconds)? = filter["seconds"], seconds.isFinite, (1...604_800).contains(seconds) else {
+                throw ConfigError(message: "wm.on: 'idle' needs a filter { seconds = N } with N from 1 to 604800")
+            }
+            if !state.idleThresholds.contains(seconds) { state.idleThresholds.append(seconds) }
+        }
         lua_pushvalue(L, 3)
-        state.addHandler(event: readString(L, 1) ?? "", filter: filter, ref: luaL_ref(L, registryIndex))
+        state.addHandler(event: event, filter: filter, ref: luaL_ref(L, registryIndex))
     }
 }
 
