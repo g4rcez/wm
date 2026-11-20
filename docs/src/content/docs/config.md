@@ -13,7 +13,7 @@ wm.config {
   layout = "tiling",                   -- scrolling | tiling | master | monocle
   gaps = { inner = 8, outer = 8, smart = false },  -- outer can also be { top=, right=, bottom=, left= }; smart: no gaps around a lone tiled window
   animations = { enabled = true, fps = 120, rate = 16 },  -- fps: frames per second, 30-240, the display caps it (60 Hz screen: 60); rate: spring stiffness, higher is faster
-  border = { enabled = true, width = 2, radius = 10, active = "#89b4fa", inactive = "#00000000" },
+  border = { enabled = true, width = 2, radius = 10, active = "#89b4fa", inactive = "#00000000" },  -- active: one color, or { "#89b4fa", "#cba6f7" } for a gradient (angle = 45, degrees as in CSS)
   focus_follows_mouse = false,         -- or { enabled = true, only_fully_visible = true }: only windows that are fully on screen
   mouse_follows_focus = false,
   start_at_login = true,               -- only when running as wm.app

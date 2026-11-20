@@ -115,7 +115,8 @@
 ---@field enabled? boolean Default false.
 ---@field width? number Points, >= 0. Default 2.
 ---@field radius? number Points, >= 0. Default 10.
----@field active? wm.Color Color of the focused window's border. Default "#89b4fa".
+---@field active? wm.Color|wm.Color[] Color of the focused window's border: one color, or a list of two or more for a gradient. Default "#89b4fa".
+---@field angle? number Direction of a gradient in degrees, clockwise from up as in CSS: 0 runs from the bottom to the top, 90 from the left to the right. Default 45.
 ---@field inactive? wm.Color Default "#00000000" (clear).
 
 --- A tile pattern for `layout tile`: the cells are fractions of the screen, in reading order, and must fill it with straight cuts.

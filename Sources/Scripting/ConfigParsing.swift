@@ -144,6 +144,31 @@ private func hintLetters(_ text: String) throws -> [Character] {
     return letters
 }
 
+/// A color, or a list of two or more colors for a gradient. A list of one is an error: it would be a color.
+func colorList(_ fields: Fields, _ key: String) throws -> [Color]? {
+    guard let value = fields.values[key] else { return nil }
+    let name = (fields.path + [key]).joined(separator: ".")
+    let expected = "a color like \"#rrggbb\" or \"#rrggbbaa\", or a list of at least two colors"
+    let texts: [String]
+    switch value {
+    case .string(let text): texts = [text]
+    case .array(let items):
+        texts = try items.map {
+            guard case .string(let text) = $0 else { throw ConfigError(message: "\(fields.owner): '\(name)' must be \(expected)") }
+            return text
+        }
+        guard texts.count >= 2 else { throw ConfigError(message: "\(fields.owner): '\(name)' must be \(expected)") }
+    default:
+        throw ConfigError(message: "\(fields.owner): '\(name)' must be \(expected)")
+    }
+    return try texts.map { text in
+        guard let color = parseColor(text) else {
+            throw ConfigError(message: "\(fields.owner): '\(name)' must be \(expected), got \"\(text)\"")
+        }
+        return color
+    }
+}
+
 private func color(_ fields: Fields, _ key: String) throws -> Color? {
     guard let text = try fields.string(key) else { return nil }
     guard let color = parseColor(text) else {
@@ -262,11 +287,15 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
         if let rate = try animations.number("rate", min: 0.1) { settings.animations.rate = rate }
     }
 
-    if let border = try top.table("border", allowed: ["enabled", "width", "radius", "active", "inactive"]) {
+    if let border = try top.table("border", allowed: ["enabled", "width", "radius", "active", "inactive", "angle"]) {
         if let flag = try border.bool("enabled") { settings.border.enabled = flag }
         if let width = try border.number("width", min: 0) { settings.border.width = CGFloat(width) }
         if let radius = try border.number("radius", min: 0) { settings.border.radius = CGFloat(radius) }
-        if let active = try color(border, "active") { settings.border.active = active }
+        if let angle = try border.number("angle", min: -3600, max: 3600) { settings.border.angle = angle }
+        if let colors = try colorList(border, "active") {
+            settings.border.active = colors[0]
+            settings.border.gradient = colors.count >= 2 ? colors : []
+        }
         if let inactive = try color(border, "inactive") { settings.border.inactive = inactive }
     }
 

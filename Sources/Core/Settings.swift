@@ -166,6 +166,10 @@ public struct BorderSettings: Sendable, Equatable {
     public var radius: CGFloat = 10
     public var active = Color(red: 0.537, green: 0.706, blue: 0.980)
     public var inactive = Color.clear
+    /// Two or more colors for a gradient border; empty for the solid `active` color. `active` is the first one.
+    public var gradient: [Color] = []
+    /// Direction of the gradient in degrees, as in CSS (see `BorderGradient`).
+    public var angle: Double = 45
     public init() {}
 }
 

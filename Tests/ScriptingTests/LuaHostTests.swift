@@ -622,6 +622,37 @@ struct LuaHostTests {
         #expect(bad?.message.contains("'dynamic' must be true or false") == true)
     }
 
+    @Test func theBorderCanBeAGradient() throws {
+        let config = try host.load(configURL: dir.write("init.lua", """
+        wm.config { border = { enabled = true, active = { "#ff0000", "#00ff00", "#0000ff" }, angle = 90 } }
+        """))
+        let border = config.settings.border
+        #expect(border.gradient == [
+            Color(red: 1, green: 0, blue: 0), Color(red: 0, green: 1, blue: 0), Color(red: 0, green: 0, blue: 1),
+        ])
+        #expect(border.active == Color(red: 1, green: 0, blue: 0))
+        #expect(border.angle == 90)
+        // A solid color in a later call replaces the gradient.
+        let solid = try host.load(configURL: dir.write("init.lua", """
+        wm.config { border = { active = { "#ff0000", "#00ff00" } } }
+        wm.config { border = { active = "#112233" } }
+        """))
+        #expect(solid.settings.border.gradient.isEmpty)
+        #expect(solid.settings.border.angle == 45)
+    }
+
+    @Test(arguments: [
+        ("wm.config { border = { active = { '#ff0000' } } }", "'border.active' must be a color"),
+        ("wm.config { border = { active = { '#ff0000', 'red' } } }", "got \"red\""),
+        ("wm.config { border = { active = { '#ff0000', 5 } } }", "'border.active' must be a color"),
+        ("wm.config { border = { active = true } }", "'border.active' must be a color"),
+        ("wm.config { border = { angle = 'up' } }", "'border.angle' must be a number"),
+    ])
+    func badBorderColorsAreErrors(script: String, expected: String) {
+        let error = #expect(throws: ConfigError.self) { try host.load(configURL: dir.write("init.lua", script)) }
+        #expect(error?.message.contains(expected) == true)
+    }
+
     @Test func zenSettingsSetTheWidthAndCheckIt() throws {
         let config = try host.load(configURL: dir.write("init.lua", "wm.config { zen = { width = 0.6 } }"))
         #expect(config.settings.zen.width == 0.6)

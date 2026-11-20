@@ -6,6 +6,9 @@ import Core
 public final class BorderOverlay {
     private let window: NSWindow
     private let shape = CAShapeLayer()
+    /// A gradient border is a gradient that only shows through the outline: the mask is the same stroke as `shape`.
+    private let gradient = CAGradientLayer()
+    private let gradientMask = CAShapeLayer()
 
     public init() {
         window = NSWindow(contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: false)
@@ -19,8 +22,12 @@ public final class BorderOverlay {
         let view = NSView()
         view.wantsLayer = true
         view.layer?.addSublayer(shape)
+        view.layer?.addSublayer(gradient)
         window.contentView = view
         shape.fillColor = nil
+        gradient.mask = gradientMask
+        gradientMask.fillColor = nil
+        gradientMask.strokeColor = CGColor(gray: 0, alpha: 1)
     }
 
     /// `frame` is the window to outline, in Accessibility coordinates. The line is drawn just outside it.
@@ -28,16 +35,31 @@ public final class BorderOverlay {
         let outer = Displays.cocoaRect(frame.insetBy(dx: -settings.width, dy: -settings.width))
         window.setFrame(outer, display: false)
         let bounds = CGRect(origin: .zero, size: outer.size)
-        shape.frame = bounds
-        shape.lineWidth = settings.width
-        shape.strokeColor = Self.cgColor(settings.active)
         let path = CGPath(
             roundedRect: bounds.insetBy(dx: settings.width / 2, dy: settings.width / 2),
             cornerWidth: settings.radius, cornerHeight: settings.radius, transform: nil
         )
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        shape.path = path
+        if settings.gradient.count >= 2 {
+            shape.isHidden = true
+            gradient.isHidden = false
+            gradient.frame = bounds
+            gradient.colors = settings.gradient.map(Self.cgColor)
+            let points = BorderGradient.points(angle: settings.angle)
+            gradient.startPoint = points.start
+            gradient.endPoint = points.end
+            gradientMask.frame = bounds
+            gradientMask.lineWidth = settings.width
+            gradientMask.path = path
+        } else {
+            gradient.isHidden = true
+            shape.isHidden = false
+            shape.frame = bounds
+            shape.lineWidth = settings.width
+            shape.strokeColor = Self.cgColor(settings.active)
+            shape.path = path
+        }
         CATransaction.commit()
         window.orderFrontRegardless()
     }
