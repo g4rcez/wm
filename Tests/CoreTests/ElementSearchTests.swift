@@ -181,6 +181,16 @@ struct ElementSearchTests {
         #expect(Set(search.labels.values).count == 30)
     }
 
+    @Test func theLabelsUseOnlyTheLettersThatWereGiven() {
+        let many = (0..<10).map { element($0, x: CGFloat($0) * 50, "item") }
+        let search = ElementSearch(elements: many, letters: Array("asdf"))
+        #expect(search.label(of: 0) == "aa")
+        #expect(search.label(of: 1) == "sa")
+        #expect(search.label(of: 4) == "as")
+        #expect(search.labels.values.allSatisfy { $0.allSatisfy { "asdf".contains($0) } })
+        #expect(Set(search.labels.values).count == 10)
+    }
+
     @Test func everyLabelHasTwoLettersSoOnlyTheFirstSixHundredSeventySixElementsHaveOne() {
         let many = (0..<677).map { element($0, x: CGFloat($0) * 3, "item") }
         let labels = ElementSearch(elements: many).labels

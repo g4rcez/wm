@@ -38,7 +38,7 @@ to narrow the search.
 | `Return` again within 300 ms | double click |
 | `Esc`, a mouse click | close |
 
-A wrong second letter cancels the first one. A shortcut with Cmd, Ctrl or Alt ends the mode and goes to the app. Web pages work
+A wrong second letter cancels the first one. A shortcut with Cmd, Ctrl or Alt ends the mode and goes to the app. A key that the mode does not accept (a function key, an arrow, a sign it has no use for) ends the mode too, so it never gets stuck. The screenshot shortcuts of macOS (Cmd+Shift+3, 4, 5, 6) go to macOS and leave the mode open, so the picture shows it. Web pages work
 too. A browser builds the tree of a page only for an assistive tool, so when wm finds a page with nothing in it, it sets
 `AXManualAccessibility` and `AXEnhancedUserInterface` on the app (once for each app) and reads again. wm turns the second one
 off and on around its own window moves, so the animations stay smooth. The click is
@@ -71,6 +71,19 @@ wm.config { hints = {
 
 Colors are `"#rrggbb"` or `"#rrggbbaa"`. The letters of a label that you typed already are drawn with the same color, faded.
 A reload of the config changes them.
+
+## Letters and scroll step
+
+```lua
+wm.config { hints = {
+  letters = "asdfghjkl",       -- the letters of the labels, used in this order (default: the whole alphabet, home row first)
+  scroll_step = 60,            -- points that h j k l scroll in scroll mode (10 to 500)
+  scroll_dash_factor = 5,      -- what Shift multiplies the step by (1 to 20)
+} }
+```
+
+`letters` takes 4 to 26 different lowercase letters. With fewer letters the labels need more keys: `n` letters give `n × n`
+labels. The select mode keeps its own letters.
 
 ## Scroll mode
 

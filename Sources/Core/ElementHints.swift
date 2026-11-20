@@ -56,13 +56,16 @@ public struct ElementSearch: Sendable, Equatable {
     public private(set) var focused: Int?
     /// The wait mode: every element keeps its label, and the text picks the target by label or by title.
     public let keepsLabels: Bool
+    /// The letters of the labels, in the order that they are used (`hints.letters`).
+    public let letters: [Character]
 
-    public init(elements: [HintElement], keepsLabels: Bool = false) {
+    public init(elements: [HintElement], keepsLabels: Bool = false, letters: [Character] = ElementSearch.alphabet) {
         self.keepsLabels = keepsLabels
+        self.letters = letters
         let ordered = Self.deduplicated(elements).sorted { ($0.frame.minY, $0.frame.minX, $0.id) < ($1.frame.minY, $1.frame.minX, $1.id) }
         self.elements = ordered
         matches = ordered
-        labels = Self.labels(for: ordered, avoiding: [])
+        labels = Self.labels(for: ordered, avoiding: [], letters: letters)
     }
 
     /// The elements without the ones that sit on the frame of an element that is already kept. The first one stays.
@@ -170,7 +173,7 @@ public struct ElementSearch: Sendable, Equatable {
         if searching, words.isEmpty || query.hasSuffix(" ") {
             labels = [:]
         } else {
-            labels = Self.labels(for: matches, avoiding: searching ? Self.continuations(of: words[words.count - 1], in: matches) : [])
+            labels = Self.labels(for: matches, avoiding: searching ? Self.continuations(of: words[words.count - 1], in: matches) : [], letters: letters)
         }
         if let focused, !matches.contains(where: { $0.id == focused }) { self.focused = nil }
     }
@@ -201,7 +204,7 @@ public struct ElementSearch: Sendable, Equatable {
 
     /// Two letters for each match, in reading order. The first letters change first, so that near elements differ in the letter
     /// that is typed first. No first letter is in `avoided`, so the matches that come after the last label have none.
-    static func labels(for matches: [HintElement], avoiding avoided: Set<Character>) -> [Int: String] {
+    static func labels(for matches: [HintElement], avoiding avoided: Set<Character>, letters alphabet: [Character] = alphabet) -> [Int: String] {
         let firsts = alphabet.filter { !avoided.contains($0) }
         let base = alphabet.count
         var labels: [Int: String] = [:]

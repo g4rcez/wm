@@ -58,7 +58,7 @@ final class HintController {
         Task { @MainActor in
             let elements = await reader.clickables(pid: app.processIdentifier, screens: screens)
             guard generation == current, case .loading = phase else { return }
-            search = ElementSearch(elements: elements, keepsLabels: wait)
+            search = ElementSearch(elements: elements, keepsLabels: wait, letters: colors().letters)
             if wait { search.beginSearch() }
             phase = .open
             render()
@@ -130,8 +130,11 @@ final class HintController {
                 switch search.press(character) {
                 case .picked(let element): click(element, button: shift ? .right : .left, flags: command ? .maskCommand : [])
                 case .updated: changed()
-                case .ignored: break
+                case .ignored: if character != " " { close() }
                 }
+            } else {
+                // A key that is no label, no search text and no command is not accepted: it ends the mode.
+                close()
             }
         }
         return true
