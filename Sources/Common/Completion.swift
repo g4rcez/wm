@@ -79,6 +79,7 @@ private let extraValues: [String: [String]] = [
     "workspace float-all": ["on", "off", "2", "3", "4", "5", "6", "2+1", "1+2", "2/3", "3/4", "1/4"],
     "window snap": ["left", "right", "top", "bottom", "top-left", "top-right", "bottom-left", "bottom-right", "top-center", "bottom-center", "center"],
     "workspace": ["next", "prev", "empty"],
+    "workspace all": ["scrolling", "tiling", "master", "monocle", "floating"],
     "window send workspace": ["next", "prev", "empty"],
     "focus monitor": monitorWords,
     "window send monitor": monitorWords,

@@ -46,7 +46,7 @@
 ---| "window send monitor left" | "window send monitor right" | "window send monitor up" | "window send monitor down" | "window send monitor next" | "window send monitor prev" | "window send monitor last"
 ---| "window send monitor main" | "window send monitor secondary" | "window send monitor tertiary"
 ---| "window send strip horizontal" | "window send strip vertical"
----| "layout set tiling" | "layout set scrolling" | "layout set master" | "layout set monocle" | "layout set floating"
+---| "layout set tiling" | "layout set scrolling" | "layout set master" | "layout set monocle" | "layout set floating" | "workspace all tiling" | "workspace all scrolling" | "workspace all master" | "workspace all monocle" | "workspace all floating"
 ---| "layout master promote" | "layout master count +1" | "layout master count -1" | "layout master ratio +0.05" | "layout master ratio -0.05"
 ---| "layout master orientation" | "layout master orientation left" | "layout master orientation right" | "layout master orientation top"
 ---| "layout master orientation bottom" | "layout master orientation center"

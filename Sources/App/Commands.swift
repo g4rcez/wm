@@ -281,6 +281,9 @@ extension WindowManager {
                 }
                 return floatAll(true, into: template)
             }
+        case "all":
+            guard words.count == 2 else { return fail("workspace all needs a layout", 2, usage: "workspace all") }
+            return setLayoutEverywhere(words[1])
         case "special":
             guard let name = SpecialWorkspace.name(words.dropFirst().first) else { return fail("bad special workspace name", 2, usage: "workspace special") }
             toggleSpecial(name)
@@ -1010,8 +1013,26 @@ extension WindowManager {
         guard let kind = name.flatMap(LayoutKind.init(rawValue:)), let workspace = focusedWorkspace else {
             return fail("layout set needs scrolling, tiling, master, monocle or floating", 2, usage: "layout set")
         }
+        convert(workspace, to: kind)
+        relayout()
+        return ok()
+    }
+
+    /// `workspace all <layout>`: every workspace takes the layout, and so does a workspace that opens later.
+    private func setLayoutEverywhere(_ name: String?) -> ServerAnswer {
+        guard let kind = name.flatMap(LayoutKind.init(rawValue:)) else {
+            return fail("workspace all needs scrolling, tiling, master, monocle or floating", 2, usage: "workspace all")
+        }
+        for workspace in workspaces.values where workspace.kind != kind { convert(workspace, to: kind) }
+        settings.layout = kind
+        relayout()
+        return ok()
+    }
+
+    /// Gives one workspace a layout. Into `floating`: the windows float where they are. Out of it they stay floating, and only new
+    /// windows tile.
+    private func convert(_ workspace: Workspace, to kind: LayoutKind) {
         workspace.maximized = []
-        // Into `floating`: the windows float where they are. Out of it they stay floating, and only new windows tile.
         let tiled = kind == .floating && workspace.kind != .floating ? workspace.engine.windows : []
         let frames = tiled.isEmpty ? [:] : workspace.engine.frames(in: layoutContext(forWorkspace: workspace.name), focused: tiled.first)
         rebuild(workspace, as: kind)
@@ -1019,8 +1040,6 @@ extension WindowManager {
             setFloating(id, true)
             if let frame = frames[id] { setFloatFrame(id, frame) }
         }
-        relayout()
-        return ok()
     }
 
     private func moveMouse(_ where: String?, target id: WindowID?) -> ServerAnswer {

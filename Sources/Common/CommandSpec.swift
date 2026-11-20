@@ -164,6 +164,10 @@ public let commandSections: [CommandSection] = [
             details: "Names with a meaning: back (the previous workspace), next and prev (the workspaces in use, wrapping around)\nand empty (the lowest free number).",
             example: "wm workspace next"),
         CommandSpec(
+            "workspace all", "<layout>", "", "Give every workspace this layout.",
+            details: "`layout` is scrolling, tiling, master, monocle or floating, as in `layout set`. It converts every workspace, special\nones too, and the workspaces that open later get it as well, until a reload of the config says another default. Into\n`floating`, the windows float where they are.",
+            example: "wm workspace all scrolling"),
+        CommandSpec(
             "workspace move monitor", "<monitor>", "", "Move this workspace to another monitor.",
             details: "That monitor shows the workspace from now on, and this monitor shows the lowest free workspace number. A workspace\nthat a wm.workspace rule binds to a monitor stays there. The monitor is the same as in `wm help focus monitor`.",
             example: "wm workspace move monitor right"),

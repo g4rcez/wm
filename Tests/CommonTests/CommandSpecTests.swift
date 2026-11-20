@@ -37,6 +37,7 @@ struct CommandSpecTests {
         ])
         #expect(usageLines(for: "workspace") == [
             "wm workspace <name|back>",
+            "wm workspace all <layout>",
             "wm workspace move monitor <monitor>",
             "wm workspace float-all [off|pattern]",
             "wm workspace special [name]",
