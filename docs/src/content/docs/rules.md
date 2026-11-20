@@ -21,6 +21,7 @@ order: 5
 | `focus = false` | Open without taking the focus. The window that had it gets it back. |
 | `run` | A command or a list of commands to run after the other actions. |
 | `stop = false` | Let later rules add to this one. By default the first match is the last. |
+| `dynamic = true` | Check the rule again when the title of the window changes. See [Dynamic rules](#dynamic-rules). |
 | `name` | A label. It shows in `wm logs` (`rule=finder float,center`) and is what `wm.floating.disable` takes. It matches nothing. |
 
 A rule needs at least one of `app`, `title`, `role`, `subrole` or `identifier`. A window must match all the fields of a rule. Rules apply in order, and later values win.
@@ -31,6 +32,27 @@ wm.rule({ app = "com.apple.Notes", subrole = "AXDialog", float = true })
 ```
 
 `wm logs` prints the role, subrole and identifier of windows that wm skips. Use it to find the value for a rule.
+
+### Dynamic rules
+
+A rule applies when a window opens. A window can change after that: a browser tab that you pop out becomes a window titled
+"Picture-in-Picture", and a Zoom window that was a lobby becomes the meeting. With `dynamic = true` wm checks the rule again each
+time the title of the window changes.
+
+```lua
+wm.rule { app = "org.mozilla.firefox", title = "^Picture-in-Picture$", float = true, dynamic = true }
+wm.rule { app = "us.zoom.xos", title = "^Zoom Meeting$", workspace = 5, dynamic = true }
+```
+
+- When a window starts to match, it gets `float`, `size`, `center`, `workspace` and `monitor` of the rule. `run`, `layout`,
+  `width`, `maximize` and `focus` are for the moment a window opens only.
+- When it stops matching, it floats or tiles as it did before the rule. It stays on the workspace that the rule sent it to.
+- wm acts on a change, not on every title: a window that keeps matching is left alone, so a window that you moved by hand stays
+  where you put it until the rule stops or starts to match again. A window that changes more than 4 times in a second is left
+  alone for that second.
+- wm listens to the title changes of the apps that a dynamic rule can match, so an app with `app` set is cheap. A dynamic rule
+  without `app` listens to every app, and each title change reads the windows again.
+- A rule that is not dynamic still applies once, when the window opens.
 
 ### Rules for one command
 

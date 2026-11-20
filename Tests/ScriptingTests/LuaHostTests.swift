@@ -610,6 +610,18 @@ struct LuaHostTests {
         #expect(bridge.logs.contains { $0.contains(expected) })
     }
 
+    @Test func aRuleCanBeDynamic() throws {
+        let config = try host.load(configURL: dir.write("init.lua", """
+        wm.rule { title = "Picture", float = true, dynamic = true }
+        wm.rule { app = "com.apple.finder", float = true }
+        """))
+        #expect(config.rules.prefix(2).map(\.dynamic) == [true, false])
+        let bad = #expect(throws: ConfigError.self) {
+            try host.load(configURL: dir.write("init.lua", "wm.rule { title = 'x', dynamic = 'yes' }"))
+        }
+        #expect(bad?.message.contains("'dynamic' must be true or false") == true)
+    }
+
     @Test func zenSettingsSetTheWidthAndCheckIt() throws {
         let config = try host.load(configURL: dir.write("init.lua", "wm.config { zen = { width = 0.6 } }"))
         #expect(config.settings.zen.width == 0.6)

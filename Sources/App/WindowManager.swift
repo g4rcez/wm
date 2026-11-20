@@ -141,6 +141,9 @@ final class WindowManager {
     private var reboot: RebootRestore?
     private var rebootStarted = false
     private var spawnClaims = SpawnClaims<WindowRule>()
+    /// Which dynamic rules (indices in `rules`) matched each window at the last look, and how the window was before they applied.
+    private var dynamicTracker = DynamicRuleTracker()
+    private var dynamicSaved: [WindowID: (floating: Bool, floatFrame: CGRect?)] = [:]
     /// The window that had the focus when a window with `focus = false` opened: it gets the focus back.
     private var refocusAfterOpen: WindowID?
     private var saveTimer: Timer?
@@ -164,6 +167,7 @@ final class WindowManager {
 
     func start() {
         tracker = AppTracker { [weak self] in self?.scheduleRefresh() }
+        updateTitleWatching()
         applier.watcher = { [weak self] pid in self?.tracker?.watcher(for: pid) }
         scheduleRefresh()
     }
@@ -176,6 +180,7 @@ final class WindowManager {
         settings = new
         if let saved = pendingRestore, saved.mode != SavedState.workspaceMode { pendingRestore = nil }
         self.rules = rules
+        updateTitleWatching()
         animator.enabled = new.animations.enabled
         animator.rate = new.animations.rate
         let previousLayouts = workspaceLayouts
@@ -336,7 +341,8 @@ final class WindowManager {
         for info in infos {
             seen.insert(info.id)
             if var managed = windows[info.id] {
-                if info.title != managed.info.title {
+                let titleChanged = info.title != managed.info.title
+                if titleChanged {
                     events.emit("window_title", ["id": .number(Double(info.id)), "app": .string(info.bundleID), "title": .string(info.title)])
                 }
                 managed.info = info
@@ -350,6 +356,8 @@ final class WindowManager {
                    workspace(managed.workspace).fullscreen != info.id {
                     windows[info.id]?.floatFrame = info.frame
                 }
+                // Last, because it can change what `managed` says (floating, workspace).
+                if titleChanged { reevaluateDynamicRules(info.id) }
                 continue
             }
             detect(info)
@@ -421,16 +429,7 @@ final class WindowManager {
             floatFrame = WindowMemory.absolute(last.frame, in: area)
         } else if let area = monitor?.workArea, rule?.size != nil || rule?.center == true {
             floating = rule?.float != false
-            var size = info.frame.size
-            if let wanted = rule?.size {
-                size.width = wanted.width <= 1 ? area.width * wanted.width : wanted.width
-                size.height = wanted.height <= 1 ? area.height * wanted.height : wanted.height
-            }
-            var origin = info.frame.origin
-            if rule?.center == true {
-                origin = CGPoint(x: area.midX - size.width / 2, y: area.midY - size.height / 2)
-            }
-            floatFrame = CGRect(origin: origin, size: size)
+            floatFrame = Self.ruleFloatFrame(size: rule?.size, center: rule?.center == true, from: info.frame, in: area)
         } else if floating, floatsByDefault, didFirstScan {
             // Where the tiling layout would put it. The windows that are open already stay where they are.
             let others = windows.filter { $0.value.workspace == workspaceName && $0.value.floating && !$0.value.isOutOfLayout }.keys.sorted()
@@ -441,6 +440,13 @@ final class WindowManager {
                 settings: settings(forWorkspace: workspaceName), context: context)
         }
         windows[info.id] = ManagedWindow(info: info, workspace: workspaceName, floating: floating, minimized: info.isMinimized, floatFrame: floatFrame ?? (floating ? info.frame : nil))
+        // The dynamic rules that apply now are part of how the window opens; the window goes back to how it would be without them
+        // when it stops matching.
+        let dynamic = dynamicRuleIndices(for: info)
+        if !dynamic.isEmpty {
+            _ = dynamicTracker.update(window: info.id, matching: dynamic, now: ProcessInfo.processInfo.systemUptime)
+            dynamicSaved[info.id] = (floating: info.kind == .floating || floatsByDefault, floatFrame: nil)
+        }
         // A window that opens after the start: what `wm logs` needs to say why it was floated, tiled or moved. The first scan
         // reads every window that is open already, and says nothing.
         if didFirstScan {
@@ -815,6 +821,91 @@ final class WindowManager {
     }
 
     /// Rules apply in order. A matching rule with `stop = false` lets later rules add to it; later values win.
+    /// The frame of a floating window that a rule sizes and centers: `size` is a fraction of the area (or points above 1), and
+    /// the window keeps its own size and place for what the rule leaves out.
+    static func ruleFloatFrame(size wanted: RuleSize?, center: Bool, from frame: CGRect, in area: CGRect) -> CGRect {
+        var size = frame.size
+        if let wanted {
+            size.width = wanted.width <= 1 ? area.width * wanted.width : wanted.width
+            size.height = wanted.height <= 1 ? area.height * wanted.height : wanted.height
+        }
+        var origin = frame.origin
+        if center { origin = CGPoint(x: area.midX - size.width / 2, y: area.midY - size.height / 2) }
+        return CGRect(origin: origin, size: size)
+    }
+
+    // MARK: - Dynamic rules
+
+    /// Reports the title changes of the apps that a dynamic rule can match, as they happen. A rule without `app` can match any app.
+    private func updateTitleWatching() {
+        let dynamic = rules.filter(\.dynamic)
+        tracker?.watchesTitles = { bundleID, name in
+            dynamic.contains { rule in
+                rule.app.map { $0.caseInsensitiveCompare(bundleID) == .orderedSame || $0.caseInsensitiveCompare(name) == .orderedSame } ?? true
+            }
+        }
+        tracker?.updateTitleWatching()
+    }
+
+    /// The dynamic rules that apply to this window, as indices in `rules`. Rules are read in order and the first one with
+    /// `stop` ends the search, as for a window that opens; a rule that is not dynamic can end it too.
+    private func dynamicRuleIndices(for info: WindowInfo) -> [Int] {
+        var found: [Int] = []
+        for (index, rule) in rules.enumerated() {
+            guard rule.matches(
+                bundleID: info.bundleID, appName: info.appName, title: info.title,
+                role: info.role, subrole: info.subrole, identifier: info.identifier) else { continue }
+            if rule.dynamic { found.append(index) }
+            if rule.stop { break }
+        }
+        return found
+    }
+
+    /// A window changed its title: the dynamic rules that match it now are applied, and the ones that stopped matching are undone.
+    private func reevaluateDynamicRules(_ id: WindowID) {
+        guard let managed = windows[id], !managed.isOutOfLayout else { return }
+        let indices = dynamicRuleIndices(for: managed.info)
+        switch dynamicTracker.update(window: id, matching: indices, now: ProcessInfo.processInfo.systemUptime) {
+        case .none:
+            return
+        case .applied:
+            let rule = indices.map { rules[$0] }.reduce(nil) { (merged: WindowRule?, next) in merged.map { $0.merging(next) } ?? next }
+            if let rule { applyDynamic(rule, to: id) }
+        case .reverted:
+            revertDynamic(id)
+        }
+    }
+
+    /// The actions of a rule that can change a window that is open: `float`, `size`, `center`, `workspace` and `monitor`. `run`,
+    /// `layout`, `width`, `maximize` and `focus` are for the moment a window opens and are not repeated.
+    private func applyDynamic(_ rule: WindowRule, to id: WindowID) {
+        guard let managed = windows[id] else { return }
+        if dynamicSaved[id] == nil { dynamicSaved[id] = (floating: managed.floating, floatFrame: managed.floatFrame) }
+        Log.write(.debug, "dynamic rule applied: id=\(id) title=\(managed.info.title.debugDescription) rule=\(Self.describe(rule))", source: "window")
+        let destination = rule.workspace ?? rule.monitor.flatMap(monitor(matching:)).map(activeWorkspace(of:))
+        if let destination, destination != managed.workspace {
+            moveWindow(id, to: destination)
+            arrive(id)
+        }
+        let resizes = rule.size != nil || rule.center
+        if let float = rule.float ?? (resizes ? true : nil) { setFloating(id, float) }
+        if resizes, windows[id]?.floating == true, let current = windows[id],
+           let area = (monitor(showing: current.workspace) ?? focusedMonitor)?.workArea {
+            let frame = currentFrame(of: id) ?? current.info.frame
+            setFloatFrame(id, Self.ruleFloatFrame(size: rule.size, center: rule.center, from: frame, in: area))
+        }
+        relayout()
+    }
+
+    /// The window stopped matching: it floats or tiles as it did before. It stays on the workspace it was sent to.
+    private func revertDynamic(_ id: WindowID) {
+        guard let saved = dynamicSaved.removeValue(forKey: id), let managed = windows[id] else { return }
+        Log.write(.debug, "dynamic rule undone: id=\(id) title=\(managed.info.title.debugDescription)", source: "window")
+        if managed.floating != saved.floating { setFloating(id, saved.floating) }
+        if saved.floating, let frame = saved.floatFrame { setFloatFrame(id, frame) }
+        relayout()
+    }
+
     private func matchingRule(_ info: WindowInfo) -> WindowRule? {
         var merged: WindowRule?
         for rule in rules {
@@ -845,6 +936,8 @@ final class WindowManager {
 
     private func forget(_ id: WindowID) {
         guard let managed = windows.removeValue(forKey: id) else { return }
+        dynamicTracker.forget(id)
+        dynamicSaved[id] = nil
         rememberFloatPlace(of: managed)
         lastShownFrame[id] = nil
         let workspace = workspace(managed.workspace)

@@ -17,6 +17,8 @@ public final class AppWatcher: @unchecked Sendable {
     private var elements: [WindowID: AXUIElement] = [:]
     private var observed: Set<WindowID> = []
     private var lastSize: [WindowID: CGSize] = [:]
+    /// Whether a title change of a window is reported (see `watchTitles`).
+    private var titleWatching = false
 
     private static let appNotifications = [
         kAXWindowCreatedNotification, kAXFocusedWindowChangedNotification, kAXMainWindowChangedNotification,
@@ -24,6 +26,9 @@ public final class AppWatcher: @unchecked Sendable {
     private static let windowNotifications = [
         kAXUIElementDestroyedNotification, kAXWindowMiniaturizedNotification, kAXWindowDeminiaturizedNotification,
     ]
+
+    public var bundleIdentifier: String { bundleID }
+    public var name: String { appName }
 
     public init(application: NSRunningApplication, onChange: @escaping @Sendable (pid_t) -> Void) {
         pid = application.processIdentifier
@@ -52,6 +57,25 @@ public final class AppWatcher: @unchecked Sendable {
         let context = Unmanaged.passUnretained(self).toOpaque()
         for name in Self.appNotifications {
             AXObserverAddNotification(created, element, name as CFString, context)
+        }
+    }
+
+    /// Reports a change of the title of any window of the app, as it happens, and not at the next refresh. A browser changes its title
+    /// all the time and every report reads all windows again, so it is on only for the apps that a dynamic rule needs.
+    public func watchTitles(_ enabled: Bool) {
+        thread.async { [self] in
+            guard enabled != titleWatching else { return }
+            titleWatching = enabled
+            guard let observer else { return }
+            let context = Unmanaged.passUnretained(self).toOpaque()
+            for id in observed {
+                guard let window = elements[id] else { continue }
+                if enabled {
+                    AXObserverAddNotification(observer, window, kAXTitleChangedNotification as CFString, context)
+                } else {
+                    AXObserverRemoveNotification(observer, window, kAXTitleChangedNotification as CFString)
+                }
+            }
         }
     }
 
@@ -193,6 +217,7 @@ public final class AppWatcher: @unchecked Sendable {
         for name in Self.windowNotifications {
             AXObserverAddNotification(observer, window, name as CFString, context)
         }
+        if titleWatching { AXObserverAddNotification(observer, window, kAXTitleChangedNotification as CFString, context) }
     }
 
     private func windowID(_ window: AXUIElement) -> WindowID? {

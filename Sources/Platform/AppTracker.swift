@@ -13,6 +13,9 @@ public final class AppTracker {
     private var pauses: Set<Pause> = []
     private var settle: Timer?
 
+    /// Whether the title changes of an app (its bundle id and its name) must be reported at once. `updateTitleWatching` applies it.
+    public var watchesTitles: @MainActor (_ bundleID: String, _ name: String) -> Bool = { _, _ in false }
+
     /// `true` while the Mac sleeps, its screens sleep, the user session is not active, or the screen is locked, and
     /// during the short delay after that.
     public var isPaused: Bool { !pauses.isEmpty || settle != nil }
@@ -87,10 +90,17 @@ public final class AppTracker {
             watchers[pid] = nil
         }
         for app in running where watchers[app.processIdentifier] == nil {
-            watchers[app.processIdentifier] = AppWatcher(application: app) { [weak self] _ in
+            let watcher = AppWatcher(application: app) { [weak self] _ in
                 DispatchQueue.main.async { MainActor.assumeIsolated { self?.onChange() } }
             }
+            watcher.watchTitles(watchesTitles(watcher.bundleIdentifier, watcher.name))
+            watchers[app.processIdentifier] = watcher
         }
+    }
+
+    /// Applies `watchesTitles` to the watchers that run now. For a config that changed.
+    public func updateTitleWatching() {
+        for watcher in watchers.values { watcher.watchTitles(watchesTitles(watcher.bundleIdentifier, watcher.name)) }
     }
 
     public func watcher(for pid: pid_t) -> AppWatcher? { watchers[pid] }

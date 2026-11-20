@@ -535,7 +535,7 @@ func parseWorkspaceRule(name: String, _ value: LuaValue) throws -> WorkspaceRule
 func parseRule(_ value: LuaValue) throws -> WindowRule {
     let fields = try Fields(value, owner: "wm.rule", allowed: [
         "name", "app", "title", "role", "subrole", "identifier", "float", "workspace", "layout", "size", "center", "run", "stop",
-        "maximize", "width", "monitor", "focus",
+        "maximize", "width", "monitor", "focus", "dynamic",
     ])
     var rule = WindowRule()
     rule.name = try fields.string("name")
@@ -555,6 +555,7 @@ func parseRule(_ value: LuaValue) throws -> WindowRule {
     }
     try applyRuleActions(fields, to: &rule)
     rule.stop = try fields.bool("stop") ?? true
+    rule.dynamic = try fields.bool("dynamic") ?? false
     return rule
 }
 

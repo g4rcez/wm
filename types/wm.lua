@@ -377,6 +377,7 @@
 ---@field focus? boolean `false`: the window opens without taking the focus.
 ---@field run? wm.Command|wm.Command[] Commands that run after the other actions.
 ---@field stop? boolean `false` lets later rules add to this one. Default true.
+---@field dynamic? boolean Check the rule again when the title of the window changes: the window gets `float`, `size`, `center`, `workspace` and `monitor` when it starts to match, and floats or tiles as before when it stops. Default false.
 
 --- The actions of `wm.Rule` for the window that a command opens, plus how to find the window. `timeout` and `app` need at least one action.
 ---@class (exact) wm.ExecOptions

@@ -176,13 +176,15 @@ public struct WindowRule: Sendable, Equatable {
     public var commands: [String]
     /// `true`: no later rule applies to a window that matched this one.
     public var stop: Bool
+    /// `true`: the rule is checked again when the title of the window changes (see `DynamicRuleTracker`).
+    public var dynamic: Bool
 
     public init(
         app: String? = nil, title: String? = nil, role: String? = nil, subrole: String? = nil,
         identifier: String? = nil, float: Bool? = nil, workspace: String? = nil,
         layout: LayoutKind? = nil, size: RuleSize? = nil, center: Bool = false,
         maximize: Bool? = nil, width: Double? = nil, monitor: String? = nil, focus: Bool? = nil,
-        commands: [String] = [], stop: Bool = true, name: String? = nil
+        commands: [String] = [], stop: Bool = true, name: String? = nil, dynamic: Bool = false
     ) {
         self.name = name
         self.app = app
@@ -201,6 +203,7 @@ public struct WindowRule: Sendable, Equatable {
         self.focus = focus
         self.commands = commands
         self.stop = stop
+        self.dynamic = dynamic
     }
 }
 
