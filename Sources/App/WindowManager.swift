@@ -1366,16 +1366,25 @@ final class WindowManager {
     }
 
     /// The tabs of the focused window's column, when it shows tabs: a bar of one segment per window.
+    /// Where `window` is among the tabs of its column (scrolling), or among the windows of the workspace (monocle). Alone, there is
+    /// nothing to show.
+    private func tabPosition(of window: WindowID, in engine: any LayoutEngine) -> (index: Int, count: Int)? {
+        if let scrolling = engine as? ScrollingEngine {
+            return scrolling.tabs(of: window).flatMap { tabs in tabs.firstIndex(of: window).map { ($0, tabs.count) } }
+        }
+        if let monocle = engine as? MonocleEngine, let position = monocle.position(of: window), position.count > 1 { return position }
+        return nil
+    }
+
     private func updateTabIndicator() {
         guard settings.tabIndicator.enabled, let focused, let managed = windows[focused], !managed.isOutOfLayout, !managed.floating,
               isVisible(managed.workspace), workspace(managed.workspace).fullscreen == nil,
-              let scrolling = workspace(managed.workspace).engine as? ScrollingEngine,
-              let tabs = scrolling.tabs(of: focused), let index = tabs.firstIndex(of: focused),
+              let (index, count) = tabPosition(of: focused, in: workspace(managed.workspace).engine),
               let frame = currentFrame(of: focused) else {
             tabIndicator.hide()
             return
         }
-        tabIndicator.show(on: frame, count: tabs.count, selected: index, settings.tabIndicator)
+        tabIndicator.show(on: frame, count: count, selected: index, settings.tabIndicator)
     }
 
     func updateBorder() {

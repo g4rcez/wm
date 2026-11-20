@@ -119,4 +119,14 @@ struct MonocleEngineTests {
     @Test func templatesAreRefused() {
         #expect(engine(1).templateError(SplitTemplate.two, focused: 1) != nil)
     }
+
+    @Test func thePositionIsTheIndexInTheWalkAndTheCount() {
+        var engine = engine(3)
+        engine.insert(4, after: 1)
+        let second = engine.position(of: 4)
+        let missing = engine.position(of: 99)
+        #expect(second?.index == 1)
+        #expect(second?.count == 4)
+        #expect(missing == nil)
+    }
 }

@@ -22,6 +22,8 @@ wm.bind("alt-m", "layout set monocle")
   monitor. Nothing else of the layout is configurable: there is no ratio, count or orientation.
 - Floating windows stay where they are, above the monocle window. Fullscreen and maximize still win over it.
 - With `gaps = { smart = true }` the window fills the workspace without gaps, because only one window is shown.
+- The tab indicator, the thin bar of the [scrolling layout](/docs/scrolling), has one segment per window and marks the one in view.
+  `tab_indicator.enabled = false` turns it off. A lone window shows none.
 - The menu bar letter is `O` (`M` is master-stack).
 - Tile templates are not for this layout.
 

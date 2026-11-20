@@ -34,6 +34,11 @@ public struct MonocleEngine: LayoutEngine {
 
     public var windows: [WindowID] { order }
 
+    /// The place of `window` in the walk (0 is the first) and how many windows there are, for the tab indicator.
+    public func position(of window: WindowID) -> (index: Int, count: Int)? {
+        order.firstIndex(of: window).map { ($0, order.count) }
+    }
+
     public func templateError(_ template: SplitTemplate, focused: WindowID?) -> String? {
         "tile templates are for the tiling and scrolling layouts"
     }
