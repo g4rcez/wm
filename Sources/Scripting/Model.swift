@@ -130,11 +130,14 @@ public struct WorkspaceRule: Sendable, Equatable {
     public var onEmpty: ExecRequest?
     /// The workspace exists without windows: it shows in the menu bar and in `workspace next|prev`.
     public var persistent = false
+    /// The desktop picture that the monitor of this workspace shows, as an absolute path (`~` is already expanded).
+    public var wallpaper: String?
 
     public init(
         layout: LayoutKind? = nil, monitor: String? = nil, isDefault: Bool = false, overrides: LuaValue? = nil,
-        onEmpty: ExecRequest? = nil, persistent: Bool = false
+        onEmpty: ExecRequest? = nil, persistent: Bool = false, wallpaper: String? = nil
     ) {
+        self.wallpaper = wallpaper
         self.layout = layout
         self.monitor = monitor
         self.isDefault = isDefault

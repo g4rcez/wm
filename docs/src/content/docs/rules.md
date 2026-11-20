@@ -119,4 +119,25 @@ for one that is open already.
 | `gaps`, `border` | Settings for this workspace only. |
 | `on_empty` | A command that runs when the workspace is shown with no window on it: `"ghostty"`, or `{ cmd = "open -a Notes", app = "Notes", float = true }` with the options of [`wm.exec`](/docs/lua-api) for its window. The window goes to this workspace even if you have left it. Showing the workspace again while the command still waits for its window does not start it twice. |
 | `persistent` | The workspace exists with no window: the menu bar lists it, and `workspace next` and `workspace prev` stop there. |
+| `wallpaper` | A picture (an absolute path, or `~/...`) that the monitor shows while it shows this workspace. A workspace without one gives the monitor back the picture that it had before wm changed it. See [Wallpaper](#wallpaper) for the limits. |
 | `layout_options` | Tiling, scrolling and master options for this workspace only, for example `{ split_ratio = 0.6 }`. The master options have `master_` in front: `master_ratio`, `master_count`, `master_orientation`, `master_new_window`. |
+
+### Wallpaper
+
+```lua
+wm.workspace("1", { wallpaper = "~/Pictures/desk.jpg" })
+wm.workspace("code", { wallpaper = "~/Pictures/dark.png" })
+wm.workspace("special:term", { wallpaper = "~/Pictures/term.png" })   -- a special workspace wins over the one below it
+```
+
+When a monitor shows a workspace that has a `wallpaper`, wm sets that picture as the desktop picture of the monitor. When it shows a
+workspace without one, the monitor gets the picture it had when wm first changed it. wm saves those original pictures in the state
+folder and puts them back when it quits, and at the next start if it stopped without doing it.
+
+This uses the public desktop picture call of macOS, so it has limits:
+
+- It changes the desktop of the **current Space** only. Other Spaces keep their pictures.
+- Each change takes a moment, and the picture can flash. It runs after the layout pass, but it still uses the main thread of wm.
+- A dynamic wallpaper (day and night) or an aerial one cannot be set again: macOS reports its still picture, and that is what comes
+  back. Pick a plain picture for the workspaces that you switch to often.
+- A file that does not exist is logged once (`wm logs`, source `wallpaper`) and ignored.

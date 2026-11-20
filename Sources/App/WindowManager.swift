@@ -116,6 +116,8 @@ final class WindowManager {
     /// Called after every layout pass with the workspace and layout shown on the focused monitor.
     /// Tells the menu bar the workspace in focus, its layout, and the text of the icon.
     var onRelayout: ((_ workspace: String?, _ layout: LayoutKind?, _ label: [StatusSegment]) -> Void)?
+    /// The workspace that each monitor shows (and the special workspace over it), after every layout pass.
+    var onWorkspacesShown: ((_ shown: [UInt32: (workspace: String, special: String?)]) -> Void)?
     /// The text that `wm menubar set` put in the icon in place of the automatic one. `nil`: the automatic text.
     private(set) var menuLabelOverride: String?
     var runRuleCommand: ((_ command: [String], _ window: WindowID) -> Void)?
@@ -1598,6 +1600,7 @@ final class WindowManager {
         updateBorder()
         updateTabIndicator()
         publishStatus()
+        onWorkspacesShown?(Dictionary(uniqueKeysWithValues: monitors.map { ($0.id, (workspace: $0.workspace, special: specials[$0.id])) }))
         scheduleSave()
     }
 

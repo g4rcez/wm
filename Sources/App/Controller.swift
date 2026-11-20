@@ -18,6 +18,7 @@ final class AppController: HostBridge, @unchecked Sendable {
     @MainActor var keyTapRunning = false
     private(set) var switcher: SwitcherController!
     @MainActor private var idleWatcher: IdleWatcher!
+    @MainActor private var wallpaper: WallpaperSwitcher!
     @MainActor private(set) var palette: PaletteController!
     /// The window that `tile` with no argument (the picker) applies the chosen pattern to.
     @MainActor private var pickerTarget: WindowID?
@@ -79,6 +80,8 @@ final class AppController: HostBridge, @unchecked Sendable {
         input.selector = selector
         switcher.chordFlags = { [unowned input = input!] in input.currentFlags }
         idleWatcher = IdleWatcher(emit: { [unowned self] name, payload in manager.events.emit(name, payload) }, isPaused: { [unowned self] in manager.isPaused })
+        wallpaper = WallpaperSwitcher()
+        manager.onWorkspacesShown = { [unowned self] shown in wallpaper.update(shown: shown) }
         manager.runOnEmpty = { [unowned self] request in
             guard let pid = runShell(request.command) else { return }
             if let options = request.options { manager.expectWindow(from: pid, options: options) }
@@ -123,6 +126,7 @@ final class AppController: HostBridge, @unchecked Sendable {
         server?.stop()
         manager.saveState()
         manager.restoreAll()
+        wallpaper.restore()
     }
 
     // MARK: - Commands
@@ -644,6 +648,7 @@ final class AppController: HostBridge, @unchecked Sendable {
         updateTrackpad(loaded.settings.trackpad)
         updateStartAtLogin(loaded.settings.startAtLogin)
         idleWatcher.configure(thresholds: loaded.idleThresholds)
+        wallpaper.configure(Dictionary(uniqueKeysWithValues: loaded.workspaceRules.compactMap { name, rule in rule.wallpaper.map { (name, $0) } }))
         manager.events.emit("config_reloaded")
     }
 

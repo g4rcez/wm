@@ -576,13 +576,20 @@ private func parseOnEmpty(_ fields: Fields, workspace: String) throws -> ExecReq
 
 func parseWorkspaceRule(name: String, _ value: LuaValue) throws -> WorkspaceRule {
     let fields = try Fields(
-        value, owner: "wm.workspace", allowed: ["layout", "monitor", "default", "gaps", "border", "layout_options", "on_empty", "persistent"])
+        value, owner: "wm.workspace", allowed: ["layout", "monitor", "default", "gaps", "border", "layout_options", "on_empty", "persistent", "wallpaper"])
     guard !fields.values.isEmpty else { throw ConfigError(message: "wm.workspace: '\(name)' needs at least one option") }
     var rule = WorkspaceRule()
     if let layout = try fields.choice("layout", LayoutKind.self) { rule.layout = layout }
     rule.monitor = try fields.numberOrString("monitor", min: 1)
     rule.isDefault = try fields.bool("default") ?? false
     rule.persistent = try fields.bool("persistent") ?? false
+    if let path = try fields.string("wallpaper") {
+        let expanded = (path as NSString).expandingTildeInPath
+        guard expanded.hasPrefix("/") else {
+            throw ConfigError(message: "wm.workspace: 'wallpaper' must be an absolute path or start with ~/, got \"\(path)\"")
+        }
+        rule.wallpaper = expanded
+    }
     rule.onEmpty = try parseOnEmpty(fields, workspace: name)
     if rule.isDefault, rule.monitor == nil {
         throw ConfigError(message: "wm.workspace: '\(name)' has 'default' and needs a 'monitor' too")

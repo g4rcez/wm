@@ -811,6 +811,25 @@ struct LuaHostTests {
         #expect(error?.message.contains(expected) == true)
     }
 
+    @Test func aWorkspaceCanHaveAWallpaper() throws {
+        let config = try host.load(configURL: dir.write("init.lua", """
+        wm.workspace("code", { wallpaper = "~/Pictures/code.jpg" })
+        wm.workspace("1", { wallpaper = "/System/Library/Desktop Pictures/Sonoma.heic", layout = "tiling" })
+        """))
+        let home = NSHomeDirectory()
+        #expect(config.workspaceRules["code"]?.wallpaper == home + "/Pictures/code.jpg")
+        #expect(config.workspaceRules["1"]?.wallpaper == "/System/Library/Desktop Pictures/Sonoma.heic")
+    }
+
+    @Test(arguments: [
+        ("wm.workspace('1', { wallpaper = 'pictures/a.jpg' })", "'wallpaper' must be an absolute path or start with ~/"),
+        ("wm.workspace('1', { wallpaper = 5 })", "'wallpaper' must be a string"),
+    ])
+    func badWallpapersAreErrors(script: String, expected: String) {
+        let error = #expect(throws: ConfigError.self) { try host.load(configURL: dir.write("init.lua", script)) }
+        #expect(error?.message.contains(expected) == true)
+    }
+
     @Test func zenSettingsSetTheWidthAndCheckIt() throws {
         let config = try host.load(configURL: dir.write("init.lua", "wm.config { zen = { width = 0.6 } }"))
         #expect(config.settings.zen.width == 0.6)
