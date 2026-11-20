@@ -89,4 +89,11 @@ struct StatusLabelTests {
         #expect(StatusLabel.unknownPlaceholder(in: "{mode} {nme}") == "nme")
         #expect(StatusLabel.unknownPlaceholder(in: "no braces") == nil)
     }
+
+    @Test func aPersistentWorkspaceShowsWithoutWindows() {
+        let empty = WorkspaceStatus(name: "3", layout: .tiling, count: 0, persistent: true)
+        #expect(text([status("1"), empty, status("2", .tiling, 0)], current: status("1")) == "T:1 3")
+        let current = WorkspaceStatus(name: "1", layout: .tiling, count: 0)
+        #expect(text([empty], current: current) == "T:1 3")
+    }
 }

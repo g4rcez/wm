@@ -755,6 +755,38 @@ struct LuaHostTests {
         #expect(error?.message.contains(expected) == true)
     }
 
+    @Test func aWorkspaceCanRunACommandWhenItIsShownEmptyAndCanPersist() throws {
+        let config = try host.load(configURL: dir.write("init.lua", """
+        wm.workspace("special:term", { on_empty = "ghostty" })
+        wm.workspace("2", { persistent = true, on_empty = { cmd = "open -a Notes", app = "Notes", float = true, size = { 0.5, 0.5 }, timeout = 20 } })
+        """))
+        let plain = try #require(config.workspaceRules["special:term"])
+        #expect(plain.onEmpty?.command == "ghostty")
+        #expect(plain.onEmpty?.options?.rule.workspace == "special:term")
+        #expect(plain.persistent == false)
+        let rich = try #require(config.workspaceRules["2"])
+        #expect(rich.persistent)
+        #expect(rich.onEmpty?.command == "open -a Notes")
+        #expect(rich.onEmpty?.options?.rule.workspace == "2")
+        #expect(rich.onEmpty?.options?.rule.float == true)
+        #expect(rich.onEmpty?.options?.rule.size == RuleSize(width: 0.5, height: 0.5))
+        #expect(rich.onEmpty?.options?.timeout == 20)
+        #expect(rich.onEmpty?.options?.app == "Notes")
+    }
+
+    @Test(arguments: [
+        ("wm.workspace('1', { on_empty = 5 })", "'on_empty' must be a command string or a table with 'cmd'"),
+        ("wm.workspace('1', { on_empty = '  ' })", "'on_empty' must not be empty"),
+        ("wm.workspace('1', { on_empty = { float = true } })", "'on_empty.cmd' must be a command string"),
+        ("wm.workspace('1', { on_empty = { cmd = 'x', workspace = 2 } })", "'on_empty' cannot have 'workspace'"),
+        ("wm.workspace('1', { on_empty = { cmd = 'x', flaot = true } })", "unknown key 'on_empty.flaot'"),
+        ("wm.workspace('1', { persistent = 'yes' })", "'persistent' must be true or false"),
+    ])
+    func badWorkspaceCommandsAreErrors(script: String, expected: String) {
+        let error = #expect(throws: ConfigError.self) { try host.load(configURL: dir.write("init.lua", script)) }
+        #expect(error?.message.contains(expected) == true)
+    }
+
     @Test func zenSettingsSetTheWidthAndCheckIt() throws {
         let config = try host.load(configURL: dir.write("init.lua", "wm.config { zen = { width = 0.6 } }"))
         #expect(config.settings.zen.width == 0.6)

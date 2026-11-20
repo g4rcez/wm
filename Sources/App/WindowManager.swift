@@ -119,6 +119,10 @@ final class WindowManager {
     /// The text that `wm menubar set` put in the icon in place of the automatic one. `nil`: the automatic text.
     private(set) var menuLabelOverride: String?
     var runRuleCommand: ((_ command: [String], _ window: WindowID) -> Void)?
+    /// Runs the `on_empty` command of a workspace: starts it, and gives the window that it opens to the workspace.
+    var runOnEmpty: ((_ request: ExecRequest) -> Void)?
+    /// Workspaces whose `on_empty` command runs and has not opened a window yet, so a second visit does not start it again.
+    private var pendingOnEmpty: Set<String> = []
     /// Called after the binding mode is set (also to the mode it already was), for the menu bar icon and the label.
     var onModeChange: ((_ mode: String) -> Void)?
 
@@ -202,6 +206,7 @@ final class WindowManager {
         let previousLayouts = workspaceLayouts
         workspaceLayouts = newLayouts
         workspaceRules = newRules
+        for name in newRules.filter(\.value.persistent).keys { _ = workspace(name) }
         if layoutChanged || workspaces.isEmpty {
             // A new default layout applies to workspaces that are still empty and have no layout of their own.
             for workspace in workspaces.values where workspace.engine.windows.isEmpty && newLayouts[workspace.name] == nil {
@@ -469,6 +474,7 @@ final class WindowManager {
             dynamicSaved[info.id] = (floating: info.kind == .floating || floatsByDefault, floatFrame: nil, border: nil)
         }
         windows[info.id]?.borderColors = rule?.border
+        pendingOnEmpty.remove(workspaceName)
         // A window that opens after the start: what `wm logs` needs to say why it was floated, tiled or moved. The first scan
         // reads every window that is open already, and says nothing.
         if didFirstScan {
@@ -858,6 +864,25 @@ final class WindowManager {
         if center { origin = CGPoint(x: area.midX - size.width / 2, y: area.midY - size.height / 2) }
         return CGRect(origin: origin, size: size)
     }
+
+    // MARK: - Workspace rules: on_empty and persistent
+
+    /// A workspace that is shown with no window runs its `on_empty` command (a terminal in a scratchpad, for example).
+    private func runOnEmptyIfEmpty(_ name: String) {
+        guard let request = workspaceRules[name]?.onEmpty, !pendingOnEmpty.contains(name),
+              !windows.values.contains(where: { $0.workspace == name }) else { return }
+        pendingOnEmpty.insert(name)
+        // The command may open no window: forget it after the time that wm waits for one, so the next visit tries again.
+        let wait = (request.options?.timeout ?? ExecOptions.defaultTimeout) + 0.5
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+            MainActor.assumeIsolated { _ = self?.pendingOnEmpty.remove(name) }
+        }
+        Log.write(.debug, "workspace \(name) is shown with no window: running on_empty", source: "workspace")
+        runOnEmpty?(request)
+    }
+
+    /// The names of the workspaces that exist with no window (`persistent`).
+    private var persistentWorkspaces: Set<String> { Set(workspaceRules.filter(\.value.persistent).keys) }
 
     // MARK: - Urgent windows
 
@@ -1261,6 +1286,7 @@ final class WindowManager {
         for (monitor, name) in next where old[monitor] != name {
             _ = workspace(name)
             pendingSlide = (.special, name, true)
+            runOnEmptyIfEmpty(name)
             events.emit("special_changed", ["workspace": .string(name), "monitor": .number(Double(monitor)), "visible": .bool(true)])
         }
         updateBackdrop()
@@ -1330,6 +1356,7 @@ final class WindowManager {
         if old != name {
             previousWorkspace = old
             pendingSlide = (.workspace, name, WorkspaceSlide.isForward(from: old, to: name))
+            runOnEmptyIfEmpty(name)
             events.emit("workspace_changed", ["workspace": .string(name), "previous": .string(old), "monitor": .number(Double(monitorID))])
         }
         if focusWindow {
@@ -1436,7 +1463,7 @@ final class WindowManager {
     /// `next`, `prev` or `empty` as the name of a workspace (see `RelativeWorkspace`); any other name comes back as it is.
     func resolveWorkspaceName(_ name: String) -> String {
         guard RelativeWorkspace.words.contains(name), let current = focusedMonitor?.workspace else { return name }
-        let used = Set(windows.values.map(\.workspace)).union(monitors.map(\.workspace))
+        let used = Set(windows.values.map(\.workspace)).union(monitors.map(\.workspace)).union(persistentWorkspaces)
         return RelativeWorkspace.resolve(name, from: current, used: used) ?? name
     }
 
@@ -1609,7 +1636,11 @@ final class WindowManager {
             for managed in windows.values where !managed.sticky && !SpecialWorkspace.isSpecial(managed.workspace) {
                 counts[managed.workspace, default: 0] += 1
             }
-            let all = counts.map { WorkspaceStatus(name: $0.key, layout: workspaces[$0.key]?.kind, count: $0.value) }
+            let persistent = persistentWorkspaces.filter { !SpecialWorkspace.isSpecial($0) }
+            var all = counts.map { WorkspaceStatus(name: $0.key, layout: workspaces[$0.key]?.kind, count: $0.value, persistent: persistent.contains($0.key)) }
+            for name in persistent where counts[name] == nil {
+                all.append(WorkspaceStatus(name: name, layout: workspaces[name]?.kind, count: 0, persistent: true))
+            }
             let current = WorkspaceStatus(name: shown.name, layout: shown.kind, count: counts[shown.name] ?? 0)
             label = StatusLabel.segments(workspaces: all, current: current, floating: floating, settings: settings.menuBar)
         }

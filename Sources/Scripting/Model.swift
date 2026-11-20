@@ -126,12 +126,21 @@ public struct WorkspaceRule: Sendable, Equatable {
     /// Settings that this workspace changes, as a table shaped like `wm.config` (`gaps`, `border`, `tiling`,
     /// `scrolling`). Apply it with `applyWorkspaceOverrides`.
     public var overrides: LuaValue?
+    /// A command that runs when this workspace is shown with no window on it. The window that it opens goes to this workspace.
+    public var onEmpty: ExecRequest?
+    /// The workspace exists without windows: it shows in the menu bar and in `workspace next|prev`.
+    public var persistent = false
 
-    public init(layout: LayoutKind? = nil, monitor: String? = nil, isDefault: Bool = false, overrides: LuaValue? = nil) {
+    public init(
+        layout: LayoutKind? = nil, monitor: String? = nil, isDefault: Bool = false, overrides: LuaValue? = nil,
+        onEmpty: ExecRequest? = nil, persistent: Bool = false
+    ) {
         self.layout = layout
         self.monitor = monitor
         self.isDefault = isDefault
         self.overrides = overrides
+        self.onEmpty = onEmpty
+        self.persistent = persistent
     }
 }
 

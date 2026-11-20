@@ -77,6 +77,10 @@ final class AppController: HostBridge, @unchecked Sendable {
         input.scroller = scroller
         input.selector = selector
         switcher.chordFlags = { [unowned input = input!] in input.currentFlags }
+        manager.runOnEmpty = { [unowned self] request in
+            guard let pid = runShell(request.command) else { return }
+            if let options = request.options { manager.expectWindow(from: pid, options: options) }
+        }
         manager.runRuleCommand = { [unowned self] command, window in _ = run(command, target: window) }
         manager.events.add { [unowned self] name, payload in
             host.fire(event: name, payload: payload)

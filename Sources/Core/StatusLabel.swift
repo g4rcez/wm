@@ -4,11 +4,14 @@ public struct WorkspaceStatus: Sendable, Equatable {
     public var layout: LayoutKind?
     /// The windows that belong to the workspace.
     public var count: Int
+    /// The workspace shows even with no window (`persistent` in `wm.workspace`).
+    public var persistent: Bool
 
-    public init(name: String, layout: LayoutKind?, count: Int) {
+    public init(name: String, layout: LayoutKind?, count: Int, persistent: Bool = false) {
         self.name = name
         self.layout = layout
         self.count = count
+        self.persistent = persistent
     }
 }
 
@@ -76,7 +79,7 @@ public enum StatusLabel {
     /// The same text in pieces, the separators included, so that the icon can draw the workspace in focus on a background.
     public static func segments(workspaces: [WorkspaceStatus], current: WorkspaceStatus, floating: Bool, settings: MenuBarSettings) -> [StatusSegment] {
         guard !current.name.isEmpty else { return [] }
-        var listed = settings.workspaces == .current ? [] : workspaces.filter { $0.count > 0 && $0.name != current.name }
+        var listed = settings.workspaces == .current ? [] : workspaces.filter { ($0.count > 0 || $0.persistent) && $0.name != current.name }
         listed.append(current)
         listed.sort { precedes($0.name, $1.name) }
         var pieces: [StatusSegment] = []

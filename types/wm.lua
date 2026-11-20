@@ -431,6 +431,12 @@
 ---@field gaps? wm.Gaps Gaps of this workspace only.
 ---@field border? boolean `false` hides the focus border on this workspace.
 ---@field layout_options? wm.LayoutOptions Tiling and scrolling options of this workspace only.
+---@field on_empty? string|wm.OnEmpty A command that runs when the workspace is shown with no window on it. The window that it opens goes to this workspace.
+---@field persistent? boolean The workspace exists without windows: it shows in the menu bar and `workspace next|prev` stops there. Default false.
+
+--- `on_empty` as a table: the command, and the options of `wm.exec` for its window (not `workspace`: it is this workspace).
+---@class wm.OnEmpty : wm.ExecOptions
+---@field cmd string The shell command.
 
 --- The options of `tiling` and `scrolling`, flat.
 ---@class (exact) wm.LayoutOptions

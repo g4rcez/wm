@@ -546,13 +546,44 @@ public func applyWorkspaceOverrides(_ overrides: LuaValue, to settings: inout Se
     try applyConfig(overrides, to: &settings)
 }
 
+/// `on_empty`: a shell command, or `{ cmd = "...", float = true, ... }` with the options of `wm.exec`. The window that it opens goes to
+/// the workspace, so the table cannot name another one.
+private func parseOnEmpty(_ fields: Fields, workspace: String) throws -> ExecRequest? {
+    guard let value = fields.values["on_empty"] else { return nil }
+    var options = ExecOptions(rule: WindowRule(stop: true))
+    let command: String
+    switch value {
+    case .string(let text):
+        command = text
+    case .table(let table):
+        guard case .string(let text)? = table["cmd"] else { throw ConfigError(message: "wm.workspace: 'on_empty.cmd' must be a command string") }
+        guard table["workspace"] == nil else {
+            throw ConfigError(message: "wm.workspace: 'on_empty' cannot have 'workspace': the window goes to this workspace")
+        }
+        command = text
+        var rest = table
+        rest["cmd"] = nil
+        if let parsed = try parseExecOptions(.table(rest), owner: "wm.workspace", path: ["on_empty"]) { options = parsed }
+    default:
+        throw ConfigError(message: "wm.workspace: 'on_empty' must be a command string or a table with 'cmd'")
+    }
+    guard !command.trimmingCharacters(in: .whitespaces).isEmpty else {
+        throw ConfigError(message: "wm.workspace: 'on_empty' must not be empty")
+    }
+    options.rule.workspace = workspace
+    return ExecRequest(command: command, options: options)
+}
+
 func parseWorkspaceRule(name: String, _ value: LuaValue) throws -> WorkspaceRule {
-    let fields = try Fields(value, owner: "wm.workspace", allowed: ["layout", "monitor", "default", "gaps", "border", "layout_options"])
+    let fields = try Fields(
+        value, owner: "wm.workspace", allowed: ["layout", "monitor", "default", "gaps", "border", "layout_options", "on_empty", "persistent"])
     guard !fields.values.isEmpty else { throw ConfigError(message: "wm.workspace: '\(name)' needs at least one option") }
     var rule = WorkspaceRule()
     if let layout = try fields.choice("layout", LayoutKind.self) { rule.layout = layout }
     rule.monitor = try fields.numberOrString("monitor", min: 1)
     rule.isDefault = try fields.bool("default") ?? false
+    rule.persistent = try fields.bool("persistent") ?? false
+    rule.onEmpty = try parseOnEmpty(fields, workspace: name)
     if rule.isDefault, rule.monitor == nil {
         throw ConfigError(message: "wm.workspace: '\(name)' has 'default' and needs a 'monitor' too")
     }
@@ -639,16 +670,16 @@ func applyRuleActions(_ fields: Fields, to rule: inout WindowRule) throws {
 
 /// The second argument of `wm.exec(command, options)`: the same actions as `wm.rule`, plus `timeout` (seconds to wait for the
 /// window) and `app` (a bundle id or name that may also claim the window). `nil` when there is nothing to apply.
-func parseExecOptions(_ value: LuaValue) throws -> ExecOptions? {
+func parseExecOptions(_ value: LuaValue, owner: String = "wm.exec", path: [String] = []) throws -> ExecOptions? {
     if case .nil = value { return nil }
-    let fields = try Fields(value, owner: "wm.exec", allowed: ruleActionKeys + ["timeout", "app"])
+    let fields = try Fields(value, owner: owner, path: path, allowed: ruleActionKeys + ["timeout", "app"])
     var options = ExecOptions(rule: WindowRule(stop: true))
     try applyRuleActions(fields, to: &options.rule)
     if let timeout = try fields.number("timeout", min: ExecOptions.minTimeout, max: ExecOptions.maxTimeout) { options.timeout = timeout }
     options.app = try fields.string("app")
     guard fields.values.keys.contains(where: ruleActionKeys.contains) else {
         if fields.values.isEmpty { return nil }
-        throw ConfigError(message: "wm.exec: 'timeout' and 'app' need an action for the window, such as 'float' or 'workspace'")
+        throw ConfigError(message: "\(owner): 'timeout' and 'app' need an action for the window, such as 'float' or 'workspace'")
     }
     return options
 }

@@ -117,4 +117,6 @@ for one that is open already.
 | `monitor` | Bind the workspace to a monitor (a role, a number or part of its name). Showing it shows it there. |
 | `default` | With `monitor`: the monitor starts with this workspace. |
 | `gaps`, `border` | Settings for this workspace only. |
+| `on_empty` | A command that runs when the workspace is shown with no window on it: `"ghostty"`, or `{ cmd = "open -a Notes", app = "Notes", float = true }` with the options of [`wm.exec`](/docs/lua-api) for its window. The window goes to this workspace even if you have left it. Showing the workspace again while the command still waits for its window does not start it twice. |
+| `persistent` | The workspace exists with no window: the menu bar lists it, and `workspace next` and `workspace prev` stop there. |
 | `layout_options` | Tiling, scrolling and master options for this workspace only, for example `{ split_ratio = 0.6 }`. The master options have `master_` in front: `master_ratio`, `master_count`, `master_orientation`, `master_new_window`. |
