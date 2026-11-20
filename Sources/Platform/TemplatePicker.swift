@@ -29,7 +29,7 @@ public enum TemplateGlyph {
             // The chain: a row of tall columns, the way the strip looks.
             cells = (0..<4).map { CGRect(x: Double($0) / 4, y: 0, width: 0.25, height: 1) }
         }
-        let inset: CGFloat = max(1.5, rect.width * 0.03)
+        let inset: CGFloat = max(1.2, rect.width * 0.022)
         // The first cell is the one that the focused window takes: it is drawn bright, the others are dim.
         for (index, cell) in cells.enumerated() {
             let frame = CGRect(
@@ -37,7 +37,8 @@ public enum TemplateGlyph {
                 width: cell.width * rect.width, height: cell.height * rect.height
             ).insetBy(dx: inset, dy: inset)
             (index == 0 || cells.count == 1 ? color : color.withAlphaComponent(color.alphaComponent * 0.4)).setFill()
-            NSBezierPath(roundedRect: frame, xRadius: frame.width * 0.18, yRadius: frame.width * 0.18).fill()
+            let radius = min(5, min(frame.width, frame.height) * 0.2)
+            NSBezierPath(roundedRect: frame, xRadius: radius, yRadius: radius).fill()
         }
     }
 
@@ -59,9 +60,9 @@ public enum TemplateGlyph {
 @MainActor
 public final class TemplatePicker {
     private static let columns = 6
-    private static let tile = CGSize(width: 104, height: 88)
+    private static let tile = CGSize(width: 116, height: 104)
     private static let gap: CGFloat = 10
-    private static let padding: CGFloat = 16
+    private static let padding: CGFloat = 18
 
     private let panel = PickerPanel()
     private let view = PickerView()
@@ -87,7 +88,17 @@ public final class TemplatePicker {
         panel.hidesOnDeactivate = false
         panel.level = .popUpMenu
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle, .transient]
-        panel.contentView = view
+        // A blur behind the pictures: the windows under the panel stay out of the way of the text.
+        let blur = NSVisualEffectView()
+        blur.material = .hudWindow
+        blur.blendingMode = .behindWindow
+        blur.state = .active
+        blur.wantsLayer = true
+        blur.layer?.cornerRadius = 18
+        blur.layer?.masksToBounds = true
+        view.autoresizingMask = [.width, .height]
+        blur.addSubview(view)
+        panel.contentView = blur
         view.onClick = { [unowned self] index in
             selected = index
             commit()
@@ -118,6 +129,7 @@ public final class TemplatePicker {
         view.configure(entries: entries, showsGridTile: allowsGrid, columns: Self.columns, tile: Self.tile, gap: Self.gap, padding: Self.padding)
         view.selected = selected
         panel.setFrame(Displays.cocoaRect(rect), display: true)
+        view.frame = CGRect(origin: .zero, size: size)
         panel.orderFrontRegardless()
     }
 
@@ -305,71 +317,72 @@ private final class PickerView: NSView {
         }
     }
 
-    private func drawGridTile(_ cell: CGRect, isSelected: Bool) {
+    private static let accent = NSColor(srgbRed: 0.537, green: 0.706, blue: 0.980, alpha: 1)
+
+    /// One card: the key as a keycap in the corner, a monitor with the picture in the middle, the name under it. `picture`
+    /// draws inside the monitor, a rectangle in the 16:10 shape of a screen.
+    private func drawCard(_ cell: CGRect, key: String, label: String, isSelected: Bool, picture: (CGRect) -> Void) {
         let card = NSBezierPath(roundedRect: cell, xRadius: 12, yRadius: 12)
-        NSColor(white: 1, alpha: isSelected ? 0.14 : 0.06).setFill()
+        NSColor(white: 1, alpha: isSelected ? 0.16 : 0.07).setFill()
         card.fill()
         if isSelected {
-            NSColor(srgbRed: 0.537, green: 0.706, blue: 0.980, alpha: 1).setStroke()
+            Self.accent.setStroke()
             card.lineWidth = 2
             card.stroke()
         }
-        let glyph = CGRect(x: cell.minX + 14, y: cell.minY + 10, width: cell.width - 28, height: cell.height - 38)
-        NSColor(white: 1, alpha: isSelected ? 0.95 : 0.7).setStroke()
-        for column in 0..<3 {
-            for row in 0..<3 {
-                let box = CGRect(x: glyph.minX + CGFloat(column) * glyph.width / 3, y: glyph.minY + CGFloat(row) * glyph.height / 3, width: glyph.width / 3, height: glyph.height / 3)
-                let path = NSBezierPath(rect: box.insetBy(dx: 1, dy: 1))
-                path.lineWidth = 1
-                path.stroke()
+        let width = cell.width - 30
+        let monitor = CGRect(x: cell.midX - width / 2, y: cell.minY + 20, width: width, height: (width * 0.625).rounded())
+        NSColor(white: 1, alpha: isSelected ? 0.1 : 0.06).setFill()
+        NSBezierPath(roundedRect: monitor, xRadius: 6, yRadius: 6).fill()
+        picture(monitor.insetBy(dx: 3, dy: 3))
+        if !key.isEmpty {
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: NSFont.monospacedSystemFont(ofSize: 10, weight: .semibold), .foregroundColor: NSColor(white: 1, alpha: isSelected ? 0.9 : 0.65),
+            ]
+            let text = key as NSString
+            let size = text.size(withAttributes: attributes)
+            let cap = CGRect(x: cell.minX + 7, y: cell.minY + 7, width: max(size.height, size.width + 8), height: size.height + 2)
+            NSColor(white: 1, alpha: 0.1).setFill()
+            NSBezierPath(roundedRect: cap, xRadius: 4, yRadius: 4).fill()
+            text.draw(at: CGPoint(x: cap.midX - size.width / 2, y: cap.minY + 1), withAttributes: attributes)
+        }
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 11.5, weight: isSelected ? .semibold : .regular),
+            .foregroundColor: NSColor(white: 1, alpha: isSelected ? 1 : 0.65),
+        ]
+        let text = label as NSString
+        let size = text.size(withAttributes: attributes)
+        text.draw(at: CGPoint(x: cell.midX - size.width / 2, y: cell.maxY - size.height - 9), withAttributes: attributes)
+    }
+
+    private func drawGridTile(_ cell: CGRect, isSelected: Bool) {
+        drawCard(cell, key: "g", label: "draw", isSelected: isSelected) { glyph in
+            NSColor(white: 1, alpha: isSelected ? 0.9 : 0.6).setStroke()
+            for column in 0..<3 {
+                for row in 0..<3 {
+                    let box = CGRect(x: glyph.minX + CGFloat(column) * glyph.width / 3, y: glyph.minY + CGFloat(row) * glyph.height / 3, width: glyph.width / 3, height: glyph.height / 3)
+                    let path = NSBezierPath(rect: box.insetBy(dx: 1, dy: 1))
+                    path.lineWidth = 1
+                    path.stroke()
+                }
             }
         }
-        let badgeAttributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .semibold), .foregroundColor: NSColor(white: 1, alpha: 0.55),
-        ]
-        ("g" as NSString).draw(at: CGPoint(x: cell.minX + 8, y: cell.minY + 6), withAttributes: badgeAttributes)
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: NSColor(white: 1, alpha: 0.85),
-        ]
-        let text = "draw" as NSString
-        let size = text.size(withAttributes: attributes)
-        text.draw(at: CGPoint(x: cell.midX - size.width / 2, y: cell.maxY - size.height - 8), withAttributes: attributes)
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let background = NSBezierPath(roundedRect: bounds, xRadius: 18, yRadius: 18)
-        NSColor(white: 0.08, alpha: 0.92).setFill()
-        background.fill()
+        // The blur of the panel is behind: only a tint goes here, so that the text under the panel cannot be read through it.
+        NSColor(white: 0.05, alpha: 0.45).setFill()
+        NSBezierPath(roundedRect: bounds, xRadius: 18, yRadius: 18).fill()
         if isGridMode {
             drawGrid()
             return
         }
         if showsGridTile { drawGridTile(frame(of: entries.count), isSelected: selected == entries.count) }
         for (index, template) in entries.enumerated() {
-            let cell = frame(of: index)
             let isSelected = index == selected
-            let card = NSBezierPath(roundedRect: cell, xRadius: 12, yRadius: 12)
-            NSColor(white: 1, alpha: isSelected ? 0.14 : 0.06).setFill()
-            card.fill()
-            if isSelected {
-                NSColor(srgbRed: 0.537, green: 0.706, blue: 0.980, alpha: 1).setStroke()
-                card.lineWidth = 2
-                card.stroke()
+            drawCard(frame(of: index), key: TemplateGlyph.key(template), label: TemplateGlyph.label(template), isSelected: isSelected) { glyph in
+                TemplateGlyph.draw(template, in: glyph, color: NSColor(white: 1, alpha: isSelected ? 0.95 : 0.75))
             }
-            let glyph = CGRect(x: cell.minX + 14, y: cell.minY + 10, width: cell.width - 28, height: cell.height - 38)
-            let badge = TemplateGlyph.key(template) as NSString
-            let badgeAttributes: [NSAttributedString.Key: Any] = [
-                .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .semibold),
-                .foregroundColor: NSColor(white: 1, alpha: 0.55),
-            ]
-            badge.draw(at: CGPoint(x: cell.minX + 8, y: cell.minY + 6), withAttributes: badgeAttributes)
-            TemplateGlyph.draw(template, in: glyph, color: NSColor(white: 1, alpha: isSelected ? 0.95 : 0.7))
-            let text = TemplateGlyph.label(template) as NSString
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: NSColor(white: 1, alpha: 0.85),
-            ]
-            let size = text.size(withAttributes: attributes)
-            text.draw(at: CGPoint(x: cell.midX - size.width / 2, y: cell.maxY - size.height - 8), withAttributes: attributes)
         }
     }
 }

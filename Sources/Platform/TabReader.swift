@@ -31,11 +31,13 @@ public enum Subprocess {
 /// Reads the tabs of browsers, of Rex and of tmux for the palette, and selects one. A source that is not installed, not
 /// running or not allowed gives no tabs. Nothing here starts an app or a server.
 public struct TabReader: Sendable {
-    /// The browsers that have the scripting dictionary of Chromium (windows with tabs that have a title and a URL).
+    /// The browsers that have the scripting dictionary of Chromium (windows with tabs that have a title and a URL), and Safari.
     public static let browsers = [
-        "com.google.Chrome", "com.google.Chrome.beta", "com.brave.Browser", "com.microsoft.edgemac", "net.imput.helium",
+        "com.apple.Safari", "com.google.Chrome", "com.google.Chrome.beta", "com.brave.Browser", "com.microsoft.edgemac", "net.imput.helium",
         "company.thebrowser.Browser", "com.vivaldi.Vivaldi", "org.chromium.Chromium", "dev.serafim.fast",
     ]
+    /// Safari has its own dictionary: a tab has `name` and `URL` and no identifier, so its place in the window names it.
+    public static let safariBundleID = "com.apple.Safari"
     public static let rexBundleID = "com.superlogical.rex"
 
     /// What happened to the tab that the palette asked for.
@@ -72,6 +74,30 @@ public struct TabReader: Sendable {
         }
         """
 
+    /// The same JSON as `listScript`. The id of a tab is its place in the window, counted from 1.
+    private static let safariListScript = """
+        function run(argv) {
+          const app = Application(argv[0]);
+          const ids = app.windows.id(), names = app.windows.tabs.name(), urls = app.windows.tabs.url();
+          return JSON.stringify(ids.map((id, w) => ({ id: String(id), tabs: names[w].map((name, t) =>
+            ({ id: String(t + 1), title: String(name || ""), url: String(urls[w][t] || "") })) })));
+        }
+        """
+
+    /// Makes the tab at place `argv[2]` the current tab of its window, and puts the window in front.
+    private static let safariSelectScript = """
+        function run(argv) {
+          const app = Application(argv[0]);
+          const w = app.windows.id().findIndex(id => String(id) === argv[1]);
+          if (w < 0) throw new Error("the window is gone");
+          const win = app.windows[w];
+          const t = Number(argv[2]);
+          if (!(t >= 1 && t <= win.tabs.name().length)) throw new Error("the tab is gone");
+          win.currentTab = win.tabs[t - 1];
+          win.index = 1;
+        }
+        """
+
     public init() {}
 
     private var rex: String? {
@@ -89,7 +115,7 @@ public struct TabReader: Sendable {
         await withTaskGroup(of: (Int, [PaletteTab]).self) { group in
             for (index, bundleID) in bundleIDs.enumerated() {
                 group.addTask {
-                    let json = await Subprocess.output(Self.osascript, ["-l", "JavaScript", "-e", Self.listScript, bundleID], timeout: 4)
+                    let json = await Subprocess.output(Self.osascript, ["-l", "JavaScript", "-e", bundleID == Self.safariBundleID ? Self.safariListScript : Self.listScript, bundleID], timeout: 4)
                     return (index, Core.browserTabs(json: json ?? "", bundleID: bundleID))
                 }
             }
@@ -125,7 +151,7 @@ public struct TabReader: Sendable {
     public func activate(_ tab: PaletteTab) async -> Activation {
         switch tab.source {
         case let .browser(bundleID, window, id):
-            let done = await Subprocess.output(Self.osascript, ["-l", "JavaScript", "-e", Self.selectScript, bundleID, window, id], timeout: 4)
+            let done = await Subprocess.output(Self.osascript, ["-l", "JavaScript", "-e", bundleID == Self.safariBundleID ? Self.safariSelectScript : Self.selectScript, bundleID, window, id], timeout: 4)
             return done == nil ? .failed("wm: the tab is gone, or wm may not control the browser") : .done
         case let .rex(session, window):
             guard let rex else { return .failed("wm: Rex is not installed") }

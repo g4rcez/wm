@@ -24,13 +24,16 @@ the workspace where the window is. The sources:
 
 - **Chromium browsers** that run: Chrome, Brave, Edge, Helium, Arc, Vivaldi, Chromium and yab. A row is the title and the
   address of a tab, so `gith` finds a tab by its URL. wm asks the browser through Apple events (see Permissions).
+- **Safari:** the title and the address of every tab. wm asks Safari through Apple events too. Safari gives its tabs no
+  identifier, so wm names a tab by its place in the window: if you move or close tabs between the list and Return, the
+  selection can land on the tab that took the place.
 - **Rex:** the tabs of every session, with the name of the session. The app goes to the tab when its Remote Control
   setting is on; without it wm can only make the tab the active one of the session.
 - **tmux:** every window of the default server, with its session, program and directory. wm switches the client that shows
   that session (else the first client) to the window, and focuses the terminal of the client.
 
 wm reads the tabs when the palette opens, and shows the ones of the last time until the new ones are there. It starts no
-browser and no server to do so. Limits: Safari and Firefox are not read. A tmux window needs an attached client. For tmux
+browser and no server to do so. Limits: Firefox is not read. A tmux window needs an attached client. For tmux
 inside Rex, wm focuses the most recent Rex window, not the Rex tab that holds the client. When two windows of a browser show
 a tab with the same title, wm can focus the other window; the tab is selected all the same.
 

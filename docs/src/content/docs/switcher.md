@@ -47,7 +47,7 @@ wm.config { overview = {
   the window and shows its workspace, Cmd+W closes it. The column scrolls to put the workspace of the selection in the middle.
 - **Mouse:** move the pointer onto a card to select it, and a red button appears at its corner that closes the window. Click a
   card to focus it. A click on the dark backdrop closes the overview, and the click goes on to what is under it (so you can
-  start a screenshot). The mouse wheel or the trackpad scrolls the column.
+  start a screenshot). The screenshot shortcuts of macOS (Cmd+Shift+3, 4, 5, 6) work while the overview or the switcher is open: they go to macOS and the panel stays. The mouse wheel or the trackpad scrolls the column.
 - **Move a window:** **drag a card onto another workspace to move the window there.** The last one, an empty screen, is a new
   workspace with the first unused number. The focus and the shown workspace stay as they are.
 

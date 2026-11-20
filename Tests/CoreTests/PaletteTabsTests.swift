@@ -2,6 +2,15 @@ import Testing
 @testable import Core
 
 struct PaletteTabsTests {
+    @Test func safariTabsAreNamedByTheirPlaceInTheWindow() {
+        let json = #"[{"id":"7","tabs":[{"id":"1","title":"Docs","url":"https://a.test"},{"id":"2","title":"","url":"https://b.test"}]}]"#
+        #expect(
+            browserTabs(json: json, bundleID: "com.apple.Safari") == [
+                PaletteTab(source: .browser(bundleID: "com.apple.Safari", window: "7", tab: "1"), title: "Docs", detail: "https://a.test"),
+                PaletteTab(source: .browser(bundleID: "com.apple.Safari", window: "7", tab: "2"), title: "https://b.test", detail: "https://b.test"),
+            ])
+    }
+
     @Test func theBrowserScriptGivesOneTabForEachTabOfEachWindow() {
         let json = #"[{"id":"7","tabs":[{"id":"11","title":"Swift","url":"https://swift.org/"},{"id":"12","title":"","url":"chrome://newtab/"}]},{"id":"8","tabs":[]}]"#
         #expect(
