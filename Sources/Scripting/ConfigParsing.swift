@@ -77,6 +77,12 @@ struct Fields {
         return text
     }
 
+    /// `choice` over the cases of a string enum, as the case.
+    func choice<E: CaseIterable & RawRepresentable>(_ key: String, _ type: E.Type, aliases: [String: String] = [:]) throws -> E?
+    where E.RawValue == String {
+        try choice(key, E.allCases.map(\.rawValue), aliases: aliases).map { E(rawValue: $0)! }
+    }
+
     func table(_ key: String, allowed: [String]) throws -> Fields? {
         guard let value = values[key] else { return nil }
         return try Fields(value, owner: owner, path: path + [key], allowed: allowed)
@@ -128,6 +134,16 @@ func parseColor(_ text: String) -> Color? {
         : Color(red: channel(16), green: channel(8), blue: channel(0))
 }
 
+/// The letters of `hints.letters`: 4 to 26 different lowercase letters a to z.
+private func hintLetters(_ text: String) throws -> [Character] {
+    let letters = Array(text)
+    let valid = letters.allSatisfy { $0.isASCII && $0.isLowercase && $0.isLetter }
+    guard valid, Set(letters).count == letters.count, HintSettings.letterCount.contains(letters.count) else {
+        throw ConfigError(message: "wm.config: 'hints.letters' must be 4 to 26 different lowercase letters, like \"asdfghjkl\"")
+    }
+    return letters
+}
+
 private func color(_ fields: Fields, _ key: String) throws -> Color? {
     guard let text = try fields.string(key) else { return nil }
     guard let color = parseColor(text) else {
@@ -174,7 +190,7 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
     let owner = "wm.config"
     let top = try Fields(value, owner: owner, allowed: topLevelConfigKeys)
 
-    if let name = try top.choice("layout", LayoutKind.allCases.map(\.rawValue)) { settings.layout = LayoutKind(rawValue: name)! }
+    if let value = try top.choice("layout", LayoutKind.self) { settings.layout = value }
     // `workspaces = "native"` (the macOS desktops) was removed. "emulated" is the only mode and stays valid.
     _ = try top.choice("workspaces", ["emulated"])
     switch top.values["focus_follows_mouse"] {
@@ -255,9 +271,7 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
 
     if let tabs = try top.table("tab_indicator", allowed: ["enabled", "position", "size", "spacing", "radius", "active", "inactive"]) {
         if let flag = try tabs.bool("enabled") { settings.tabIndicator.enabled = flag }
-        if let name = try tabs.choice("position", TabIndicatorPosition.allCases.map(\.rawValue)) {
-            settings.tabIndicator.position = TabIndicatorPosition(rawValue: name)!
-        }
+        if let value = try tabs.choice("position", TabIndicatorPosition.self) { settings.tabIndicator.position = value }
         if let size = try tabs.number("size", min: 1, max: 40) { settings.tabIndicator.size = CGFloat(size) }
         if let spacing = try tabs.number("spacing", min: 0, max: 40) { settings.tabIndicator.spacing = CGFloat(spacing) }
         if let radius = try tabs.number("radius", min: 0) { settings.tabIndicator.radius = CGFloat(radius) }
@@ -267,7 +281,7 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
 
     if let tiling = try top.table("tiling", allowed: ["split_ratio", "preserve_split", "force_split", "split_width_multiplier", "templates", "smart_split", "split_under_pointer"]) {
         if let list = try templates(tiling) { settings.tiling.templates = list }
-        if let name = try tiling.choice("force_split", NewWindowSide.allCases.map(\.rawValue)) { settings.tiling.forceSplit = NewWindowSide(rawValue: name)! }
+        if let value = try tiling.choice("force_split", NewWindowSide.self) { settings.tiling.forceSplit = value }
         if let factor = try tiling.number("split_width_multiplier", min: 0.1, max: 3) { settings.tiling.splitWidthMultiplier = factor }
         if let ratio = try tiling.number("split_ratio", min: 0.1, max: 0.9) { settings.tiling.splitRatio = ratio }
         if let flag = try tiling.bool("preserve_split") { settings.tiling.preserveSplit = flag }
@@ -284,16 +298,10 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
         if let presets = try scrolling.nonEmptyNumbers("presets", in: 0.05...1) { settings.scrolling.presets = presets }
         if let heights = try scrolling.nonEmptyNumbers("preset_heights", in: 0.1...0.9) { settings.scrolling.presetHeights = heights }
         if let flag = try scrolling.bool("always_center_single_column") { settings.scrolling.alwaysCenterSingleColumn = flag }
-        if let name = try scrolling.choice("single_window_fit", SingleWindowFit.allCases.map(\.rawValue)) {
-            settings.scrolling.singleWindowFit = SingleWindowFit(rawValue: name)!
-        }
-        if let name = try scrolling.choice("orientation", ScrollOrientation.allCases.map(\.rawValue)) {
-            settings.scrolling.orientation = ScrollOrientation(rawValue: name)!
-        }
+        if let value = try scrolling.choice("single_window_fit", SingleWindowFit.self) { settings.scrolling.singleWindowFit = value }
+        if let value = try scrolling.choice("orientation", ScrollOrientation.self) { settings.scrolling.orientation = value }
         if let count = try scrolling.integer("visible_columns", min: 0) { settings.scrolling.visibleColumns = count }
-        if let name = try scrolling.choice("default_column_display", ColumnDisplay.allCases.map(\.rawValue)) {
-            settings.scrolling.defaultColumnDisplay = ColumnDisplay(rawValue: name)!
-        }
+        if let value = try scrolling.choice("default_column_display", ColumnDisplay.self) { settings.scrolling.defaultColumnDisplay = value }
         if let width = try scrolling.number("default_width", min: 0.05, max: 1) { settings.scrolling.defaultWidth = width }
         if let mode = try scrolling.choice("center", ["never", "always", "on-overflow"]) { settings.scrolling.center = CenterMode(rawValue: mode)! }
         if let width = try scrolling.number("sliver_width", min: 0) { settings.scrolling.sliverWidth = CGFloat(width) }
@@ -319,9 +327,7 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
         if let flag = try prefix.bool("menubar") { settings.prefix.menuBar = flag }
         if let label = try prefix.table("label", allowed: ["enabled", "position", "offset", "font_size", "background", "foreground", "show_keys", "accent", "font"]) {
             if let flag = try label.bool("enabled") { settings.prefix.label.enabled = flag }
-            if let name = try label.choice("position", LabelPosition.allCases.map(\.rawValue), aliases: LabelPosition.aliases) {
-                settings.prefix.label.position = LabelPosition(rawValue: name)!
-            }
+            if let value = try label.choice("position", LabelPosition.self, aliases: LabelPosition.aliases) { settings.prefix.label.position = value }
             if let offset = try label.table("offset", allowed: ["x", "y"]) {
                 if let x = try offset.number("x") { settings.prefix.label.offsetX = CGFloat(x) }
                 if let y = try offset.number("y") { settings.prefix.label.offsetY = CGFloat(y) }
@@ -336,9 +342,7 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
     }
 
     if let menubar = try top.table("menubar", allowed: ["workspaces", "current", "other", "separator"]) {
-        if let name = try menubar.choice("workspaces", MenuBarSettings.Workspaces.allCases.map(\.rawValue)) {
-            settings.menuBar.workspaces = MenuBarSettings.Workspaces(rawValue: name)!
-        }
+        if let value = try menubar.choice("workspaces", MenuBarSettings.Workspaces.self) { settings.menuBar.workspaces = value }
         for (key, assign) in [("current", \MenuBarSettings.current), ("other", \MenuBarSettings.other)] {
             guard let text = try menubar.string(key) else { continue }
             if let word = StatusLabel.unknownPlaceholder(in: text) {
@@ -350,7 +354,7 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
     }
 
     if let commands = try top.table("commands", allowed: ["mode", "timeout"]) {
-        if let name = try commands.choice("mode", CommandSettings.Mode.allCases.map(\.rawValue)) { settings.commands.mode = CommandSettings.Mode(rawValue: name)! }
+        if let value = try commands.choice("mode", CommandSettings.Mode.self) { settings.commands.mode = value }
         // `wm.commands.timeout` is in milliseconds, as in Hyprland.
         if let milliseconds = try commands.number("timeout", min: 100, max: 10_000) { settings.commands.timeout = milliseconds / 1000 }
     }
@@ -364,8 +368,8 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
     if let master = try top.table("master", allowed: ["ratio", "count", "orientation", "new_window"]) {
         if let ratio = try master.number("ratio", min: MasterSettings.minRatio, max: MasterSettings.maxRatio) { settings.master.ratio = ratio }
         if let count = try master.integer("count", min: 1) { settings.master.count = count }
-        if let name = try master.choice("orientation", MasterOrientation.allCases.map(\.rawValue)) { settings.master.orientation = MasterOrientation(rawValue: name)! }
-        if let name = try master.choice("new_window", MasterSettings.NewWindow.allCases.map(\.rawValue)) { settings.master.newWindow = MasterSettings.NewWindow(rawValue: name)! }
+        if let value = try master.choice("orientation", MasterOrientation.self) { settings.master.orientation = value }
+        if let value = try master.choice("new_window", MasterSettings.NewWindow.self) { settings.master.newWindow = value }
     }
 
     if let floating = try top.table("floating", allowed: ["remember_position"]) {
@@ -391,11 +395,16 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
         if let backdrop = try color(overview, "backdrop") { settings.overview.backdrop = backdrop }
     }
 
-    if let hints = try top.table("hints", allowed: ["background", "text", "focus", "area"]) {
+    if let hints = try top.table("hints", allowed: ["background", "text", "focus", "area", "letters", "scroll_step", "scroll_dash_factor"]) {
         if let background = try color(hints, "background") { settings.hints.background = background }
         if let text = try color(hints, "text") { settings.hints.text = text }
         if let focus = try color(hints, "focus") { settings.hints.focus = focus }
         if let area = try color(hints, "area") { settings.hints.area = area }
+        if let letters = try hints.string("letters") { settings.hints.letters = try hintLetters(letters) }
+        if let step = try hints.number("scroll_step", min: HintSettings.stepRange.lowerBound, max: HintSettings.stepRange.upperBound) { settings.hints.scrollStep = step }
+        if let factor = try hints.number("scroll_dash_factor", min: HintSettings.dashFactorRange.lowerBound, max: HintSettings.dashFactorRange.upperBound) {
+            settings.hints.scrollDashFactor = factor
+        }
     }
 
     if let select = try top.table("select", allowed: ["keys"]),
@@ -486,7 +495,7 @@ func parseWorkspaceRule(name: String, _ value: LuaValue) throws -> WorkspaceRule
     let fields = try Fields(value, owner: "wm.workspace", allowed: ["layout", "monitor", "default", "gaps", "border", "layout_options"])
     guard !fields.values.isEmpty else { throw ConfigError(message: "wm.workspace: '\(name)' needs at least one option") }
     var rule = WorkspaceRule()
-    if let layout = try fields.choice("layout", LayoutKind.allCases.map(\.rawValue)) { rule.layout = LayoutKind(rawValue: layout) }
+    if let layout = try fields.choice("layout", LayoutKind.self) { rule.layout = layout }
     rule.monitor = try fields.numberOrString("monitor", min: 1)
     rule.isDefault = try fields.bool("default") ?? false
     if rule.isDefault, rule.monitor == nil {
@@ -545,7 +554,7 @@ func parseRule(_ value: LuaValue) throws -> WindowRule {
     }
     rule.float = try fields.bool("float")
     rule.workspace = try fields.numberOrString("workspace", min: 0)
-    if let name = try fields.choice("layout", LayoutKind.allCases.map(\.rawValue)) { rule.layout = LayoutKind(rawValue: name) }
+    if let layout = try fields.choice("layout", LayoutKind.self) { rule.layout = layout }
     if let size = try fields.numbers("size", in: 0.000001...100_000) {
         guard size.count == 2 else { throw ConfigError(message: "wm.rule: 'size' must be { width, height }") }
         rule.size = RuleSize(width: size[0], height: size[1])

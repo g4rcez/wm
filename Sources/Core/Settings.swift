@@ -274,6 +274,13 @@ public struct HintSettings: Sendable, Equatable {
     public var focus = Color(red: 48.0 / 255, green: 209.0 / 255, blue: 88.0 / 255)
     /// The rings and the numbers of the scroll areas.
     public var area = Color(red: 10.0 / 255, green: 132.0 / 255, blue: 1)
+    /// The letters of the labels of hint mode, the points that `h j k l` scroll, and the factor of Shift.
+    public var letters = ElementSearch.alphabet
+    public var scrollStep = ScrollKeys.step
+    public var scrollDashFactor = ScrollKeys.dashFactor
+    public static let letterCount = 4...26
+    public static let stepRange = 10.0...500.0
+    public static let dashFactorRange = 1.0...20.0
     public init() {}
 }
 

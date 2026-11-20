@@ -257,7 +257,7 @@
 ---@field timeout? number Milliseconds without a command after which a persistent sequence ends, 100 to 10000. Default 800.
 
 ---@class (exact) wm.UrlConfig
----@field allow? string[] Commands that `wm://` URLs may run besides the default ones. `exec`, `daemon` and `subscribe` are blocked by default.
+---@field allow? string[] Commands that `wm://` URLs may run besides the default ones. `exec`, `key`, `daemon` and `subscribe` are blocked by default.
 
 ---@class (exact) wm.TrackpadConfig
 ---@field enabled? boolean Read the trackpad for swipes with 3 or 4 fingers (a private macOS framework). Default true. `true` in the config also shows a notification when there is no trackpad; `false` turns the built-in swipes off.
@@ -283,6 +283,9 @@
 ---@field text? wm.Color The text of a label. Default "#141414".
 ---@field focus? wm.Color The label of the focused element, the ring around that element, and the selection in select mode. Default "#30d158".
 ---@field area? wm.Color The rings and the numbers of the scroll areas in scroll mode. Default "#0a84ff".
+---@field letters? string The letters of the labels of hint mode: 4 to 26 different lowercase letters, used in this order. Default "asdfghjklqwertyuiopzxcvbnm".
+---@field scroll_step? number How far `h j k l` scroll in scroll mode, in points (10 to 500). Default 60.
+---@field scroll_dash_factor? number What Shift multiplies the scroll step by (1 to 20). Default 5.
 
 --- A chord ("y", "cmd-c", "shift-enter") or a list of chords for one action of the select step. Hyper cannot be used. `{}` unbinds it.
 ---@alias wm.SelectKey string|string[]

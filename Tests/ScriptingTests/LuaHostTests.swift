@@ -833,6 +833,33 @@ struct LuaHostTests {
         #expect(set.settings.hints.focus == HintSettings().focus)
     }
 
+    @Test func theLettersAndTheScrollStepOfTheHintsComeFromTheConfig() throws {
+        let plain = try host.load(configURL: dir.write("init.lua", "wm.config { layout = \"tiling\" }"))
+        #expect(plain.settings.hints.letters == Array("asdfghjklqwertyuiopzxcvbnm"))
+        #expect(plain.settings.hints.scrollStep == 60)
+        #expect(plain.settings.hints.scrollDashFactor == 5)
+        let set = try host.load(configURL: dir.write(
+            "init.lua", "wm.config { hints = { letters = 'asdfjkl', scroll_step = 120, scroll_dash_factor = 3 } }"))
+        #expect(set.settings.hints.letters == Array("asdfjkl"))
+        #expect(set.settings.hints.scrollStep == 120)
+        #expect(set.settings.hints.scrollDashFactor == 3)
+    }
+
+    @Test(arguments: [
+        ("letters = 'asd'", "'hints.letters' must be 4 to 26 different lowercase letters"),
+        ("letters = 'aabc'", "'hints.letters' must be 4 to 26 different lowercase letters"),
+        ("letters = 'ASDF'", "'hints.letters' must be 4 to 26 different lowercase letters"),
+        ("letters = 'asd1'", "'hints.letters' must be 4 to 26 different lowercase letters"),
+        ("scroll_step = 5", "'hints.scroll_step' must be between 10 and 500"),
+        ("scroll_dash_factor = 0", "'hints.scroll_dash_factor' must be between 1 and 20"),
+    ])
+    func badHintLettersAndScrollValuesAreRefused(entry: String, expected: String) throws {
+        let error = #expect(throws: ConfigError.self) {
+            try host.load(configURL: dir.write("init.lua", "wm.config { hints = { \(entry) } }"))
+        }
+        #expect(error?.message.contains(expected) == true)
+    }
+
     @Test func theSelectKeysHaveDefaultsThatTheConfigReplacesOneActionAtATime() throws {
         let plain = try host.load(configURL: dir.write("init.lua", "wm.config { layout = 'tiling' }"))
         #expect(plain.settings.select.keys[.copy] == ["y", "cmd-c", "enter"])
