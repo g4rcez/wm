@@ -162,7 +162,11 @@ final class SelectController {
                 return false
             }
             // The text does not start with a space, and a space is not repeated.
-            guard let character = HintController.character(key), character != " " || !(query.isEmpty || query.hasSuffix(" ")) else { break }
+            guard let character = HintController.character(key) else {
+                close()
+                break
+            }
+            guard character != " " || !(query.isEmpty || query.hasSuffix(" ")) else { break }
             query += character
             refresh()
         }
@@ -196,6 +200,9 @@ final class SelectController {
         if labels.values.contains(where: { $0.hasPrefix(key) }) {
             typed = key
             render()
+        } else {
+            // Not a label, not a command: the mode does not accept the key, and it ends.
+            close()
         }
         return true
     }

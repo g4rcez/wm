@@ -167,6 +167,8 @@ final class InputRouter {
             apply(outcome.effects, flags: flags)
             return outcome.swallow
         }
+        // The screenshot shortcuts of macOS reach the system with the panels still open, so that the picture shows them.
+        if overlayIsOpen, chord.isScreenshotShortcut, !chord.modifiers.contains(.hyper) { return false }
         // The panels take every other key. A hyper chord is not text, so the keys are not typed.
         if let handled = overlayKey(key, flags: flags) { return handled || chord.modifiers.contains(.hyper) }
 
@@ -191,6 +193,11 @@ final class InputRouter {
         if modeOptions[mode]?.swallow == true { return true }
         // A hyper chord that nothing uses is not typed: the keys are not for the app.
         return chord.modifiers.contains(.hyper)
+    }
+
+    private var overlayIsOpen: Bool {
+        hints?.isOpen == true || scroller?.isOpen == true || selector?.isOpen == true
+            || palette?.isOpen == true || switcher?.isOpen == true || picker?.isOpen == true
     }
 
     /// The open panel (hints, scroll, select, palette, switcher, template picker) takes the key. `nil` when no panel is open.

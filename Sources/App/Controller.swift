@@ -505,8 +505,8 @@ final class AppController: HostBridge, @unchecked Sendable {
     // MARK: - URL
 
     @MainActor func handle(url: URL) {
-        guard let request = commandRequest(fromURL: url), let command = request.args.first else { return }
-        if urlBlockedCommands.contains(command), !manager.settings.urlAllow.contains(command) {
+        guard let request = commandRequest(fromURL: url) else { return }
+        if let command = urlBlockedCommand(in: request.args, allowed: manager.settings.urlAllow) {
             Log.write(.warn, "blocked wm:// command '\(command)'; add it to url.allow to permit it", source: "url")
             return
         }

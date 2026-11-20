@@ -19,7 +19,7 @@ A bind can also be a sequence of chords separated by `>`: `"ctrl-p>h"`, `"alt-sp
 a sequence from every app, so choose one your apps do not need. A key that continues no sequence cancels it and is
 swallowed, as in tmux, so a typo never reaches the app you are typing in. A sequence waits until the next key or Escape:
 it has no timeout, and it ends after one command unless `wm.commands` says otherwise. (`prefix.timeout` of old configs is still accepted and ignored.) The screenshot shortcuts of macOS
-(Cmd+Shift+3, 4, 5, 6) are the exception: they go to macOS and the key hints and the waiting prefix stay, so you can take a
+(Cmd+Shift+3, 4, 5, 6) are the exception: they go to macOS and the key hints, the waiting prefix and every panel of wm (overview, switcher, palette, template picker, hint, scroll and select mode) stay, so you can take a
 picture of the hints. Clicks and drags already go through the hints.
 
 ### Many commands after one prefix
