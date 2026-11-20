@@ -1255,6 +1255,7 @@ extension WindowManager {
         if isMaximized(id) { state.append("maximized") }
         if managed.minimized { state.append("minimized") }
         if managed.nativeFullscreen { state.append("fullscreen") }
+        if managed.swallowedBy != nil { state.append("swallowed") }
         for name in marks(of: id) { state.append("mark:" + name) }
         if (workspace(managed.workspace).engine as? ScrollingEngine)?.strip(of: id) == .vertical { state.append("vertical strip") }
         if workspace(managed.workspace).pseudo[id] != nil { state.append("pseudo") }

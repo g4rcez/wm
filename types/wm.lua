@@ -258,6 +258,11 @@
 ---@field mode? "normal"|"persistent" `normal`: the sequence ends after one command. `persistent`: the keys after the prefix stay active until `timeout` passes without a command. Default `normal`.
 ---@field timeout? number Milliseconds without a command after which a persistent sequence ends, 100 to 10000. Default 800.
 
+---@class (exact) wm.SwallowConfig
+---@field enabled? boolean A window that a program opens from a terminal takes the place of that terminal window, and the terminal comes back when it closes. Default false.
+---@field terminals? string[] Bundle ids or names of the terminals that can be swallowed. Default: Ghostty, Terminal, iTerm2, kitty, Alacritty and WezTerm.
+---@field exceptions? string[] Bundle ids or names of apps that never swallow a terminal. Default none.
+
 ---@class (exact) wm.UrlConfig
 ---@field allow? string[] Commands that `wm://` URLs may run besides the default ones. `exec`, `key`, `daemon` and `subscribe` are blocked by default.
 
@@ -355,6 +360,7 @@
 ---@field special? wm.SpecialConfig Special workspaces (`workspace special`): size, dim backdrop, when they hide.
 ---@field master? wm.MasterConfig The `master` layout.
 ---@field url? wm.UrlConfig
+---@field swallow? wm.SwallowConfig Window swallowing: a program started in a terminal takes the terminal's place.
 ---@field commands? wm.CommandsConfig What a key sequence does after a command: one command (`normal`) or many until a pause (`persistent`).
 
 -- wm.rule, wm.workspace ------------------------------------------------------------------------------------------
@@ -436,6 +442,8 @@
 ---| "window_floating"
 ---| "window_fullscreen"
 ---| "window_moved"
+---| "window_swallow"
+---| "window_unswallow"
 ---| "workspace_changed"
 ---| "special_changed"
 ---| "monitor_changed"
@@ -491,6 +499,16 @@
 ---@field id integer
 ---@field workspace string The workspace that the window is on now.
 ---@field previous string
+
+---@class wm.WindowSwallowEvent
+---@field id integer The window that took the place of the terminal window.
+---@field terminal integer The terminal window, parked until `id` closes.
+---@field workspace string
+
+---@class wm.WindowUnswallowEvent
+---@field id integer The terminal window that is back in the layout.
+---@field program integer The window that gave the place back (it closed, or you went to the terminal).
+---@field workspace string
 
 ---@class wm.WorkspaceChangedEvent
 ---@field workspace string
@@ -690,6 +708,10 @@ function wm.workspace(name, spec) end
 ---@overload fun(event: "window_fullscreen", filter: wm.EventFilter, handler: fun(e: wm.WindowFullscreenEvent))
 ---@overload fun(event: "window_moved", handler: fun(e: wm.WindowMovedEvent))
 ---@overload fun(event: "window_moved", filter: wm.EventFilter, handler: fun(e: wm.WindowMovedEvent))
+---@overload fun(event: "window_swallow", handler: fun(e: wm.WindowSwallowEvent))
+---@overload fun(event: "window_swallow", filter: wm.EventFilter, handler: fun(e: wm.WindowSwallowEvent))
+---@overload fun(event: "window_unswallow", handler: fun(e: wm.WindowUnswallowEvent))
+---@overload fun(event: "window_unswallow", filter: wm.EventFilter, handler: fun(e: wm.WindowUnswallowEvent))
 ---@overload fun(event: "workspace_changed", handler: fun(e: wm.WorkspaceChangedEvent))
 ---@overload fun(event: "workspace_changed", filter: wm.EventFilter, handler: fun(e: wm.WorkspaceChangedEvent))
 ---@overload fun(event: "special_changed", handler: fun(e: wm.SpecialChangedEvent))

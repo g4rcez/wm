@@ -28,6 +28,7 @@ wm.config {
   binds     = { long_press_timeout = 0.4,         -- seconds a key is held for a `long_press` bind
                 disable_system_cmd_tab = false,   -- true: turn off the Cmd+Tab of macOS while wm runs
                 capslock = "hyper" },             -- CapsLock is the hyper modifier (a tap alone is Esc)
+  swallow   = { enabled = false, terminals = { "com.mitchellh.ghostty" }, exceptions = {} },   -- a program started in a terminal takes its place; see Window swallowing
   scrolling = { presets = { 0.33, 0.5, 0.66, 1.0 }, default_width = 0.5, center = "on-overflow",
                 always_center_single_column = false,      -- a lone column sits in the middle (even with center = "never")
                 default_column_display = "normal",        -- "tabbed": every new column is a tab stack

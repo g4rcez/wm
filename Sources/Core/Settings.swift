@@ -173,6 +173,20 @@ public struct BorderSettings: Sendable, Equatable {
     public init() {}
 }
 
+/// A window that a program starts from a terminal takes the place of that terminal window (see `Swallow`).
+public struct SwallowSettings: Sendable, Equatable {
+    public var enabled = false
+    /// The terminals whose windows can be swallowed: bundle ids or app names, compared ignoring case.
+    public var terminals: [String] = SwallowSettings.defaultTerminals
+    /// Apps that never swallow a terminal: bundle ids or app names.
+    public var exceptions: [String] = []
+    public static let defaultTerminals = [
+        "com.mitchellh.ghostty", "com.apple.Terminal", "com.googlecode.iterm2", "net.kovidgoyal.kitty", "io.alacritty",
+        "com.github.wez.wezterm",
+    ]
+    public init() {}
+}
+
 public enum TabIndicatorPosition: String, Sendable, CaseIterable {
     case left, right, top, bottom
 }
@@ -457,6 +471,7 @@ public struct Settings: Sendable, Equatable {
     public var gaps = Gaps(inner: 8, outer: 8)
     public var animations = AnimationSettings()
     public var border = BorderSettings()
+    public var swallow = SwallowSettings()
     public var tabIndicator = TabIndicatorSettings()
     public var focusFollowsMouse = FocusFollowsMouse()
     public var mouseFollowsFocus = false

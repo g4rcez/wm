@@ -678,6 +678,29 @@ struct LuaHostTests {
         #expect(error?.message.contains(expected) == true)
     }
 
+    @Test func swallowingIsOffByDefaultAndTakesItsLists() throws {
+        let off = try host.load(configURL: dir.write("init.lua", "wm.config { layout = 'tiling' }"))
+        #expect(off.settings.swallow == SwallowSettings())
+        #expect(off.settings.swallow.enabled == false)
+        let on = try host.load(configURL: dir.write("init.lua", """
+        wm.config { swallow = { enabled = true, terminals = { "com.mitchellh.ghostty" }, exceptions = { "Zoom", "us.zoom.xos" } } }
+        """))
+        #expect(on.settings.swallow.enabled)
+        #expect(on.settings.swallow.terminals == ["com.mitchellh.ghostty"])
+        #expect(on.settings.swallow.exceptions == ["Zoom", "us.zoom.xos"])
+    }
+
+    @Test(arguments: [
+        ("wm.config { swallow = { enabled = 'yes' } }", "'swallow.enabled' must be true or false"),
+        ("wm.config { swallow = { terminals = 'ghostty' } }", "'swallow.terminals' must be a list"),
+        ("wm.config { swallow = { terminals = { 1 } } }", "'swallow.terminals' must be a list of strings"),
+        ("wm.config { swallow = { other = true } }", "unknown key 'swallow.other'"),
+    ])
+    func badSwallowSettingsAreErrors(script: String, expected: String) {
+        let error = #expect(throws: ConfigError.self) { try host.load(configURL: dir.write("init.lua", script)) }
+        #expect(error?.message.contains(expected) == true)
+    }
+
     @Test func zenSettingsSetTheWidthAndCheckIt() throws {
         let config = try host.load(configURL: dir.write("init.lua", "wm.config { zen = { width = 0.6 } }"))
         #expect(config.settings.zen.width == 0.6)

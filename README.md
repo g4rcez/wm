@@ -135,8 +135,9 @@ See [Hints, scroll and select mode](https://wm.garcez.dev/docs/hints).
 
 - **Sticky windows:** a floating window that shows on every workspace of its monitor.
 - **Zen mode:** show only the focused window, centered.
+- **Window swallowing:** a program that you start in a terminal takes the place of the terminal window, and the terminal comes back when it closes.
 
-See [Sticky windows and zen mode](https://wm.garcez.dev/docs/sticky-zen).
+See [Sticky windows and zen mode](https://wm.garcez.dev/docs/sticky-zen) and [Window swallowing](https://wm.garcez.dev/docs/swallowing).
 
 ### Scripting and automation
 
@@ -250,7 +251,7 @@ Everything is on <https://wm.garcez.dev/docs/overview>. The source of the pages 
 | Start | [Overview](https://wm.garcez.dev/docs/overview), [Install](https://wm.garcez.dev/docs/install), [First five minutes](https://wm.garcez.dev/docs/first-five-minutes) |
 | Configure | [Config reference](https://wm.garcez.dev/docs/config), [Keys, chords and the hyper key](https://wm.garcez.dev/docs/keys), [Key panel and bind options](https://wm.garcez.dev/docs/key-panel), [Gestures](https://wm.garcez.dev/docs/gestures), [Window and workspace rules](https://wm.garcez.dev/docs/rules) |
 | Layouts | [Tiling](https://wm.garcez.dev/docs/tiling), [Scrolling](https://wm.garcez.dev/docs/scrolling), [Master-stack](https://wm.garcez.dev/docs/master-stack), [Monocle](https://wm.garcez.dev/docs/monocle), [Tile templates](https://wm.garcez.dev/docs/templates), [Rotate, maximize and floating](https://wm.garcez.dev/docs/floating) |
-| Features | [Switcher and overview](https://wm.garcez.dev/docs/switcher), [Sticky windows and zen mode](https://wm.garcez.dev/docs/sticky-zen), [Run or raise](https://wm.garcez.dev/docs/run-or-raise), [Window memory](https://wm.garcez.dev/docs/window-memory), [Menu bar icon](https://wm.garcez.dev/docs/menubar), [Command palette](https://wm.garcez.dev/docs/palette), [Menu Anywhere](https://wm.garcez.dev/docs/menu-anywhere), [Hints, scroll and select mode](https://wm.garcez.dev/docs/hints), [Mouse](https://wm.garcez.dev/docs/mouse), [Special workspaces](https://wm.garcez.dev/docs/special-workspaces) |
+| Features | [Switcher and overview](https://wm.garcez.dev/docs/switcher), [Sticky windows and zen mode](https://wm.garcez.dev/docs/sticky-zen), [Run or raise](https://wm.garcez.dev/docs/run-or-raise), [Window memory](https://wm.garcez.dev/docs/window-memory), [Menu bar icon](https://wm.garcez.dev/docs/menubar), [Command palette](https://wm.garcez.dev/docs/palette), [Menu Anywhere](https://wm.garcez.dev/docs/menu-anywhere), [Hints, scroll and select mode](https://wm.garcez.dev/docs/hints), [Mouse](https://wm.garcez.dev/docs/mouse), [Special workspaces](https://wm.garcez.dev/docs/special-workspaces), [Window swallowing](https://wm.garcez.dev/docs/swallowing) |
 | Reference | [Command line](https://wm.garcez.dev/docs/cli), [Lua API](https://wm.garcez.dev/docs/lua-api), [URL scheme](https://wm.garcez.dev/docs/url-scheme), [Saved state](https://wm.garcez.dev/docs/saved-state) |
 | Guides | [Examples](https://wm.garcez.dev/docs/examples), [Replace Karabiner-Elements](https://wm.garcez.dev/docs/karabiner), [Troubleshooting and limits](https://wm.garcez.dev/docs/troubleshooting), [Development](https://wm.garcez.dev/docs/development) |
 

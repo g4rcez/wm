@@ -207,7 +207,7 @@ let topLevelConfigKeys = [
     "layout", "workspaces", "gaps", "animations", "border", "focus_follows_mouse", "mouse_follows_focus",
     "start_at_login", "wrap_focus", "mouse", "trackpad", "workspace_back_and_forth", "tiling", "scrolling", "switcher", "prefix", "url",
     "tab_indicator", "binds", "zen", "special", "overview", "hints", "select", "keyboards", "floating", "master",
-    "commands", "menubar",
+    "commands", "menubar", "swallow",
 ]
 
 /// Applies the keys that are present; keys that are absent keep their value, so two `wm.config` calls merge.
@@ -461,6 +461,12 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
 
     if let url = try top.table("url", allowed: ["allow"]), let allow = try url.strings("allow") {
         settings.urlAllow = allow
+    }
+
+    if let swallow = try top.table("swallow", allowed: ["enabled", "terminals", "exceptions"]) {
+        if let flag = try swallow.bool("enabled") { settings.swallow.enabled = flag }
+        if let terminals = try swallow.strings("terminals") { settings.swallow.terminals = terminals }
+        if let exceptions = try swallow.strings("exceptions") { settings.swallow.exceptions = exceptions }
     }
 }
 

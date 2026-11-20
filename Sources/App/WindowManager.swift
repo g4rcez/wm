@@ -11,8 +11,12 @@ struct ManagedWindow {
     var minimized = false
     /// The window is in macOS fullscreen, in a Space of its own: wm leaves it alone until it comes back.
     var nativeFullscreen = false
-    /// Minimized and fullscreen windows have no place in the layout.
-    var isOutOfLayout: Bool { minimized || nativeFullscreen }
+    /// The window that took the place of this one (window swallowing): this window is parked until that one closes.
+    var swallowedBy: WindowID?
+    /// The terminal window that this window took the place of.
+    var swallows: WindowID?
+    /// Minimized, fullscreen and swallowed windows have no place in the layout.
+    var isOutOfLayout: Bool { minimized || nativeFullscreen || swallowedBy != nil }
     /// Where a floating window lives; restored when its workspace is shown again.
     var floatFrame: CGRect?
     /// The frame that a maximized floating window had; `window maximize` again puts it back.
@@ -144,6 +148,8 @@ final class WindowManager {
     private var rebootStarted = false
     private var spawnClaims = SpawnClaims<WindowRule>()
     /// Which dynamic rules (indices in `rules`) matched each window at the last look, and how the window was before they applied.
+    /// When a terminal window was swallowed (`systemUptime`). The focus that macOS still reports on it for a moment is not a request to bring it back.
+    private var swallowedAt: [WindowID: TimeInterval] = [:]
     private var dynamicTracker = DynamicRuleTracker()
     private var dynamicSaved: [WindowID: (floating: Bool, floatFrame: CGRect?, border: [Color]?)] = [:]
     /// The window that had the focus when a window with `focus = false` opened: it gets the focus back.
@@ -408,6 +414,9 @@ final class WindowManager {
         if let spawn = takeSpawnRule(for: info) { rule = rule.map { $0.merging(spawn) } ?? spawn }
         // What `wm window remember` kept for this window wins over the rules.
         let remembered = didFirstScan ? memory.match(app: info.bundleID, title: info.title) : nil
+        // A program that was started in a terminal takes the place of that terminal window. A rule that names the workspace says
+        // where the window goes, so it does not swallow.
+        let host = didFirstScan && remembered == nil && rule?.workspace == nil && rule?.monitor == nil ? swallowHost(for: info) : nil
         // A window that a rule floats opens where the last one of its app closed. Windows that were open when the daemon started
         // are not moved, and a window that `window remember` knows keeps what was remembered.
         let last = didFirstScan && remembered == nil && settings.floating.rememberPosition && rule?.float == true
@@ -415,7 +424,7 @@ final class WindowManager {
         let home = monitor(containing: CGPoint(x: info.frame.midX, y: info.frame.midY)) ?? focusedMonitor
         let ruleMonitor = rule?.monitor.flatMap(monitor(matching:))
         let lastMonitor = last?.monitor.flatMap(monitor(matching:))
-        let workspaceName = remembered?.workspace ?? rule?.workspace ?? ruleMonitor.map(activeWorkspace(of:)) ?? lastMonitor.map(activeWorkspace(of:))
+        let workspaceName = host.flatMap { windows[$0]?.workspace } ?? remembered?.workspace ?? rule?.workspace ?? ruleMonitor.map(activeWorkspace(of:)) ?? lastMonitor.map(activeWorkspace(of:))
             ?? home.map(activeWorkspace(of:)) ?? "1"
         let rememberedMonitor = remembered?.monitor.flatMap(monitor(matching:))
         let monitor = monitor(showing: workspaceName) ?? rememberedMonitor ?? focusedMonitor
@@ -423,10 +432,12 @@ final class WindowManager {
         let opening = workspace(workspaceName)
         let layout = rule?.layout.flatMap { opening.engine.windows.isEmpty ? $0 : nil } ?? opening.kind
         let floatsByDefault = layout == .floating
-        var floating = remembered?.floating ?? (info.kind == .floating || (rule?.float ?? floatsByDefault))
+        var floating = remembered?.floating ?? host.flatMap { windows[$0]?.floating } ?? (info.kind == .floating || (rule?.float ?? floatsByDefault))
         var floatFrame: CGRect?
         if let remembered {
             if floating, let frame = remembered.frame, let area = monitor?.workArea { floatFrame = WindowMemory.absolute(frame, in: area) }
+        } else if let host, floating, let frame = windows[host]?.floatFrame {
+            floatFrame = frame
         } else if let last, let area = monitor?.workArea {
             floatFrame = WindowMemory.absolute(last.frame, in: area)
         } else if let area = monitor?.workArea, rule?.size != nil || rule?.center == true {
@@ -461,7 +472,9 @@ final class WindowManager {
         }
         let target = workspace(workspaceName)
         if let layout = rule?.layout, target.engine.windows.isEmpty { target.kind = layout; target.engine = makeEngine(layout, settings: settings(forWorkspace: workspaceName)) }
-        if !floating, !info.isMinimized {
+        if let host {
+            swallow(host, by: info.id, in: target)
+        } else if !floating, !info.isMinimized {
             let anchor = target.history.first { windows[$0]?.workspace == workspaceName && !(windows[$0]?.floating ?? true) }
             let split = presplit(target, anchor: anchor, new: info.id)
             target.engine.insert(info.id, after: split)
@@ -838,6 +851,93 @@ final class WindowManager {
         return CGRect(origin: origin, size: size)
     }
 
+    // MARK: - Swallowing
+
+    /// The terminal window that a new window takes the place of, if `swallow` is on and the window was started from a terminal.
+    private func swallowHost(for info: WindowInfo) -> WindowID? {
+        guard settings.swallow.enabled, info.kind == .standard, !info.isMinimized, !info.isFullscreen else { return nil }
+        let order = recent + windows.keys.sorted().filter { !recent.contains($0) }
+        let candidates = order.compactMap { id -> Swallow.Candidate? in
+            guard let window = windows[id], !window.isOutOfLayout else { return nil }
+            return Swallow.Candidate(id: id, pid: window.info.pid, bundleID: window.info.bundleID, appName: window.info.appName)
+        }
+        return Swallow.host(
+            bundleID: info.bundleID, appName: info.appName, ancestors: { ProcessTree.ancestors(of: info.pid) },
+            candidates: candidates, focused: focused, settings: settings.swallow)
+    }
+
+    /// `child` takes the slot of `host` in the layout and `host` is parked until `child` closes.
+    private func swallow(_ host: WindowID, by child: WindowID, in workspace: Workspace) {
+        guard windows[host] != nil, let opened = windows[child] else { return }
+        windows[host]?.swallowedBy = child
+        windows[child]?.swallows = host
+        swallowedAt[host] = ProcessInfo.processInfo.systemUptime
+        if !opened.floating {
+            workspace.engine.relabel([host: child])
+            if let size = workspace.pseudo.removeValue(forKey: host) { workspace.pseudo[child] = size }
+            if workspace.maximized.remove(host) != nil { workspace.maximized.insert(child) }
+            if workspace.fullscreen == host { workspace.fullscreen = child }
+        }
+        workspace.history.removeAll { $0 == host }
+        recent.removeAll { $0 == host }
+        if focused == host { focused = child }
+        Log.write(.debug, "window swallowed: id=\(child) took the place of terminal id=\(host)", source: "window")
+        events.emit("window_swallow", ["id": .number(Double(child)), "terminal": .number(Double(host)), "workspace": .string(workspace.name)])
+    }
+
+    /// The window that `child` swallowed comes back in the place of `child`, which is closing. `nil` when it swallowed none, or the
+    /// terminal is gone.
+    private func giveBackTerminal(of id: WindowID, _ child: ManagedWindow) -> WindowID? {
+        guard let host = child.swallows, var terminal = windows[host], terminal.swallowedBy == id else { return nil }
+        swallowedAt[host] = nil
+        terminal.swallowedBy = nil
+        terminal.workspace = child.workspace
+        let workspace = workspace(child.workspace)
+        if child.floating {
+            terminal.floating = true
+            terminal.floatFrame = child.floatFrame ?? terminal.floatFrame
+        } else {
+            terminal.floating = false
+            if workspace.engine.windows.contains(id) {
+                workspace.engine.relabel([id: host])
+            } else {
+                workspace.engine.insert(host, after: workspace.history.first { $0 != id })
+            }
+            if let size = workspace.pseudo[id] { workspace.pseudo[host] = size }
+            if workspace.maximized.contains(id) { workspace.maximized.insert(host) }
+            if workspace.fullscreen == id { workspace.fullscreen = host }
+        }
+        windows[host] = terminal
+        Log.write(.debug, "window unswallowed: terminal id=\(host) is back, program id=\(id) closed", source: "window")
+        events.emit("window_unswallow", ["id": .number(Double(host)), "program": .number(Double(id)), "workspace": .string(child.workspace)])
+        return host
+    }
+
+    /// The user went to the terminal window while it was swallowed: it comes back and the program's window stays beside it.
+    private func unswallow(_ host: WindowID) {
+        guard var terminal = windows[host], let childID = terminal.swallowedBy else { return }
+        swallowedAt[host] = nil
+        terminal.swallowedBy = nil
+        guard var child = windows[childID] else {
+            windows[host] = terminal
+            return
+        }
+        child.swallows = nil
+        terminal.workspace = child.workspace
+        let workspace = workspace(child.workspace)
+        if child.floating {
+            terminal.floating = true
+            terminal.floatFrame = child.floatFrame.map { $0.offsetBy(dx: 40, dy: 40) }
+        } else {
+            terminal.floating = false
+            workspace.engine.relabel([childID: host])
+            workspace.engine.insert(childID, after: host)
+        }
+        windows[host] = terminal
+        windows[childID] = child
+        events.emit("window_unswallow", ["id": .number(Double(host)), "program": .number(Double(childID)), "workspace": .string(child.workspace)])
+    }
+
     // MARK: - Dynamic rules
 
     /// Reports the title changes of the apps that a dynamic rule can match, as they happen. A rule without `app` can match any app.
@@ -943,6 +1043,9 @@ final class WindowManager {
 
     private func forget(_ id: WindowID) {
         guard let managed = windows.removeValue(forKey: id) else { return }
+        let wasFocused = focused == id
+        let returning = giveBackTerminal(of: id, managed)
+        swallowedAt[id] = nil
         dynamicTracker.forget(id)
         dynamicSaved[id] = nil
         rememberFloatPlace(of: managed)
@@ -959,6 +1062,7 @@ final class WindowManager {
         hideSpecialIfEmpty(workspace.name)
         applier.forget(id)
         events.emit("window_close", ["id": .number(Double(id))])
+        if let returning, wasFocused { focus(returning) }
     }
 
     private func setMinimized(_ id: WindowID, _ minimized: Bool) {
@@ -1011,6 +1115,11 @@ final class WindowManager {
 
     /// Records a focus change that happened in macOS (click, Cmd-Tab) and follows it with the workspace view.
     private func didFocus(_ id: WindowID) {
+        if windows[id]?.swallowedBy != nil {
+            // macOS may still report the focus on the terminal for a moment after the program's window opened.
+            if let at = swallowedAt[id], ProcessInfo.processInfo.systemUptime - at < 1.5 { return }
+            unswallow(id)
+        }
         guard let managed = windows[id] else { return }
         focused = id
         let workspace = workspace(managed.workspace)
@@ -1374,6 +1483,11 @@ final class WindowManager {
             let size = animator.frames[id]?.size ?? managed.info.frame.size
             targets[id] = CGRect(origin: corner, size: size)
         }
+        // A terminal window that a program swallowed waits in the corner until that program closes.
+        for (id, managed) in windows where managed.swallowedBy != nil {
+            let size = animator.frames[id]?.size ?? managed.info.frame.size
+            targets[id] = CGRect(origin: corner, size: size)
+        }
         let parkedNow = Set(visible.filter { targets[$0]?.origin == corner })
         let snap = visible.symmetricDifference(lastVisible)
             .union(targets.keys.filter { !visible.contains($0) })
@@ -1512,7 +1626,7 @@ final class WindowManager {
     /// Brings every parked window back on screen. Runs when the daemon quits, so no window stays hidden.
     func restoreAll() {
         let group = DispatchGroup()
-        for (id, managed) in windows where (!lastVisible.contains(id) || lastParked.contains(id)) && !managed.isOutOfLayout {
+        for (id, managed) in windows where (!lastVisible.contains(id) || lastParked.contains(id)) && (!managed.isOutOfLayout || managed.swallowedBy != nil) {
             let size = lastShownFrame[id]?.size ?? managed.info.frame.size
             let area = (monitors.first { $0.id == focusedMonitorID } ?? monitors.first)?.workArea ?? .zero
             let frame = lastShownFrame[id] ?? CGRect(
