@@ -7,6 +7,7 @@ public final class NoopBridge: HostBridge, @unchecked Sendable {
     public func dispatch(_ command: String, window: UInt32?) -> (exitCode: Int32, stdout: String, stderr: String) { (0, "", "") }
     public func query(_ what: String) -> LuaValue { .nil }
     public func exec(_ command: String) {}
+    public func exec(_ command: String, options: ExecOptions) {}
     public func log(_ message: String) {}
 }
 

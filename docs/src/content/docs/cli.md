@@ -137,7 +137,9 @@ wins, then the lowest id. No match is an error. The flag goes before or after th
 - `wm key send cmd-shift-r --window app:OBS` types a key into an app that is in the background. Bind a chord of yours to
   it and you have a global hotkey for that app.
 - `wm exec --float --center --size 0.5,0.5 -- /path/to/program` makes a rule for the window that the program opens. The
-  options are `--float`, `--tile`, `--center`, `--maximize`, `--no-focus`, `--workspace`, `--monitor`, `--width`, `--size`
-  and `--layout`. wm finds the window by process, so give the program itself and not `open -a`. The options apply to
-  the first window that opens within 15 seconds.
+  options are `--float`, `--tile`, `--center`, `--maximize`, `--focus`, `--no-focus`, `--workspace`, `--monitor`, `--width`,
+  `--size` and `--layout`. wm finds the window by process, so the program itself works as it is. For `open -a Notes`, or an app
+  that gives the work to a copy that already runs, add `--app Notes` (a bundle id or a name): the first new window of that app
+  takes the options. They apply to the first window that opens within 15 seconds, or `--timeout <seconds>` (1 to 600).
+  `--app` and `--timeout` need an option for the window too. In Lua, `wm.exec(command, { float = true, app = "Notes" })`.
 - `wm workspace next|prev|empty` moves through the workspaces in use (wrapping around) or to the lowest free number.

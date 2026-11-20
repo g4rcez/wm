@@ -553,11 +553,20 @@ func parseRule(_ value: LuaValue) throws -> WindowRule {
             throw ConfigError(message: "wm.rule: '\(field)' is not a valid regular expression: \(pattern)")
         }
     }
+    try applyRuleActions(fields, to: &rule)
+    rule.stop = try fields.bool("stop") ?? true
+    return rule
+}
+
+/// The keys of a rule that say what happens to a window, not which windows: `wm.rule` and the options of `wm.exec` share them.
+private let ruleActionKeys = ["float", "workspace", "layout", "size", "center", "maximize", "width", "monitor", "focus", "run"]
+
+func applyRuleActions(_ fields: Fields, to rule: inout WindowRule) throws {
     rule.float = try fields.bool("float")
     rule.workspace = try fields.numberOrString("workspace", min: 0)
     if let layout = try fields.choice("layout", LayoutKind.self) { rule.layout = layout }
     if let size = try fields.numbers("size", in: 0.000001...100_000) {
-        guard size.count == 2 else { throw ConfigError(message: "wm.rule: 'size' must be { width, height }") }
+        guard size.count == 2 else { throw ConfigError(message: "\(fields.owner): 'size' must be { width, height }") }
         rule.size = RuleSize(width: size[0], height: size[1])
     }
     rule.center = try fields.bool("center") ?? false
@@ -570,6 +579,20 @@ func parseRule(_ value: LuaValue) throws -> WindowRule {
     case .some: rule.commands = try fields.strings("run") ?? []
     case nil: break
     }
-    rule.stop = try fields.bool("stop") ?? true
-    return rule
+}
+
+/// The second argument of `wm.exec(command, options)`: the same actions as `wm.rule`, plus `timeout` (seconds to wait for the
+/// window) and `app` (a bundle id or name that may also claim the window). `nil` when there is nothing to apply.
+func parseExecOptions(_ value: LuaValue) throws -> ExecOptions? {
+    if case .nil = value { return nil }
+    let fields = try Fields(value, owner: "wm.exec", allowed: ruleActionKeys + ["timeout", "app"])
+    var options = ExecOptions(rule: WindowRule(stop: true))
+    try applyRuleActions(fields, to: &options.rule)
+    if let timeout = try fields.number("timeout", min: ExecOptions.minTimeout, max: ExecOptions.maxTimeout) { options.timeout = timeout }
+    options.app = try fields.string("app")
+    guard fields.values.keys.contains(where: ruleActionKeys.contains) else {
+        if fields.values.isEmpty { return nil }
+        throw ConfigError(message: "wm.exec: 'timeout' and 'app' need an action for the window, such as 'float' or 'workspace'")
+    }
+    return options
 }

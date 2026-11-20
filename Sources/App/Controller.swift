@@ -265,11 +265,11 @@ final class AppController: HostBridge, @unchecked Sendable {
             return pick(Array(args.dropFirst()))
         case "exec":
             let text = args.dropFirst().joined(separator: " ")
-            let parsed: (rule: WindowRule?, command: String)
+            let parsed: ExecRequest
             do { parsed = try parseExecRule(text) } catch let error as ConfigError { return fail(error.message, 2, usage: "exec") } catch { return fail("\(error)") }
             guard !parsed.command.isEmpty else { return fail("exec needs a shell command", 2, usage: "exec") }
             let pid = runShell(parsed.command, window: target)
-            if let rule = parsed.rule, let pid { onMain { manager.expectWindow(from: pid, rule: rule) } }
+            if let options = parsed.options, let pid { onMain { manager.expectWindow(from: pid, options: options) } }
             return ok()
         case "batch":
             return batch(args.dropFirst().joined(separator: " "), target: target)
@@ -680,6 +680,11 @@ final class AppController: HostBridge, @unchecked Sendable {
 
     func exec(_ command: String) {
         runShell(command)
+    }
+
+    func exec(_ command: String, options: ExecOptions) {
+        guard let pid = runShell(command) else { return }
+        onMain { manager.expectWindow(from: pid, options: options) }
     }
 
     /// `wm.log` of a script.

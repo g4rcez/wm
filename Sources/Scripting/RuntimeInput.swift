@@ -6,10 +6,14 @@ import Foundation
 ///     wm exec --float --center --size 0.5,0.5 -- /Applications/Foo.app/Contents/MacOS/foo
 ///
 /// Options stop at `--` or at the first word that is not an option. Without options the text is the command as it is.
-public func parseExecRule(_ text: String) throws -> (rule: WindowRule?, command: String) {
+/// `--timeout <seconds>` and `--app <bundle id or name>` say how the window is found; they need an option for the window too.
+public func parseExecRule(_ text: String) throws -> ExecRequest {
     var words = text.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
     var rule = WindowRule(stop: true)
+    var timeout = ExecOptions.defaultTimeout
+    var app: String?
     var seen = false
+    var finding = false
 
     func value(_ option: String, _ inline: String?) throws -> String {
         if let inline { return inline }
@@ -31,12 +35,24 @@ public func parseExecRule(_ text: String) throws -> (rule: WindowRule?, command:
         case "--center": rule.center = true
         case "--maximize": rule.maximize = true
         case "--no-focus": rule.focus = false
-        case "--workspace", "--monitor", "--width", "--size", "--layout":
+        case "--focus": rule.focus = true
+        case "--workspace", "--monitor", "--width", "--size", "--layout", "--timeout", "--app":
             words.removeFirst()
             let raw = try value(name, inline)
             switch name {
             case "--workspace": rule.workspace = raw
             case "--monitor": rule.monitor = raw
+            case "--timeout":
+                guard let seconds = Double(raw), (ExecOptions.minTimeout...ExecOptions.maxTimeout).contains(seconds) else {
+                    throw ConfigError(message: "exec: --timeout must be between 1 and 600 seconds")
+                }
+                timeout = seconds
+                finding = true
+                continue optionLoop
+            case "--app":
+                app = raw
+                finding = true
+                continue optionLoop
             case "--width":
                 guard let width = Double(raw), (0.05...1).contains(width) else { throw ConfigError(message: "exec: --width must be between 0.05 and 1") }
                 rule.width = width
@@ -57,7 +73,8 @@ public func parseExecRule(_ text: String) throws -> (rule: WindowRule?, command:
         seen = true
         words.removeFirst()
     }
-    return (seen ? rule : nil, words.joined(separator: " "))
+    if finding, !seen { throw ConfigError(message: "exec: --timeout and --app need an option for the window, such as --float or --workspace") }
+    return ExecRequest(command: words.joined(separator: " "), options: seen ? ExecOptions(rule: rule, timeout: timeout, app: app) : nil)
 }
 
 /// A `wm set` value as a config value: `true`, a number, a list of numbers (`0.3,0.5`), or text.

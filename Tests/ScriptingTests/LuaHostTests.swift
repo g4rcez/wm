@@ -8,6 +8,7 @@ final class FakeBridge: HostBridge, @unchecked Sendable {
     private let lock = NSLock()
     private var _logs: [String] = []
     private var _execs: [String] = []
+    private var _execOptions: [ExecOptions] = []
     private var _dispatched: [String] = []
     private var _dispatchedWindows: [UInt32?] = []
 
@@ -16,6 +17,7 @@ final class FakeBridge: HostBridge, @unchecked Sendable {
 
     var logs: [String] { lock.withLock { _logs } }
     var execs: [String] { lock.withLock { _execs } }
+    var execOptions: [ExecOptions] { lock.withLock { _execOptions } }
     var dispatched: [String] { lock.withLock { _dispatched } }
     var dispatchedWindows: [UInt32?] { lock.withLock { _dispatchedWindows } }
 
@@ -29,6 +31,12 @@ final class FakeBridge: HostBridge, @unchecked Sendable {
 
     func query(_ what: String) -> LuaValue { queryResults[what] ?? .nil }
     func exec(_ command: String) { lock.withLock { _execs.append(command) } }
+    func exec(_ command: String, options: ExecOptions) {
+        lock.withLock {
+            _execs.append(command)
+            _execOptions.append(options)
+        }
+    }
     func log(_ message: String) { lock.withLock { _logs.append(message) } }
 }
 
@@ -554,6 +562,52 @@ struct LuaHostTests {
         """))
         #expect(config.settings.layout == .monocle)
         #expect(config.workspaceLayouts["read"] == .monocle)
+    }
+
+    @Test func execTakesOptionsForTheWindowThatItOpens() throws {
+        let bridge = FakeBridge()
+        let host = LuaHost(bridge: bridge)
+        let config = try host.load(configURL: dir.write("init.lua", """
+        wm.bind("alt-a", function()
+          wm.exec("open -a Notes", { float = true, workspace = 3, size = { 0.5, 0.4 }, timeout = 20, app = "Notes" })
+          wm.exec("plain")
+        end)
+        """))
+        let action = try #require(config.binds["main"]?[try parseChord("alt-a")])
+        guard case .function(let id) = action else { Issue.record("alt-a is not a function bind"); return }
+        host.call(function: id)
+        host.flush()
+
+        #expect(bridge.execs == ["open -a Notes", "plain"])
+        let options = try #require(bridge.execOptions.first)
+        #expect(bridge.execOptions.count == 1)
+        #expect(options.rule.float == true)
+        #expect(options.rule.workspace == "3")
+        #expect(options.rule.size == RuleSize(width: 0.5, height: 0.4))
+        #expect(options.timeout == 20)
+        #expect(options.app == "Notes")
+    }
+
+    @Test(arguments: [
+        ("{ flaot = true }", "unknown key 'flaot'"),
+        ("{ float = 'yes' }", "'float' must be true or false"),
+        ("{ float = true, timeout = 0 }", "'timeout' must be between 1 and 600"),
+        ("{ app = 'Notes' }", "'timeout' and 'app' need an action for the window"),
+        ("{ title = 'x' }", "unknown key 'title'"),
+    ])
+    func badExecOptionsAreErrors(options: String, expected: String) throws {
+        let bridge = FakeBridge()
+        let host = LuaHost(bridge: bridge)
+        let config = try host.load(configURL: dir.write("init.lua", """
+        wm.bind("alt-a", function() wm.exec("x", \(options)) end)
+        """))
+        let action = try #require(config.binds["main"]?[try parseChord("alt-a")])
+        guard case .function(let id) = action else { Issue.record("alt-a is not a function bind"); return }
+        host.call(function: id)
+        host.flush()
+
+        #expect(bridge.execs.isEmpty)
+        #expect(bridge.logs.contains { $0.contains(expected) })
     }
 
     @Test func zenSettingsSetTheWidthAndCheckIt() throws {

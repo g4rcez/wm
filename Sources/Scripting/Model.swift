@@ -315,6 +315,38 @@ public enum LuaValue: Sendable, Equatable {
     case table([String: LuaValue])
 }
 
+/// What `wm exec` and `wm.exec` ask for the window that a command opens: the rule to apply, how long to wait for the window,
+/// and an app that may claim it when it is not a child of the command (`open -a Notes`).
+public struct ExecOptions: Equatable, Sendable {
+    public static let defaultTimeout = 15.0
+    public static let minTimeout = 1.0
+    public static let maxTimeout = 600.0
+
+    public var rule: WindowRule
+    /// Seconds to wait for the window.
+    public var timeout: Double
+    /// A bundle id or an app name. A new window of this app takes the rule when no child of the command claimed it first.
+    public var app: String?
+
+    public init(rule: WindowRule, timeout: Double = ExecOptions.defaultTimeout, app: String? = nil) {
+        self.rule = rule
+        self.timeout = timeout
+        self.app = app
+    }
+}
+
+/// A `wm exec` command line: the shell command, and the options that came before it.
+public struct ExecRequest: Equatable, Sendable {
+    public var command: String
+    public var options: ExecOptions?
+    public var rule: WindowRule? { options?.rule }
+
+    public init(command: String, options: ExecOptions? = nil) {
+        self.command = command
+        self.options = options
+    }
+}
+
 /// The app boundary. Every method is called on the Lua thread: do not block on `LuaHost.load` from inside,
 /// and avoid waiting for a thread that waits for the Lua thread.
 public protocol HostBridge: AnyObject, Sendable {
@@ -322,6 +354,8 @@ public protocol HostBridge: AnyObject, Sendable {
     func dispatch(_ command: String, window: UInt32?) -> (exitCode: Int32, stdout: String, stderr: String)
     func query(_ what: String) -> LuaValue
     func exec(_ command: String)
+    /// `wm.exec(command, options)`: run the command, and apply the options to the window it opens.
+    func exec(_ command: String, options: ExecOptions)
     func log(_ message: String)
     /// A script or a handler that failed. The default is a plain `log`.
     func logError(_ message: String)
@@ -329,4 +363,6 @@ public protocol HostBridge: AnyObject, Sendable {
 
 public extension HostBridge {
     func logError(_ message: String) { log(message) }
+    /// Default: run the command and ignore the options.
+    func exec(_ command: String, options: ExecOptions) { exec(command) }
 }

@@ -24,7 +24,7 @@ order: 2
 - Events: `window_open`, `window_close`, `window_focus`, `window_title`, `window_floating`, `window_fullscreen`,
   `window_moved`, `workspace_changed`, `special_changed`, `monitor_changed`, `displays_changed`, `layout_changed`, `mode_changed` and
   `config_reloaded`. `wm.on(event, [filter,] handler)` takes an optional table of fields that must match.
-- `wm.exec(command)` runs a shell command and returns nothing. It does not wait for the command and it drops its output.
+- `wm.exec(command [, options])` runs a shell command and returns nothing. It does not wait for the command and it drops its output.
   wm runs it as `/bin/zsh -c "<command>"`, which does not read `.zshrc`: use absolute paths (`/opt/homebrew/bin/htop`).
   `$HOME` and `$(...)` work. A folder such as `/Applications/Foo.app` is not a command: use `open -a Foo`, or the program
   inside it (`/Applications/Foo.app/Contents/MacOS/foo`). A command that cannot start is in `wm logs` (source `exec`).
@@ -33,6 +33,21 @@ order: 2
   wm.bind("alt-t", function() wm.exec("open -a Terminal") end)
   wm.bind("alt-shift-t", "exec open -a Terminal")      -- the same, as a command string
   ```
+
+  `options` make a one-shot rule for the window that the command opens: `float`, `workspace`, `layout`, `size`, `center`,
+  `maximize`, `width`, `monitor`, `focus` and `run`, as in [`wm.rule`](/docs/rules). Two more keys say how to find the window:
+  `timeout` (seconds to wait, 1 to 600, default 15) and `app` (a bundle id or name). A window is found by process first, so the
+  options reach a program that the command starts itself. For `open -a Notes`, or an app that gives the work to a copy that
+  already runs, add `app`: the first new window of that app within the timeout takes the options.
+
+  ```lua
+  wm.bind("alt-n", function()
+    wm.exec("open -a Notes", { app = "Notes", float = true, center = true, size = { 0.5, 0.6 } })
+  end)
+  ```
+
+  An option that does not exist, or `timeout` or `app` without an action, is an error in the log. Options that nothing used
+  expire after the timeout and `wm logs` says so (source `exec`, at debug level).
 
   To give the new window options (a workspace, a size, floating), use the `exec` command of wm through `wm.dispatch`.
   The options are `--float`, `--tile`, `--center`, `--maximize`, `--no-focus`, `--workspace <n>`, `--monitor <m>`,

@@ -140,7 +140,7 @@ final class WindowManager {
     /// After a reboot: the saved windows whose apps have not opened them yet (see `beginRebootRestore`).
     private var reboot: RebootRestore?
     private var rebootStarted = false
-    private var spawnRules: [(pid: Int32, rule: WindowRule, expires: TimeInterval)] = []
+    private var spawnClaims = SpawnClaims<WindowRule>()
     /// The window that had the focus when a window with `focus = false` opened: it gets the focus back.
     private var refocusAfterOpen: WindowID?
     private var saveTimer: Timer?
@@ -734,16 +734,23 @@ final class WindowManager {
         }
     }
 
-    /// Options of `wm exec` for the window that the command opens: the process that was started, and the rule.
-    func expectWindow(from pid: Int32, rule: WindowRule) {
-        spawnRules.append((pid: pid, rule: rule, expires: ProcessInfo.processInfo.systemUptime + 15))
+    /// Options of `wm exec` for the window that the command opens: the process that was started, and the rule. A window of
+    /// `options.app` may take them too. They are dropped, and logged, when no window took them within `options.timeout`.
+    func expectWindow(from pid: Int32, options: ExecOptions) {
+        let id = spawnClaims.add(
+            pid: pid, app: options.app, value: options.rule, timeout: options.timeout, now: ProcessInfo.processInfo.systemUptime)
+        DispatchQueue.main.asyncAfter(deadline: .now() + options.timeout + 0.1) { [weak self] in
+            MainActor.assumeIsolated {
+                guard self?.spawnClaims.expire(id: id) == true else { return }
+                Log.write(.debug, "exec options expired: no window of pid \(pid) opened in \(options.timeout) s", source: "exec")
+            }
+        }
     }
 
     private func takeSpawnRule(for info: WindowInfo) -> WindowRule? {
-        let now = ProcessInfo.processInfo.systemUptime
-        spawnRules.removeAll { $0.expires < now }
-        guard let index = spawnRules.firstIndex(where: { ProcessTree.isDescendant(info.pid, of: $0.pid) }) else { return nil }
-        return spawnRules.remove(at: index).rule
+        spawnClaims.take(
+            pid: info.pid, bundleID: info.bundleID, appName: info.appName, now: ProcessInfo.processInfo.systemUptime,
+            isDescendant: ProcessTree.isDescendant)
     }
 
     /// The monitor that a rule names: its number (1 is the leftmost) or part of its name, ignoring case.

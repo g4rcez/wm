@@ -132,9 +132,10 @@ function wm.query(kind)
   return native.query(kind)
 end
 
-function wm.exec(command)
+function wm.exec(command, options)
   expect(type(command) == "string", "wm.exec expects a command string")
-  native.exec(command)
+  expect(options == nil or type(options) == "table", "wm.exec expects a table as its 2nd argument")
+  done(native.exec(command, options))
 end
 
 function wm.log(...)
@@ -781,8 +782,14 @@ private func nativeQuery(_ L: OpaquePointer?) -> Int32 {
 }
 
 private func nativeExec(_ L: OpaquePointer?) -> Int32 {
-    owner(L).bridge.exec(readString(L, 1) ?? "")
-    return 0
+    reply(L) { state in
+        let command = readString(L, 1) ?? ""
+        if let options = try parseExecOptions(readValue(L, 2)) {
+            state.bridge.exec(command, options: options)
+        } else {
+            state.bridge.exec(command)
+        }
+    }
 }
 
 private func nativeLog(_ L: OpaquePointer?) -> Int32 {

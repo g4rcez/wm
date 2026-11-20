@@ -32,6 +32,25 @@ wm.rule({ app = "com.apple.Notes", subrole = "AXDialog", float = true })
 
 `wm logs` prints the role, subrole and identifier of windows that wm skips. Use it to find the value for a rule.
 
+### Rules for one command
+
+A rule can also belong to a command instead of an app: `wm exec` and `wm.exec` give the window that the command opens the same
+actions as a rule (`float`, `workspace`, `layout`, `size`, `center`, `maximize`, `width`, `monitor`, `focus`, `run`). They go on
+top of the rules above, and they apply once.
+
+```lua
+wm.exec("/Applications/Foo.app/Contents/MacOS/foo", { float = true, center = true, workspace = 3 })
+wm.exec("open -a Notes", { app = "Notes", float = true, timeout = 20 })   -- `app`: a window of Notes may take them too
+```
+
+```sh
+wm exec --float --workspace 3 -- /Applications/Foo.app/Contents/MacOS/foo
+wm exec --app Notes --timeout 20 --float -- open -a Notes
+```
+
+wm gives the options to the first window that opens within `timeout` seconds (15 by default) and is a child of the command or, with
+`app`, a window of that app. See [`wm.exec`](/docs/lua-api) and [`wm exec`](/docs/cli).
+
 ### Default floating rules
 
 Some windows should not be tiled: the picture-in-picture window of Google Meet, the popup of a browser extension, Finder, Preview.

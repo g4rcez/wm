@@ -378,6 +378,21 @@
 ---@field run? wm.Command|wm.Command[] Commands that run after the other actions.
 ---@field stop? boolean `false` lets later rules add to this one. Default true.
 
+--- The actions of `wm.Rule` for the window that a command opens, plus how to find the window. `timeout` and `app` need at least one action.
+---@class (exact) wm.ExecOptions
+---@field float? boolean Open the window floating.
+---@field workspace? string|integer Send the window to this workspace.
+---@field layout? wm.Layout Layout of that workspace.
+---@field size? [number, number] `{ width, height }`: fractions of the screen when <= 1, points when above 1.
+---@field center? boolean Center the window. Default false.
+---@field maximize? boolean Open the window maximized.
+---@field width? number Column width of the window in the scrolling layout, a fraction of the screen, 0.05 to 1.
+---@field monitor? string|integer Open on the workspace that this monitor shows (a role, its number or part of its name).
+---@field focus? boolean `false`: the window opens without taking the focus.
+---@field run? wm.Command|wm.Command[] Commands that run after the other actions.
+---@field timeout? number Seconds to wait for the window, 1 to 600. Default 15. A window that opens later gets nothing.
+---@field app? string Bundle id or app name. A new window of this app may also take the options, for `open -a` and for apps that hand the work to a copy that already runs.
+
 --- Needs at least one field.
 ---@class (exact) wm.WorkspaceSpec
 ---@field layout? wm.Layout
@@ -710,9 +725,11 @@ function wm.dispatch(command, options) end
 ---@return table?
 function wm.query(kind) end
 
---- Runs a shell command in the background.
+--- Runs a shell command in the background. With `options`, the first window that the command opens (or a window of `options.app`)
+--- gets the actions of a rule, within `options.timeout` seconds.
 ---@param command string
-function wm.exec(command) end
+---@param options? wm.ExecOptions
+function wm.exec(command, options) end
 
 --- Writes to the wm log (`wm logs`, level info, source `lua`). Arguments are joined with a space.
 ---@param ... any

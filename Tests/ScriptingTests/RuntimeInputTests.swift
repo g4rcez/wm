@@ -33,8 +33,26 @@ struct RuntimeInputTests {
         #expect(parsed.command == "--verbose-tool run")
     }
 
+    @Test func timeoutAndAppSayHowTheWindowIsFound() throws {
+        let parsed = try parseExecRule("--float --timeout 30 --app=Notes open -a Notes")
+        #expect(parsed.options?.timeout == 30)
+        #expect(parsed.options?.app == "Notes")
+        #expect(parsed.rule?.float == true)
+        #expect(parsed.command == "open -a Notes")
+        let defaults = try parseExecRule("--float foo")
+        #expect(defaults.options?.timeout == 15)
+        #expect(defaults.options?.app == nil)
+    }
+
+    @Test func focusIsTheDefaultSpelledOut() throws {
+        #expect(try parseExecRule("--focus foo").rule?.focus == true)
+    }
+
     @Test(arguments: [
         ("--workspace", "exec: --workspace needs a value"),
+        ("--timeout 0 --float foo", "exec: --timeout must be between 1 and 600 seconds"),
+        ("--timeout abc --float foo", "exec: --timeout must be between 1 and 600 seconds"),
+        ("--app Notes foo", "exec: --timeout and --app need an option for the window"),
         ("--width 2 foo", "exec: --width must be between 0.05 and 1"),
         ("--size 5 foo", "exec: --size needs <width>,<height>"),
         ("--layout grid foo", "exec: --layout must be scrolling, tiling, master or monocle"),
