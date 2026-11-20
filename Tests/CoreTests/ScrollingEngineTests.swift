@@ -441,6 +441,15 @@ struct ScrollingEngineTests {
         #expect(left.frames(in: context, focused: 2)[2]?.width == 600)
     }
 
+    @Test func aDirectionGrowsAColumnForwardAndShrinksItBack() {
+        let engine = engine([1, 2])
+        #expect(engine.perform(.resizeDirection(.right, 100), focused: 1, in: context))
+        #expect(engine.frames(in: context, focused: 1)[1]?.width == 600)
+        #expect(engine.perform(.resizeDirection(.left, 200), focused: 1, in: context))
+        #expect(abs((engine.frames(in: context, focused: 1)[1]?.width ?? 0) - 400) < 0.001)
+        #expect(!engine.perform(.resizeDirection(.down, 50), focused: 1, in: context))
+    }
+
     @Test func draggingASideInwardNarrowsTheColumn() {
         let engine = engine([1, 2])
         #expect(engine.perform(.resizeEdge(.right, -200), focused: 1, in: context))

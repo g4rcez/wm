@@ -15,6 +15,16 @@ struct LayoutStateTests {
         return makeEngine(restoring: try JSONDecoder().decode(LayoutState.self, from: data), settings: Settings())
     }
 
+    @Test func aFloatingLayoutIsSavedAsFloating() throws {
+        var engine = DwindleEngine(settings: Settings())
+        engine.insert(1, after: nil)
+        guard case .tiling(let state) = engine.state else { Issue.record("a dwindle engine saves as tiling"); return }
+        let data = try JSONEncoder().encode(LayoutState.floating(state))
+        let saved = try JSONDecoder().decode(LayoutState.self, from: data)
+        #expect(saved.kind == .floating)
+        #expect(makeEngine(restoring: saved, settings: Settings()).windows == [1])
+    }
+
     @Test func tilingKeepsSplitDirectionAndRatio() throws {
         var engine = DwindleEngine(settings: Settings())
         engine.insert(1, after: nil)

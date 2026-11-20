@@ -11,6 +11,15 @@ struct ChordTests {
         ("esc", Chord(modifiers: [], key: "esc")),
         ("shift-f12", Chord(modifiers: [.shift], key: "f12")),
         ("cmd-pageDown", Chord(modifiers: [.command], key: "pagedown")),
+        ("cmd-shift-[", Chord(modifiers: [.command, .shift], key: "leftsquarebracket")),
+        ("cmd-shift-]", Chord(modifiers: [.command, .shift], key: "rightsquarebracket")),
+        ("cmd-shift--", Chord(modifiers: [.command, .shift], key: "minus")),
+        ("cmd+shift+-", Chord(modifiers: [.command, .shift], key: "minus")),
+        ("alt-=", Chord(modifiers: [.option], key: "equal")),
+        ("ctrl-,", Chord(modifiers: [.control], key: "comma")),
+        ("cmd-\\", Chord(modifiers: [.command], key: "backslash")),
+        ("-", Chord(modifiers: [], key: "minus")),
+        ("[", Chord(modifiers: [], key: "leftsquarebracket")),
     ])
     func validChords(text: String, expected: Chord) throws {
         #expect(try parseChord(text) == expected)

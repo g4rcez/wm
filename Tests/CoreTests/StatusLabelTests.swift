@@ -16,6 +16,10 @@ struct StatusLabelTests {
         #expect(text([], current: status("2", .master)) == "M:2")
     }
 
+    @Test func theSpecialWorkspaceShowsItsWholeName() {
+        #expect(text([], current: status("special")) == "T:special")
+    }
+
     @Test func aFloatingFocusedWindowWinsOverTheLayout() {
         #expect(text([], current: status("9", .scrolling), floating: true) == "F:9")
         #expect(text([], current: status("9", nil), floating: true) == "F:9")
@@ -56,7 +60,7 @@ struct StatusLabelTests {
     }
 
     @Test func aLongNameIsCut() {
-        #expect(text([], current: status("special-notes")) == "T:specia")
+        #expect(text([], current: status("special-notes")) == "T:special")
     }
 
     @Test func onlyTheWorkspaceInFocusIsMarkedForTheBackground() {

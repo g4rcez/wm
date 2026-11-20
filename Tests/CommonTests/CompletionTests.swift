@@ -129,7 +129,7 @@ struct CommandSuggestionsTests {
         let result = commandSuggestions(for: "layout set ")
 
         #expect(result.partial == "")
-        #expect(result.words == ["scrolling", "tiling", "master"])
+        #expect(result.words == ["scrolling", "tiling", "master", "floating"])
     }
 
     @Test func theLastWordFiltersTheNextWords() {

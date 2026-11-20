@@ -12,6 +12,8 @@ struct SnapTests {
         #expect(snapFrame(.bottom, step: 0, in: area) == CGRect(x: 0, y: 400, width: 1000, height: 400))
         #expect(snapFrame(.topLeft, step: 0, in: area) == CGRect(x: 0, y: 0, width: 500, height: 400))
         #expect(snapFrame(.bottomRight, step: 0, in: area) == CGRect(x: 500, y: 400, width: 500, height: 400))
+        #expect(snapFrame(.topCenter, step: 0, in: area) == CGRect(x: 250, y: 0, width: 500, height: 400))
+        #expect(snapFrame(.bottomCenter, step: 0, in: area) == CGRect(x: 250, y: 400, width: 500, height: 400))
         #expect(snapFrame(.center, step: 0, in: area) == CGRect(x: 200, y: 160, width: 600, height: 480))
     }
 

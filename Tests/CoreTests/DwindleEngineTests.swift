@@ -27,6 +27,42 @@ struct DwindleEngineTests {
         #expect(engine.frames(in: context, focused: 1) == [1: CGRect(x: 0, y: 0, width: 1000, height: 600)])
     }
 
+    @Test func aPatternPlacesALoneWindowInItsFirstCell() {
+        var engine = DwindleEngine(settings: Settings())
+        engine.insert(1, after: nil)
+        #expect(engine.templateError(.two, focused: 1) == nil)
+        let applied = engine.perform(.applyTemplate(.two), focused: 1, in: context)
+        #expect(applied)
+        #expect(engine.frames(in: context, focused: 1) == [1: CGRect(x: 0, y: 0, width: 500, height: 600)])
+        let released = engine.perform(.releaseTemplate, focused: 1, in: context)
+        #expect(released)
+        #expect(engine.frames(in: context, focused: 1) == [1: CGRect(x: 0, y: 0, width: 1000, height: 600)])
+    }
+
+    @Test func aWindowThatOpensInAColumnOfAPatternKeepsStacking() {
+        var engine = DwindleEngine(settings: Settings())
+        for id in 1...3 { engine.insert(WindowID(id), after: id == 1 ? nil : WindowID(id - 1)) }
+        let columns = SplitTemplate(name: "30/40/30", cells: [
+            CGRect(x: 0, y: 0, width: 0.3, height: 1), CGRect(x: 0.3, y: 0, width: 0.4, height: 1), CGRect(x: 0.7, y: 0, width: 0.3, height: 1),
+        ])
+        let applied = engine.perform(.applyTemplate(columns), focused: 1, in: context)
+        #expect(applied)
+        engine.insert(4, after: 3)
+        engine.insert(5, after: 3)
+        let frames = engine.frames(in: context, focused: 5)
+        // Windows 3, 5 and 4 are three rows of the same column; nothing sits beside another one in it.
+        #expect(Set([frames[3]!.minX, frames[4]!.minX, frames[5]!.minX]) == [700])
+        #expect(Set([frames[3]!.width, frames[4]!.width, frames[5]!.width]) == [300])
+    }
+
+    @Test func theTilingFrameOfAnOpeningWindow() {
+        let settings = Settings()
+        #expect(tilingFrame(for: 1, among: [], after: nil, settings: settings, context: context) == CGRect(x: 0, y: 0, width: 1000, height: 600))
+        #expect(tilingFrame(for: 2, among: [1], after: 1, settings: settings, context: context) == CGRect(x: 500, y: 0, width: 500, height: 600))
+        // An anchor that is not there falls back to the last window.
+        #expect(tilingFrame(for: 3, among: [1, 2], after: 9, settings: settings, context: context) != nil)
+    }
+
     @Test func twoWindowsOnAWideScreenSitSideBySide() {
         var engine = DwindleEngine(settings: Settings())
         engine.insert(1, after: nil)
@@ -314,6 +350,65 @@ struct DwindleEngineTests {
         #expect(engine.neighbor(of: 3, .left, wrap: false, in: context) == 1)
         #expect(engine.neighbor(of: 1, .left, wrap: false, in: context) == nil)
         #expect(engine.neighbor(of: 1, .left, wrap: true, in: context) == 2)
+    }
+
+    // MARK: resizeDirection
+
+    @Test func directionMovesTheDividerSoTheLeftWindowGrowsAndTheRightOneShrinks() {
+        var left = twoWindows()
+        let ok51818 = left.perform(.resizeDirection(.right, 50), focused: 1, in: context)
+        #expect(ok51818 == true)
+        #expect(left.frames(in: context, focused: 1)[1] == CGRect(x: 0, y: 0, width: 550, height: 600))
+        var right = twoWindows()
+        let ok78036 = right.perform(.resizeDirection(.right, 50), focused: 2, in: context)
+        #expect(ok78036 == true)
+        #expect(right.frames(in: context, focused: 2)[2] == CGRect(x: 550, y: 0, width: 450, height: 600))
+    }
+
+    @Test func directionWorksOnTheOtherSideOfAScreenEdge() {
+        var engine = twoWindows()
+        let ok24192 = engine.perform(.resizeDirection(.left, 50), focused: 1, in: context)
+        #expect(ok24192 == true)
+        #expect(engine.frames(in: context, focused: 1)[1]?.width == 450)
+    }
+
+    @Test func directionOnTheInnerSplitMovesTheHorizontalDivider() {
+        var engine = threeWindows()
+        let ok76564 = engine.perform(.resizeDirection(.down, 60), focused: 3, in: context)
+        #expect(ok76564 == true)
+        #expect(engine.frames(in: context, focused: 3) == [
+            1: CGRect(x: 0, y: 0, width: 500, height: 600),
+            2: CGRect(x: 500, y: 0, width: 500, height: 360),
+            3: CGRect(x: 500, y: 360, width: 500, height: 240),
+        ])
+        var grow = threeWindows()
+        let ok94560 = grow.perform(.resizeDirection(.left, 50), focused: 3, in: context)
+        #expect(ok94560 == true)
+        #expect(grow.frames(in: context, focused: 3)[3] == CGRect(x: 450, y: 300, width: 550, height: 300))
+    }
+
+    @Test func directionWithoutADividerOnThatAxisFails() {
+        var single = DwindleEngine(settings: Settings())
+        single.insert(1, after: nil)
+        let ok45601 = single.perform(.resizeDirection(.right, 50), focused: 1, in: context)
+        #expect(ok45601 == false)
+        var engine = twoWindows()
+        let ok72384 = engine.perform(.resizeDirection(.down, 50), focused: 1, in: context)
+        #expect(ok72384 == false)
+        let ok57515 = engine.perform(.resizeDirection(.right, 0), focused: 1, in: context)
+        #expect(ok57515 == false)
+    }
+
+    @Test func aClampedRatioPassesToTheNextAncestor() {
+        var engine = threeWindows()
+        // Window 3: its horizontal ancestor is only the root. Push it to the limit, then the call is a no-op.
+        let ok27789 = engine.perform(.resizeDirection(.right, 5000), focused: 1, in: context)
+        #expect(ok27789 == true)
+        let ok39421 = engine.perform(.resizeDirection(.right, 50), focused: 1, in: context)
+        #expect(ok39421 == false)
+        // Left of the root is clamped for window 1, and window 3 has no other horizontal ancestor.
+        let ok86981 = engine.perform(.resizeDirection(.left, 50), focused: 3, in: context)
+        #expect(ok86981 == true)
     }
 
     // MARK: resizeEdge

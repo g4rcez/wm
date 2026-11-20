@@ -188,6 +188,21 @@ struct MasterEngineTests {
         #expect(engine.frames(in: context, focused: 1)[1]?.width == 500)
     }
 
+    @Test func aDirectionMovesTheDividerForMasterAndStack() {
+        var engine = engine(2)
+        let r832 = engine.perform(.resizeDirection(.right, 100), focused: 1, in: context)
+        #expect(r832)
+        #expect(engine.frames(in: context, focused: 1)[1]?.width == 600)
+        let r304 = engine.perform(.resizeDirection(.right, 100), focused: 2, in: context)
+        #expect(r304)
+        #expect(engine.frames(in: context, focused: 1)[1]?.width == 700)
+        let r998 = engine.perform(.resizeDirection(.left, 200), focused: 2, in: context)
+        #expect(r998)
+        #expect(abs((engine.frames(in: context, focused: 1)[1]?.width ?? 0) - 500) < 0.001)
+        let r99 = engine.perform(.resizeDirection(.down, 100), focused: 1, in: context)
+        #expect(!r99)
+    }
+
     @Test func balanceGivesTheMasterAndTheStackTheSameWidth() {
         var engine = engine(2) { $0.master.ratio = 0.75 }
         let balanced = engine.perform(.balance, focused: 1, in: context)
