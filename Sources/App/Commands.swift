@@ -29,6 +29,12 @@ extension WindowManager {
         case "resize":
             if let bad = unknownOption(flags, allowed: [], usage: "resize") { return bad }
             if words == ["maximize"] { return fail("resize maximize is now window maximize", 2, usage: "window maximize") }
+            if words.first == "dir" {
+                guard words.count == 3, let direction = Direction(rawValue: words[1]), let points = Double(words[2]), points > 0 else {
+                    return fail("resize dir needs a direction and a positive amount", 2, usage: "resize")
+                }
+                return resizeDirection(id, direction, CGFloat(points))
+            }
             if words.count == 2, let side = Direction(rawValue: words[0]), let delta = Double(words[1]) {
                 return resizeSide(id, side, CGFloat(delta))
             }
@@ -751,6 +757,26 @@ extension WindowManager {
         return ok()
     }
 
+    /// `resize dir <left|right|up|down> <n>`: the nearest divider on that axis moves n points toward the direction, so a window on the
+    /// far side grows and one on the near side shrinks. A floating window has no divider: right and down grow it, left and up shrink it
+    /// (its top left corner stays).
+    private func resizeDirection(_ id: WindowID?, _ direction: Direction, _ points: CGFloat) -> ServerAnswer {
+        guard let id, let managed = windows[id] else { return fail("there is no focused window") }
+        if managed.floating {
+            guard let (frame, area) = floatingFrame(id) else { return fail("this window is not in the layout (minimized or in native fullscreen)") }
+            let growing = direction == .right || direction == .down
+            setFloatFrame(id, FloatGeometry.resized(frame, direction.isHorizontal ? .width : .height, by: growing ? points : -points, in: area))
+            relayout()
+            return ok()
+        }
+        let workspace = workspace(managed.workspace)
+        guard workspace.engine.perform(.resizeDirection(direction, points), focused: id, in: layoutContext(forWorkspace: workspace.name)) else {
+            return fail("no divider to move \(direction.rawValue)", 1, hint: "a single window, or a layout with no split on that axis, has none")
+        }
+        relayout()
+        return ok()
+    }
+
     /// `resize <left|right|up|down> <+n|-n>`: the edge of the window on that side moves outward by n points (a negative n moves it
     /// inward); the other edges stay. A tiled window moves the divider on that side, so it fails on the side of the screen's edge,
     /// where there is no divider. A floating window keeps its other edges and stays inside the work area.
@@ -830,7 +856,7 @@ extension WindowManager {
 
     /// `layout tile <2|3|2+1|1+2|4|5|6|2/3|3/4|1/4>`. Scrolling: the focused window and the windows after it fill one screen in
     /// that pattern; the same pattern again, or `tile chain`, goes back to single columns. Tiling: all windows of the
-    /// workspace take the pattern (their number must match); `layout tile chain` goes back to the automatic layout.
+    /// workspace take the pattern (their number must match, except that a lone window takes the first cell); `layout tile chain` goes back to the automatic layout.
     private func tile(_ name: String?, target id: WindowID?) -> ServerAnswer {
         guard let name else { return fail("layout tile needs a pattern", 2, usage: "layout tile") }
         guard let id, let managed = windows[id], !managed.floating else { return fail("there is no tiled window in focus") }
@@ -974,10 +1000,17 @@ extension WindowManager {
 
     private func setLayout(_ name: String?) -> ServerAnswer {
         guard let kind = name.flatMap(LayoutKind.init(rawValue:)), let workspace = focusedWorkspace else {
-            return fail("layout set needs scrolling, tiling or master", 2, usage: "layout set")
+            return fail("layout set needs scrolling, tiling, master or floating", 2, usage: "layout set")
         }
         workspace.maximized = []
+        // Into `floating`: the windows float where they are. Out of it they stay floating, and only new windows tile.
+        let tiled = kind == .floating && workspace.kind != .floating ? workspace.engine.windows : []
+        let frames = tiled.isEmpty ? [:] : workspace.engine.frames(in: layoutContext(forWorkspace: workspace.name), focused: tiled.first)
         rebuild(workspace, as: kind)
+        for id in tiled {
+            setFloating(id, true)
+            if let frame = frames[id] { setFloatFrame(id, frame) }
+        }
         relayout()
         return ok()
     }

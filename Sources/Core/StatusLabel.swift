@@ -27,8 +27,8 @@ public struct StatusSegment: Sendable, Equatable {
 /// and the workspace in focus as `<mode>:<name>`: `T:1 2 5`. The mode is the layout of the workspace (`T` tiling, `S` scrolling,
 /// `M` master), or `F` when the focused window floats.
 public enum StatusLabel {
-    /// The longest workspace name that the icon shows; a longer one is cut.
-    public static let maxNameLength = 6
+    /// The longest workspace name that the icon shows; a longer one is cut. Seven, so that `special` shows in full.
+    public static let maxNameLength = 7
 
     /// The words that a template may use in braces.
     public static let placeholders = ["mode", "name", "count", "layout"]
@@ -39,6 +39,7 @@ public enum StatusLabel {
         case .tiling: return "T"
         case .scrolling: return "S"
         case .master: return "M"
+        case .floating: return "F"
         case nil: return "?"
         }
     }

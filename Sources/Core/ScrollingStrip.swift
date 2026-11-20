@@ -157,6 +157,12 @@ extension ScrollingEngine {
             lanes.count == 1 && fillsSingleLane && lanes[lane].userSized != true
         }
 
+        /// Stores the cross fractions of a lane, rounded so that a clamped share is exactly 0.1 and not 0.09999999999999998.
+        private mutating func setShares(of lane: Int, _ fractions: [Double]) {
+            let rounded = fractions.map { ($0 * 1e9).rounded() / 1e9 }
+            lanes[lane].shares = Dictionary(uniqueKeysWithValues: zip(lanes[lane].windows, rounded))
+        }
+
         /// Moves `delta` (a fraction of the cross length) from the neighbour after the window, or before it for the
         /// last window, to the window.
         mutating func resizeCross(_ at: Location, by delta: Double, neighbour explicit: Int? = nil) -> Bool {
@@ -171,9 +177,7 @@ extension ScrollingEngine {
             guard abs(applied) > 1e-9 else { return false }
             fractions[at.index] += applied
             fractions[neighbour] -= applied
-            // Rounded so that a clamped share is exactly 0.1 and not 0.09999999999999998.
-            let rounded = fractions.map { ($0 * 1e9).rounded() / 1e9 }
-            lanes[at.lane].shares = Dictionary(uniqueKeysWithValues: zip(lane.windows, rounded))
+            setShares(of: at.lane, fractions)
             return true
         }
 
@@ -366,8 +370,7 @@ extension ScrollingEngine {
             var next = fractions.map { $0 * scale }
             next[at.index] = fraction
             guard next.allSatisfy({ $0 >= Self.minShare - 1e-9 }), abs(fraction - fractions[at.index]) > 1e-9 else { return false }
-            let rounded = next.map { ($0 * 1e9).rounded() / 1e9 }
-            lanes[at.lane].shares = Dictionary(uniqueKeysWithValues: zip(lane.windows, rounded))
+            setShares(of: at.lane, next)
             return true
         }
 

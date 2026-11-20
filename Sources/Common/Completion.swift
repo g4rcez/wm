@@ -72,11 +72,12 @@ private let extraValues: [String: [String]] = [
     "list": ["windows", "workspaces", "monitors", "keyboards", "memory", "binds"],
     "query": ["windows", "workspaces", "monitors", "keyboards", "memory"],
     "zen": ["on", "off"],
+    "layout set": ["scrolling", "tiling", "master", "floating"],
     "init": ["i3"],  // a word with a digit is not a literal value of the spec
     "resize": ["width", "height", "smart", "left", "right", "up", "down"],
     "window place": ["2", "3", "4", "5", "6", "2+1", "1+2", "2/3", "3/4", "1/4", "center"],
     "workspace float-all": ["on", "off", "2", "3", "4", "5", "6", "2+1", "1+2", "2/3", "3/4", "1/4"],
-    "window snap": ["left", "right", "top", "bottom", "top-left", "top-right", "bottom-left", "bottom-right", "center"],
+    "window snap": ["left", "right", "top", "bottom", "top-left", "top-right", "bottom-left", "bottom-right", "top-center", "bottom-center", "center"],
     "workspace": ["next", "prev", "empty"],
     "window send workspace": ["next", "prev", "empty"],
     "focus monitor": monitorWords,

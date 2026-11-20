@@ -72,6 +72,13 @@ private let keyAliases: [String: String] = [
     "leftbracket": "leftsquarebracket", "rightbracket": "rightsquarebracket",
 ]
 
+/// The punctuation keys of a US keyboard by their symbol: `cmd-shift-[`, `cmd-shift--`. Only as the last key of a chord. `+` has no key
+/// of its own (it is Shift with `=`), so it stays a separator.
+private let symbolKeys: [Character: String] = [
+    "[": "leftsquarebracket", "]": "rightsquarebracket", "-": "minus", "=": "equal", ",": "comma", ".": "period",
+    "/": "slash", "\\": "backslash", ";": "semicolon", "'": "quote", "`": "backtick",
+]
+
 private let namedKeys: Set<String> = [
     "esc", "space", "tab", "enter", "backspace", "delete",
     "left", "right", "up", "down",
@@ -90,8 +97,20 @@ public func parseChord(_ text: String, allowMedia: Bool = false) throws -> Chord
         ChordError(message: "invalid chord '\(text)': \(reason)")
     }
 
-    let tokens = text.split(omittingEmptySubsequences: false) { $0 == "-" || $0 == "+" }
-        .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+    // A symbol as the key (`cmd-shift-[`, `cmd-shift--`) is the last character, after a separator or alone.
+    var body = text.trimmingCharacters(in: .whitespaces)
+    var symbolKey: String?
+    if let last = body.last, let name = symbolKeys[last] {
+        let before = body.dropLast()
+        let previous = before.last
+        if previous == nil || previous == "-" || previous == "+" || previous == " " {
+            symbolKey = name
+            body = String(before.reversed().drop { $0 == " " }.reversed())
+            if body.last == "-" || body.last == "+" { body.removeLast() }
+        }
+    }
+    let tokens = (symbolKey != nil && body.trimmingCharacters(in: .whitespaces).isEmpty ? [] : body.split(omittingEmptySubsequences: false) { $0 == "-" || $0 == "+" }
+        .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }) + (symbolKey.map { [$0] } ?? [])
     guard tokens.allSatisfy({ !$0.isEmpty }) else {
         throw fail(text.trimmingCharacters(in: .whitespaces).isEmpty ? "it is empty" : "a modifier or key name is missing")
     }

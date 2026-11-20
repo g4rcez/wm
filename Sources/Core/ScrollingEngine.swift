@@ -292,6 +292,29 @@ public struct ScrollingEngine: LayoutEngine {
             }
             return false
 
+        case .resizeDirection(let direction, let points):
+            guard points > 0 else { return false }
+            if self[strip: strip].isMain(direction) {
+                // A lane has no shared divider: its trailing edge follows right and down, so left and up shrink it.
+                let forward = Strip.step(direction) > 0
+                return resizeLane(here.lane, of: strip, by: forward ? points : -points, length: length)
+            }
+            let step = Strip.step(direction)
+            let across = zone.length(along: strip.transposed)
+            let windows = self[strip: strip].lanes[here.lane].windows
+            if windows.indices.contains(here.index + step) {
+                // The divider on that side moves outward: the window grows.
+                return self[strip: strip].resizeCross(here, by: Double(points / across), neighbour: here.index + step)
+            }
+            if windows.indices.contains(here.index - step) {
+                // The only divider is behind the window: it moves toward the key, so the window shrinks.
+                return self[strip: strip].resizeCross(here, by: Double(-points / across), neighbour: here.index - step)
+            }
+            if strip == .vertical, let side = boundary(of: .vertical), direction == side || direction == side.opposite {
+                return resizeVerticalZone(by: direction == side ? points : -points, in: area)
+            }
+            return false
+
         case .balance:
             return self[strip: strip].fit()
 

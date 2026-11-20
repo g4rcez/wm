@@ -5,13 +5,14 @@ import Foundation
 public enum SnapPlace: String, Sendable, CaseIterable {
     case left, right, top, bottom
     case topLeft = "top-left", topRight = "top-right", bottomLeft = "bottom-left", bottomRight = "bottom-right"
+    case topCenter = "top-center", bottomCenter = "bottom-center"
     case center
 
     /// The sizes that the same place takes in turn when the key is pressed again, as fractions of the area.
     var steps: [Double] {
         switch self {
         case .left, .right, .top, .bottom: [1.0 / 2, 1.0 / 3, 2.0 / 3]
-        case .topLeft, .topRight, .bottomLeft, .bottomRight: [1.0 / 2]
+        case .topLeft, .topRight, .bottomLeft, .bottomRight, .topCenter, .bottomCenter: [1.0 / 2]
         case .center: [0.6, 0.8, 0.4]
         }
     }
@@ -33,6 +34,8 @@ public func snapFrame(_ place: SnapPlace, step: Int, in area: CGRect) -> CGRect 
     case .topRight: return CGRect(x: area.maxX - width, y: area.minY, width: width, height: height)
     case .bottomLeft: return CGRect(x: area.minX, y: area.maxY - height, width: width, height: height)
     case .bottomRight: return CGRect(x: area.maxX - width, y: area.maxY - height, width: width, height: height)
+    case .topCenter: return CGRect(x: area.midX - width / 2, y: area.minY, width: width, height: height)
+    case .bottomCenter: return CGRect(x: area.midX - width / 2, y: area.maxY - height, width: width, height: height)
     case .center: return CGRect(x: area.midX - width / 2, y: area.midY - height / 2, width: width, height: height)
     }
 }

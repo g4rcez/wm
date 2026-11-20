@@ -80,7 +80,7 @@ public let commandSections: [CommandSection] = [
             details: "With --wrap, or wrap_focus in the config, the window at the edge trades places with the window at the other end."),
         CommandSpec(
             "resize", "<width|height|smart> <+n|-n>", "", "Grow or shrink the window by n points.",
-            details: "`width`, `height` and `smart` change the size. A floating window keeps its top left corner for `width` and `height`; `smart` changes both\naround its center (bigger and smaller). A side\n(`left`, `right`, `up` or `down`, as `wm resize left +50`) moves the edge on that side: +n pushes it outward, -n pulls it inward, and the other edges stay.\nA tiled window moves the divider on that side, so a side at the edge of the screen fails (use the opposite side). A floating window stays on its monitor.",
+            details: "`width`, `height` and `smart` change the size. A floating window keeps its top left corner for `width` and `height`; `smart` changes both\naround its center (bigger and smaller). A side\n(`left`, `right`, `up` or `down`, as `wm resize left +50`) moves the edge on that side: +n pushes it outward, -n pulls it inward, and the other edges stay.\nA tiled window moves the divider on that side, so a side at the edge of the screen fails (use the opposite side). A floating window stays on its monitor.\n`resize dir <direction> <n>` moves the nearest divider on that axis n points toward the direction, so a window on the far side grows and one on the near side shrinks. It passes on to the next split when one is at its limit, and fails when there is no divider on that axis. A floating window grows for right and down and shrinks for left and up.",
             example: "wm resize width +50"),
     ]),
     CommandSection(title: "Windows", specs: [
@@ -102,7 +102,7 @@ public let commandSections: [CommandSection] = [
             example: "wm window sticky"),
         CommandSpec(
             "window snap", "<place>", "", "Float the window into a part of the screen.",
-            details: "`place` is left, right, top, bottom, top-left, top-right, bottom-left, bottom-right or center. The window floats (a tiled window\nfirst) and fills that part of the work area inside the gaps. The same place again goes on to the next size: half, a third, two thirds\n(center: 60%, 80%, 40%).",
+            details: "`place` is left, right, top, bottom, top-left, top-right, bottom-left, bottom-right, top-center, bottom-center or center. The window floats (a tiled window\nfirst) and fills that part of the work area inside the gaps. The same place again goes on to the next size: half, a third, two thirds\n(center: 60%, 80%, 40%).",
             example: "wm window snap left"),
         CommandSpec(
             "window place", "<pattern> <n>", "", "Float the window into cell n of a tile pattern.",
@@ -167,8 +167,8 @@ public let commandSections: [CommandSection] = [
     ]),
     CommandSection(title: "Layout", specs: [
         CommandSpec(
-            "layout set", "<scrolling|tiling|master>", "", "Switch the layout of the workspace.",
-            details: "The layout belongs to the workspace: the other workspaces keep theirs. `wm list workspaces` shows each one.",
+            "layout set", "<layout>", "", "Switch the layout of the workspace.",
+            details: "`layout` is scrolling, tiling, master or floating. The layout belongs to the workspace: the other workspaces keep theirs. `wm list workspaces` shows each one.\n`floating` floats every window where it is, and a window that opens floats in the frame that tiling would give it. A switch to\nanother layout leaves the windows floating; only the windows that open later are tiled.",
             example: "wm layout set master"),
         CommandSpec(
             "layout master promote", "", "", "Swap the window with the master.",

@@ -32,6 +32,11 @@ public enum Direction: String, Sendable, CaseIterable {
 extension CGRect {
     /// The rectangle with x and y swapped.
     var transposed: CGRect { CGRect(x: minY, y: minX, width: height, height: width) }
+
+    /// A rectangle given as fractions (0 to 1) of this one, as absolute coordinates inside it.
+    func scaled(by fraction: CGRect) -> CGRect {
+        CGRect(x: minX + fraction.minX * width, y: minY + fraction.minY * height, width: fraction.width * width, height: fraction.height * height)
+    }
 }
 
 public enum Orientation: String, Sendable, Codable {
@@ -190,6 +195,10 @@ public enum LayoutCommand: Sendable, Equatable {
     /// delta makes the window larger on that side. Returns `false` when that side is the edge of the screen (there is no
     /// divider to move), when the delta is zero, or when the layout cannot honour it. The delta is clamped like `resize`.
     case resizeEdge(Direction, CGFloat)
+    /// A keyboard resize by direction: the divider nearest to the focused window on that axis moves `points` toward the
+    /// direction, so the window grows or shrinks by where it sits (the model of i3 `resize` and Hyprland `resizeactive`).
+    /// Returns `false` when there is no divider on that axis (or every one is clamped), or when the points are not positive.
+    case resizeDirection(Direction, CGFloat)
     /// scrolling: move the focused window into the horizontal strip (`.horizontal`) or the vertical strip (`.vertical`).
     case sendToStrip(Orientation)
     /// scrolling: the focused window and the windows after it form a group that fills one screen in this pattern.
@@ -262,6 +271,7 @@ extension LayoutCommand {
         case .resize(let dimension, let delta):
             .resize(dimension == .width ? .height : dimension == .height ? .width : .smart, delta)
         case .resizeEdge(let direction, let delta): .resizeEdge(direction.transposed, delta)
+        case .resizeDirection(let direction, let points): .resizeDirection(direction.transposed, points)
         case .stack(let direction): .stack(direction.transposed)
         case .unstack(let direction): .unstack(direction.transposed)
         case .preselect(let direction): .preselect(direction.transposed)

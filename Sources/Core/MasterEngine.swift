@@ -61,6 +61,12 @@ public struct MasterEngine: LayoutEngine {
 
     public var windows: [WindowID] { order }
 
+    /// How far the ratio moves for a window that grows by one unit: a centered master sits between two dividers, and the stack
+    /// grows against the master.
+    private func dividerFactor(inMaster: Bool, centered: Bool) -> Double {
+        inMaster ? (centered ? 2 : 1) : (centered ? -2 : -1)
+    }
+
     public func templateError(_ template: SplitTemplate, focused: WindowID?) -> String? {
         "tile templates are for the tiling and scrolling layouts"
     }
@@ -189,7 +195,15 @@ public struct MasterEngine: LayoutEngine {
         case .resizeEdge(let direction, let points):
             guard let index, hasStack, points != 0, length > 0, dividerSides(forIndex: index).contains(direction) else { return false }
             let inMaster = index < mastersInOrder
-            return setRatio(ratio + Double(points / length) * (inMaster ? (centered ? 2 : 1) : (centered ? -2 : -1)))
+            return setRatio(ratio + Double(points / length) * dividerFactor(inMaster: inMaster, centered: centered))
+
+        case .resizeDirection(let direction, let points):
+            // The divider is the one on the window's side (the right one for a centered master); it moves toward `direction`.
+            guard let index, hasStack, points > 0, length > 0,
+                  let side = dividerSides(forIndex: index).last, side.isHorizontal == direction.isHorizontal else { return false }
+            let inMaster = index < mastersInOrder
+            let growth = side == direction ? points : -points
+            return setRatio(ratio + Double(growth / length) * dividerFactor(inMaster: inMaster, centered: centered))
 
         case .balance:
             return setRatio(0.5)

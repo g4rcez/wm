@@ -12,7 +12,7 @@ import Scripting
 /// to restore.
 ///
 /// `overview` shows all workspaces that hold windows as small screens in one column (see `OverviewOverlay`): the arrow keys
-/// move the selection, typing searches, Return focuses the window and shows its workspace, Escape closes.
+/// move the selection (Ctrl with h j k l or w a s d does the same), typing searches, Return focuses the window and shows its workspace, Escape closes.
 @MainActor
 final class SwitcherController {
     private struct Session {
@@ -316,6 +316,17 @@ final class SwitcherController {
         }
     }
 
+    /// The direction of a vim key (`h j k l`) or a WASD key, like the arrow of the same side.
+    private static func movement(of key: String) -> Direction? {
+        switch key {
+        case "h", "a": .left
+        case "j", "s": .down
+        case "k", "w": .up
+        case "l", "d": .right
+        default: nil
+        }
+    }
+
     private static func nsColor(_ color: Color) -> NSColor {
         NSColor(red: color.red, green: color.green, blue: color.blue, alpha: color.alpha)
     }
@@ -374,6 +385,11 @@ final class SwitcherController {
         guard let session else { return false }
         if key == "w", flags.contains(.maskCommand) {
             closeSelected()
+            return true
+        }
+        // Ctrl with a vim or WASD key moves like the arrows. A plain letter is search text in the overview.
+        if session.isOverview, flags.contains(.maskControl), !flags.contains(.maskCommand), let direction = Self.movement(of: key) {
+            move(direction)
             return true
         }
         if let data = session.overview, flags.intersection(Self.holdMask).isEmpty {

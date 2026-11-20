@@ -38,6 +38,12 @@ final class Workspace {
     /// The zen mode: only one window shows, centered. The layout itself is not changed. Not saved.
     var zen = false
 
+    /// The state to save: a `floating` workspace keeps a tiling engine for the windows that were tiled by hand.
+    var savedLayout: LayoutState {
+        if kind == .floating, case .tiling(let state) = engine.state { return .floating(state) }
+        return engine.state
+    }
+
     init(name: String, kind: LayoutKind, settings: Settings) {
         self.name = name
         self.kind = kind
@@ -402,7 +408,11 @@ final class WindowManager {
             ?? home.map(activeWorkspace(of:)) ?? "1"
         let rememberedMonitor = remembered?.monitor.flatMap(monitor(matching:))
         let monitor = monitor(showing: workspaceName) ?? rememberedMonitor ?? focusedMonitor
-        var floating = remembered?.floating ?? (info.kind == .floating || rule?.float == true)
+        // On a `floating` workspace every window floats, unless a rule says `float = false`.
+        let opening = workspace(workspaceName)
+        let layout = rule?.layout.flatMap { opening.engine.windows.isEmpty ? $0 : nil } ?? opening.kind
+        let floatsByDefault = layout == .floating
+        var floating = remembered?.floating ?? (info.kind == .floating || (rule?.float ?? floatsByDefault))
         var floatFrame: CGRect?
         if let remembered {
             if floating, let frame = remembered.frame, let area = monitor?.workArea { floatFrame = WindowMemory.absolute(frame, in: area) }
@@ -420,6 +430,14 @@ final class WindowManager {
                 origin = CGPoint(x: area.midX - size.width / 2, y: area.midY - size.height / 2)
             }
             floatFrame = CGRect(origin: origin, size: size)
+        } else if floating, floatsByDefault, didFirstScan {
+            // Where the tiling layout would put it. The windows that are open already stay where they are.
+            let others = windows.filter { $0.value.workspace == workspaceName && $0.value.floating && !$0.value.isOutOfLayout }.keys.sorted()
+            var context = layoutContext(forWorkspace: workspaceName)
+            context.gaps = settings(forWorkspace: workspaceName).gaps.effective(tiledCount: others.count + 1)
+            floatFrame = tilingFrame(
+                for: info.id, among: others, after: opening.history.first(where: others.contains),
+                settings: settings(forWorkspace: workspaceName), context: context)
         }
         windows[info.id] = ManagedWindow(info: info, workspace: workspaceName, floating: floating, minimized: info.isMinimized, floatFrame: floatFrame ?? (floating ? info.frame : nil))
         // A window that opens after the start: what `wm logs` needs to say why it was floated, tiled or moved. The first scan
@@ -683,7 +701,7 @@ final class WindowManager {
                     sticky: $0.value.sticky ? true : nil, stickyMonitor: $0.value.sticky ? $0.value.stickyMonitor : nil)
             },
             workspaces: workspaces.mapValues {
-                SavedWorkspace(layout: $0.engine.state, history: $0.history, maximized: $0.maximized.sorted(), fullscreen: $0.fullscreen)
+                SavedWorkspace(layout: $0.savedLayout, history: $0.history, maximized: $0.maximized.sorted(), fullscreen: $0.fullscreen)
             },
             monitors: Dictionary(uniqueKeysWithValues: monitors.map { (String($0.id), $0.workspace) }),
             configLayouts: workspaceLayouts,

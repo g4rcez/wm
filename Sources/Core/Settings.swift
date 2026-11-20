@@ -3,6 +3,9 @@ import Foundation
 
 public enum LayoutKind: String, Sendable, CaseIterable, Codable {
     case tiling, scrolling, master
+    /// Every window floats. A window that opens first gets the frame that `tiling` would give it. It keeps a tiling engine
+    /// for the windows that the user tiles by hand.
+    case floating
 }
 
 /// Where the master area of the `master` layout is.
@@ -471,7 +474,7 @@ public struct Settings: Sendable, Equatable {
     /// The tile templates of a layout, in the order of the picker.
     public func templates(for layout: LayoutKind) -> [SplitTemplate] {
         switch layout {
-        case .tiling: tiling.templates
+        case .tiling, .floating: tiling.templates
         case .scrolling: scrolling.templates
         case .master: []
         }
