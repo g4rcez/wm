@@ -184,8 +184,13 @@ extension ScrollingEngine {
         /// Every lane gets 1/N of the zone, so all of them fit at once. With more than 1/minSize lanes the share
         /// stops at the minimum size.
         mutating func fit() -> Bool {
+            setEverySize(to: Self.clampedSize(1 / Double(lanes.count)))
+        }
+
+        mutating func matchSize(of lane: Int) -> Bool { setEverySize(to: lanes[lane].size) }
+
+        private mutating func setEverySize(to size: Double) -> Bool {
             let before = lanes
-            let size = Self.clampedSize(1 / Double(lanes.count))
             for index in lanes.indices {
                 lanes[index].size = size
                 lanes[index].userSized = true
@@ -193,14 +198,9 @@ extension ScrollingEngine {
             return lanes != before
         }
 
-        mutating func matchSize(of lane: Int) -> Bool {
-            let before = lanes
-            let size = lanes[lane].size
-            for index in lanes.indices {
-                lanes[index].size = size
-                lanes[index].userSized = true
-            }
-            return lanes != before
+        private func isFullyVisible(_ lane: Int, length: CGFloat) -> Bool {
+            let span = span(of: lane, length: length)
+            return span.start >= scrollOffset - Self.tolerance && span.start + span.size <= scrollOffset + length + Self.tolerance
         }
 
         mutating func equalize(lane: Int) -> Bool {
@@ -327,10 +327,7 @@ extension ScrollingEngine {
             let sizes = displaySizes()
             var others = 0.0
             for index in lanes.indices where index != lane {
-                let span = span(of: index, length: length)
-                if span.start >= scrollOffset - Self.tolerance, span.start + span.size <= scrollOffset + length + Self.tolerance {
-                    others += sizes[index]
-                }
+                if isFullyVisible(index, length: length) { others += sizes[index] }
             }
             let target = Self.clampedSize(1 - others)
             guard target > sizes[lane] + 1e-9 else { return false }
@@ -347,10 +344,7 @@ extension ScrollingEngine {
 
         /// The offset that centres the lanes that are fully on screen as one block, or `nil` when none is.
         func visibleBlockOffset(length: CGFloat) -> CGFloat? {
-            let full = lanes.indices.filter { lane in
-                let span = span(of: lane, length: length)
-                return span.start >= scrollOffset - Self.tolerance && span.start + span.size <= scrollOffset + length + Self.tolerance
-            }
+            let full = lanes.indices.filter { isFullyVisible($0, length: length) }
             guard let first = full.first, let last = full.last else { return nil }
             let start = span(of: first, length: length).start
             let end = span(of: last, length: length).start + span(of: last, length: length).size
@@ -392,8 +386,7 @@ extension ScrollingEngine {
         /// The offset that shows the lane, following the centre mode.
         func revealedOffset(of lane: Int, length: CGFloat, center: CenterMode) -> CGFloat {
             let span = span(of: lane, length: length)
-            let fullyVisible = span.start >= scrollOffset - Self.tolerance
-                && span.start + span.size <= scrollOffset + length + Self.tolerance
+            let fullyVisible = isFullyVisible(lane, length: length)
             switch center {
             case .always:
                 return centeredOffset(of: lane, length: length)

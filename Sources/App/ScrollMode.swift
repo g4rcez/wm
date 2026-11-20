@@ -37,7 +37,7 @@ final class ScrollController {
         generation += 1
         let current = generation
         loading = true
-        keys = ScrollKeys()
+        keys = ScrollKeys(step: colors().scrollStep, dashFactor: colors().scrollDashFactor)
         Task { @MainActor in
             let target = await reader.scrollTarget(pid: app.processIdentifier)
             guard generation == current, loading else { return }
@@ -76,11 +76,11 @@ final class ScrollController {
         case .pending:
             break
         case .ignored:
-            // A shortcut of the app ends the mode and goes on to the app. Other keys are not for the app either.
-            if !flags.intersection([.maskCommand, .maskControl, .maskAlternate]).isEmpty {
-                close()
-                return false
-            }
+            // A shortcut of the app ends the mode and goes on to the app. Other keys are not for the app either, but they
+            // end the mode as well: a key that the mode does not accept must not leave it stuck.
+            let shortcut = !flags.intersection([.maskCommand, .maskControl, .maskAlternate]).isEmpty
+            close()
+            return !shortcut
         case .exit:
             close()
         case .by(let dx, let dy):

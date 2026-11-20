@@ -24,13 +24,18 @@ public struct ScrollKeys: Sendable, Equatable {
     public static let dashFactor = 5.0
 
     private var pendingG = false
+    private let step: Double
+    private let dashFactor: Double
 
-    public init() {}
+    public init(step: Double = ScrollKeys.step, dashFactor: Double = ScrollKeys.dashFactor) {
+        self.step = step
+        self.dashFactor = dashFactor
+    }
 
     public mutating func press(_ key: String, shift: Bool = false, control: Bool = false) -> ScrollAction {
         let wasPending = pendingG
         pendingG = false
-        let distance = shift ? Self.step * Self.dashFactor : Self.step
+        let distance = shift ? step * dashFactor : step
         switch key {
         case "h" where !control: return .by(dx: -distance, dy: 0)
         case "l" where !control: return .by(dx: distance, dy: 0)

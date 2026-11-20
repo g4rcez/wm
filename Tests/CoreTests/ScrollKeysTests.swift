@@ -18,6 +18,12 @@ struct ScrollKeysTests {
         #expect(keys.press("h", shift: true) == .by(dx: -300, dy: 0))
     }
 
+    @Test func aCustomStepAndDashFactorChangeTheDistance() {
+        var keys = ScrollKeys(step: 100, dashFactor: 2)
+        #expect(keys.press("j") == .by(dx: 0, dy: 100))
+        #expect(keys.press("j", shift: true) == .by(dx: 0, dy: 200))
+    }
+
     @Test func dAndUScrollHalfAPage() {
         var keys = ScrollKeys()
         #expect(keys.press("d") == .halfPage(1))
