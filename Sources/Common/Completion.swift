@@ -87,7 +87,7 @@ private let extraValues: [String: [String]] = [
 ]
 
 private let extraFlags: [String: [String]] = [
-    "exec": ["--float", "--tile", "--center", "--maximize", "--no-focus", "--workspace", "--monitor", "--width", "--size", "--layout"],
+    "exec": ["--float", "--tile", "--center", "--maximize", "--focus", "--no-focus", "--workspace", "--monitor", "--width", "--size", "--layout", "--timeout", "--app"],
 ]
 
 private let directionNames = ["left", "right", "up", "down"]
