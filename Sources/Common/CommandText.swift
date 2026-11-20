@@ -1,7 +1,18 @@
 import Foundation
 
-/// Commands a `wm://` URL may not run unless the config lists them in `url.allow`: any app or web page can open a URL.
-public let urlBlockedCommands: Set<String> = ["exec", "daemon", "subscribe"]
+/// Commands that act outside wm (a shell, the keyboard of another app) or hold the connection open. A `wm://` URL may not run them unless the config lists them in `url.allow`: any app or web page can open a URL.
+public let urlBlockedCommands: Set<String> = ["exec", "daemon", "subscribe", "key"]
+
+/// The first command of a URL request that the URL may not run, or `nil`. `batch` runs other commands, so each of its commands
+/// counts too: `wm://batch?args=exec ...` must not get around the list.
+public func urlBlockedCommand(in words: [String], allowed: [String]) -> String? {
+    guard let command = words.first else { return nil }
+    if command == "batch" {
+        let inner = splitBatch(words.dropFirst().joined(separator: " ")).map(splitCommand)
+        return inner.lazy.compactMap { urlBlockedCommand(in: $0, allowed: allowed) }.first
+    }
+    return urlBlockedCommands.contains(command) && !allowed.contains(command) ? command : nil
+}
 
 /// Splits a command string into words. Single or double quotes group words. The rest of an `exec` command
 /// stays one string, so the shell sees it unchanged.

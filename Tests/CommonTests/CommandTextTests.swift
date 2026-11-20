@@ -43,7 +43,17 @@ struct CommandTextTests {
     }
 
     @Test func dangerousCommandsAreBlockedForUrls() {
-        #expect(urlBlockedCommands == ["exec", "daemon", "subscribe"])
+        #expect(urlBlockedCommands == ["exec", "daemon", "subscribe", "key"])
+    }
+
+    @Test func aBatchCannotCarryABlockedCommandForUrls() {
+        #expect(urlBlockedCommand(in: ["exec", "open -a Calculator"], allowed: []) == "exec")
+        #expect(urlBlockedCommand(in: ["batch", "focus left; exec 'touch x'"], allowed: []) == "exec")
+        #expect(urlBlockedCommand(in: ["batch", "focus left; exec 'touch x'"], allowed: ["exec"]) == nil)
+        #expect(urlBlockedCommand(in: ["batch", "focus left; workspace 2"], allowed: []) == nil)
+        #expect(urlBlockedCommand(in: ["workspace", "2"], allowed: []) == nil)
+        #expect(urlBlockedCommand(in: ["key", "press", "cmd-space"], allowed: []) == "key")
+        #expect(urlBlockedCommand(in: ["batch", "key send cmd-q"], allowed: []) == "key")
     }
 
     @Test func batchSplitsAtSemicolonsOutsideQuotes() {

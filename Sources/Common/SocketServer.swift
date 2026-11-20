@@ -37,15 +37,16 @@ public final class SocketServer: @unchecked Sendable {
         defer { if !keepOpen { close(connection) } }
         // Read or write failures leave no one to answer: the client already went away or timed out.
         guard let frame = try? readFrame(connection) else { return }
+        let request = try? JSONDecoder().decode(ClientRequest.self, from: frame)
         let answer: ServerAnswer
-        if let request = try? JSONDecoder().decode(ClientRequest.self, from: frame) {
+        if let request {
             answer = handler(request)
         } else {
             answer = ServerAnswer(exitCode: 2, stderr: "wm: malformed request\n")
         }
         guard let payload = try? JSONEncoder().encode(answer) else { return }
         try? writeFrame(connection, payload)
-        if let subscriber, answer.exitCode == 0, let args = (try? JSONDecoder().decode(ClientRequest.self, from: frame))?.args, args.first == "subscribe" {
+        if let subscriber, answer.exitCode == 0, let args = request?.args, args.first == "subscribe" {
             // Streaming connections wait for events, so the read timeout no longer applies.
             var none = timeval(tv_sec: 0, tv_usec: 0)
             setsockopt(connection, SOL_SOCKET, SO_RCVTIMEO, &none, socklen_t(MemoryLayout<timeval>.size))

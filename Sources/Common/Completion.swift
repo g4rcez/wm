@@ -93,7 +93,6 @@ private let extraFlags: [String: [String]] = [
 private let directionNames = ["left", "right", "up", "down"]
 private let placeholders: Set<String> = ["name", "pattern", "fraction", "n"]
 private let globalFlags = ["--window", "--json", "--verbose", "--help"]
-private let windowSelectors = ["focused", "app:", "title:", "pid:"]
 
 /// The words that `<a|b|c>` or `[a|b]` stands for. `dir` is the four directions; `<name>` and `<0.1-0.9>` give nothing.
 private func literalValues(of args: String) -> [String] {

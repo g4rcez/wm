@@ -515,7 +515,7 @@ private func overviewHelp(style: HelpStyle) -> String {
     }
     lines += ["", style.heading("GLOBAL OPTIONS")] + optionLines(globalOptions, style: style)
     lines += ["", style.heading("URL SCHEME")] + rows(urlRows, paint: style.command)
-    lines.append("  " + style.dim("exec, daemon and subscribe are blocked for URLs, unless `url.allow` in the config lists them."))
+    lines.append("  " + style.dim("exec, key, daemon and subscribe are blocked for URLs, unless `url.allow` in the config lists them."))
     lines += ["", style.heading("EXIT CODES")] + rows(exitCodeRows, paint: style.command)
     lines += ["", style.heading("ENVIRONMENT")] + rows(environmentRows, paint: style.command)
     lines += ["", style.dim("Run `wm help <command>` for details and examples, for example `wm help window`."), style.dim("<dir> is left, right, up or down.")]

@@ -35,10 +35,18 @@ if arguments.first == "__complete" {
         (try? sendRequest(ClientRequest(args: args), timeoutSeconds: 1)).map { Data($0.stdout.utf8) } ?? Data()
     }
     var source = CompletionSource()
-    source.windows = { parseLiveWindows(live(["list", "windows", "--json"])) }
+    // `windows` and `marks` read the same list: ask the daemon once, and only when one of them is needed.
+    var windowsJson: Data?
+    func liveWindows() -> Data {
+        if let windowsJson { return windowsJson }
+        let data = live(["list", "windows", "--json"])
+        windowsJson = data
+        return data
+    }
+    source.windows = { parseLiveWindows(liveWindows()) }
     source.workspaces = { parseLiveWorkspaces(live(["list", "workspaces", "--json"])) }
     source.modes = { parseLiveModes(live(["list", "binds", "--json"])) }
-    source.marks = { parseLiveMarks(live(["list", "windows", "--json"])) }
+    source.marks = { parseLiveMarks(liveWindows()) }
     write(renderCompletion(complete(Array(arguments.dropFirst()), source: source)), to: .standardOutput)
     exit(0)
 }
