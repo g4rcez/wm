@@ -2,7 +2,7 @@
 title: "Rotate, maximize and floating"
 description: "Rotate a layout, maximize and move windows between workspaces, floating windows, native fullscreen and marks."
 group: Layouts
-order: 5
+order: 6
 ---
 ## Rotate
 

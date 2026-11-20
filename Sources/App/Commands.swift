@@ -1000,7 +1000,7 @@ extension WindowManager {
 
     private func setLayout(_ name: String?) -> ServerAnswer {
         guard let kind = name.flatMap(LayoutKind.init(rawValue:)), let workspace = focusedWorkspace else {
-            return fail("layout set needs scrolling, tiling, master or floating", 2, usage: "layout set")
+            return fail("layout set needs scrolling, tiling, master, monocle or floating", 2, usage: "layout set")
         }
         workspace.maximized = []
         // Into `floating`: the windows float where they are. Out of it they stay floating, and only new windows tile.

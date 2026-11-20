@@ -99,4 +99,18 @@ struct LayoutStateTests {
         #expect(copy.scrollOffset == 750)
         #expect(frames[4] == CGRect(x: 750, y: 0, width: 250, height: 400))
     }
+
+    @Test func monocleKeepsTheOrderAndTheWindowInView() throws {
+        var engine = MonocleEngine(settings: Settings())
+        for (id, anchor) in [(1, nil), (2, 1), (3, 2)] as [(WindowID, WindowID?)] { engine.insert(id, after: anchor) }
+        let area = CGRect(x: 0, y: 0, width: 1000, height: 600)
+        _ = engine.frames(in: LayoutContext(viewport: area, hiddenCorner: CGPoint(x: 4000, y: 3000)), focused: 2)
+
+        var copy = try restored(engine) as! MonocleEngine
+
+        #expect(engine.state.kind == .monocle)
+        #expect(copy.windows == [1, 2, 3])
+        let frames = copy.frames(in: LayoutContext(viewport: area, hiddenCorner: CGPoint(x: 4000, y: 3000)), focused: nil)
+        #expect(frames[2] == area)
+    }
 }

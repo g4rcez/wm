@@ -72,7 +72,7 @@ private let extraValues: [String: [String]] = [
     "list": ["windows", "workspaces", "monitors", "keyboards", "memory", "binds"],
     "query": ["windows", "workspaces", "monitors", "keyboards", "memory"],
     "zen": ["on", "off"],
-    "layout set": ["scrolling", "tiling", "master", "floating"],
+    "layout set": ["scrolling", "tiling", "master", "monocle", "floating"],
     "init": ["i3"],  // a word with a digit is not a literal value of the spec
     "resize": ["width", "height", "smart", "left", "right", "up", "down"],
     "window place": ["2", "3", "4", "5", "6", "2+1", "1+2", "2/3", "3/4", "1/4", "center"],

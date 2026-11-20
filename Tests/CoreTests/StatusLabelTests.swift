@@ -14,6 +14,7 @@ struct StatusLabelTests {
         #expect(text([], current: status("1")) == "T:1")
         #expect(text([], current: status("5", .scrolling)) == "S:5")
         #expect(text([], current: status("2", .master)) == "M:2")
+        #expect(text([], current: status("4", .monocle)) == "O:4")
     }
 
     @Test func theSpecialWorkspaceShowsItsWholeName() {

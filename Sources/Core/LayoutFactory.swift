@@ -3,6 +3,7 @@ public func makeEngine(_ kind: LayoutKind, settings: Settings) -> any LayoutEngi
     case .tiling, .floating: DwindleEngine(settings: settings)
     case .scrolling: ScrollingEngine(settings: settings)
     case .master: MasterEngine(settings: settings)
+    case .monocle: MonocleEngine(settings: settings)
     }
 }
 
@@ -12,6 +13,7 @@ public enum LayoutState: Codable, Sendable {
     case floating(DwindleEngine.State)
     case scrolling(ScrollingEngine.State)
     case master(MasterEngine.State)
+    case monocle(MonocleEngine.State)
 
     public var kind: LayoutKind {
         switch self {
@@ -19,6 +21,7 @@ public enum LayoutState: Codable, Sendable {
         case .floating: .floating
         case .scrolling: .scrolling
         case .master: .master
+        case .monocle: .monocle
         }
     }
 }
@@ -29,5 +32,6 @@ public func makeEngine(restoring state: LayoutState, settings: Settings) -> any 
     case .tiling(let saved), .floating(let saved): DwindleEngine(settings: settings, state: saved)
     case .scrolling(let saved): ScrollingEngine(settings: settings, state: saved)
     case .master(let saved): MasterEngine(settings: settings, state: saved)
+    case .monocle(let saved): MonocleEngine(settings: settings, state: saved)
     }
 }

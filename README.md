@@ -62,6 +62,7 @@ wm has no default key bindings. Until you bind keys in `init.lua`, it only react
 | Scrolling | Columns on a strip. A new window opens beside the focused one and never resizes the others. A column holds a stack or tabs. A second, vertical strip can sit at one side. The strip can also run vertically. | [Scrolling](https://wm.garcez.dev/docs/scrolling) |
 | Tiling | A binary tree. A new window splits the focused one. It has preselect, split ratio, flip, pseudo-tiling, and smart split under the pointer. | [Tiling](https://wm.garcez.dev/docs/tiling) |
 | Master-stack | A master area and a stack, with `left`, `right`, `top`, `bottom` and `center` orientations. | [Master-stack](https://wm.garcez.dev/docs/master-stack) |
+| Monocle | One window fills the workspace. `focus next` and `focus prev` walk through the others, which wait out of sight. | [Monocle](https://wm.garcez.dev/docs/monocle) |
 | Tile templates | Ready-made arrangements (`2`, `3`, `2+1`, `2/3`, `center`, and more) with a picker. You can write your own. | [Tile templates](https://wm.garcez.dev/docs/templates) |
 | Rotate, maximize, floating | Rotate a layout, maximize, floating windows, snap to a part of the screen, native fullscreen and window marks. | [Rotate, maximize and floating](https://wm.garcez.dev/docs/floating) |
 
@@ -248,7 +249,7 @@ Everything is on <https://wm.garcez.dev/docs/overview>. The source of the pages 
 |---|---|
 | Start | [Overview](https://wm.garcez.dev/docs/overview), [Install](https://wm.garcez.dev/docs/install), [First five minutes](https://wm.garcez.dev/docs/first-five-minutes) |
 | Configure | [Config reference](https://wm.garcez.dev/docs/config), [Keys, chords and the hyper key](https://wm.garcez.dev/docs/keys), [Key panel and bind options](https://wm.garcez.dev/docs/key-panel), [Gestures](https://wm.garcez.dev/docs/gestures), [Window and workspace rules](https://wm.garcez.dev/docs/rules) |
-| Layouts | [Tiling](https://wm.garcez.dev/docs/tiling), [Scrolling](https://wm.garcez.dev/docs/scrolling), [Master-stack](https://wm.garcez.dev/docs/master-stack), [Tile templates](https://wm.garcez.dev/docs/templates), [Rotate, maximize and floating](https://wm.garcez.dev/docs/floating) |
+| Layouts | [Tiling](https://wm.garcez.dev/docs/tiling), [Scrolling](https://wm.garcez.dev/docs/scrolling), [Master-stack](https://wm.garcez.dev/docs/master-stack), [Monocle](https://wm.garcez.dev/docs/monocle), [Tile templates](https://wm.garcez.dev/docs/templates), [Rotate, maximize and floating](https://wm.garcez.dev/docs/floating) |
 | Features | [Switcher and overview](https://wm.garcez.dev/docs/switcher), [Sticky windows and zen mode](https://wm.garcez.dev/docs/sticky-zen), [Run or raise](https://wm.garcez.dev/docs/run-or-raise), [Window memory](https://wm.garcez.dev/docs/window-memory), [Menu bar icon](https://wm.garcez.dev/docs/menubar), [Command palette](https://wm.garcez.dev/docs/palette), [Menu Anywhere](https://wm.garcez.dev/docs/menu-anywhere), [Hints, scroll and select mode](https://wm.garcez.dev/docs/hints), [Mouse](https://wm.garcez.dev/docs/mouse), [Special workspaces](https://wm.garcez.dev/docs/special-workspaces) |
 | Reference | [Command line](https://wm.garcez.dev/docs/cli), [Lua API](https://wm.garcez.dev/docs/lua-api), [URL scheme](https://wm.garcez.dev/docs/url-scheme), [Saved state](https://wm.garcez.dev/docs/saved-state) |
 | Guides | [Examples](https://wm.garcez.dev/docs/examples), [Replace Karabiner-Elements](https://wm.garcez.dev/docs/karabiner), [Troubleshooting and limits](https://wm.garcez.dev/docs/troubleshooting), [Development](https://wm.garcez.dev/docs/development) |
@@ -261,7 +262,7 @@ The same words work in `wm.bind`, in Lua (`wm.dispatch`) and in `wm://` URLs. `w
 wm focus left --wrap                     # focus, move, swap, resize
 wm workspace 2                           # show a workspace; also next, prev, back, empty, special <name>
 wm window send workspace 3               # move the focused window
-wm layout set scrolling                  # scrolling | tiling | master | floating
+wm layout set scrolling                  # scrolling | tiling | master | monocle | floating
 wm switcher                              # also: overview, palette, menu, zen
 wm list windows --json                   # windows, workspaces, monitors, keyboards, memory, binds
 wm memory forget com.apple.Notes        # list | forget <app> | clear: what `window remember` kept

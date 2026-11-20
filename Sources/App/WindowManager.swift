@@ -1324,7 +1324,9 @@ final class WindowManager {
     /// The context of the monitor that has `workspace` (the focused monitor if none has). A shown special workspace
     /// gets a smaller area and no slivers, so it does not look like a normal workspace.
     func layoutContext(forWorkspace name: String) -> LayoutContext {
-        let gaps = settings(forWorkspace: name).gaps.effective(tiledCount: workspaces[name]?.engine.windows.count ?? 0)
+        // Monocle shows one window whatever the count, so smart gaps apply to it as to a lone window.
+        let count = workspaces[name].map { $0.kind == .monocle ? min($0.engine.windows.count, 1) : $0.engine.windows.count } ?? 0
+        let gaps = settings(forWorkspace: name).gaps.effective(tiledCount: count)
         guard let monitor = monitor(showing: name) ?? focusedMonitor else { return LayoutContext(viewport: .zero, gaps: gaps) }
         var context = layoutContext(for: monitor, gaps: gaps)
         if specials[monitor.id] == name {

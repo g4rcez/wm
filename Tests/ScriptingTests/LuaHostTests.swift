@@ -547,6 +547,15 @@ struct LuaHostTests {
         #expect(settings.master.orientation == .right)
     }
 
+    @Test func monocleIsALayoutOfTheConfigAndOfAWorkspace() throws {
+        let config = try host.load(configURL: dir.write("init.lua", """
+        wm.config { layout = "monocle" }
+        wm.workspace("read", { layout = "monocle" })
+        """))
+        #expect(config.settings.layout == .monocle)
+        #expect(config.workspaceLayouts["read"] == .monocle)
+    }
+
     @Test func zenSettingsSetTheWidthAndCheckIt() throws {
         let config = try host.load(configURL: dir.write("init.lua", "wm.config { zen = { width = 0.6 } }"))
         #expect(config.settings.zen.width == 0.6)

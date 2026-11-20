@@ -3,6 +3,8 @@ import Foundation
 
 public enum LayoutKind: String, Sendable, CaseIterable, Codable {
     case tiling, scrolling, master
+    /// One window fills the workspace; `focus next` and `focus prev` walk through the others.
+    case monocle
     /// Every window floats. A window that opens first gets the frame that `tiling` would give it. It keeps a tiling engine
     /// for the windows that the user tiles by hand.
     case floating
@@ -485,7 +487,7 @@ public struct Settings: Sendable, Equatable {
         switch layout {
         case .tiling, .floating: tiling.templates
         case .scrolling: scrolling.templates
-        case .master: []
+        case .master, .monocle: []
         }
     }
 }

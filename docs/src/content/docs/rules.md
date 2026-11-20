@@ -70,7 +70,7 @@ for one that is open already.
 
 | Option | Meaning |
 |---|---|
-| `layout` | `scrolling` or `tiling`. |
+| `layout` | `scrolling`, `tiling`, `master`, `monocle` or `floating`. |
 | `monitor` | Bind the workspace to a monitor (a role, a number or part of its name). Showing it shows it there. |
 | `default` | With `monitor`: the monitor starts with this workspace. |
 | `gaps`, `border` | Settings for this workspace only. |

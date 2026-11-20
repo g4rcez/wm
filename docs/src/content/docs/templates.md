@@ -2,7 +2,7 @@
 title: "Tile templates"
 description: "Ready-made tile arrangements, and how to write your own."
 group: Layouts
-order: 4
+order: 5
 ---
 `layout tile <pattern>` makes the focused window and the windows after it fill one screen in a fixed pattern.
 In the tiling layout a workspace with a single window works too: the window moves and resizes to the first cell of the pattern.

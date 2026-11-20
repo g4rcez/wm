@@ -10,7 +10,7 @@ For a whole file, see the [author's configuration](https://github.com/g4rcez/dot
 
 ```lua
 wm.config {
-  layout = "tiling",                   -- scrolling | tiling | master
+  layout = "tiling",                   -- scrolling | tiling | master | monocle
   gaps = { inner = 8, outer = 8, smart = false },  -- outer can also be { top=, right=, bottom=, left= }; smart: no gaps around a lone tiled window
   animations = { enabled = true, fps = 120, rate = 16 },  -- fps: frames per second, 30-240, the display caps it (60 Hz screen: 60); rate: spring stiffness, higher is faster
   border = { enabled = true, width = 2, radius = 10, active = "#89b4fa", inactive = "#00000000" },

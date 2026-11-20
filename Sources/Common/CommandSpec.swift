@@ -168,7 +168,7 @@ public let commandSections: [CommandSection] = [
     CommandSection(title: "Layout", specs: [
         CommandSpec(
             "layout set", "<layout>", "", "Switch the layout of the workspace.",
-            details: "`layout` is scrolling, tiling, master or floating. The layout belongs to the workspace: the other workspaces keep theirs. `wm list workspaces` shows each one.\n`floating` floats every window where it is, and a window that opens floats in the frame that tiling would give it. A switch to\nanother layout leaves the windows floating; only the windows that open later are tiled.",
+            details: "`layout` is scrolling, tiling, master, monocle or floating. The layout belongs to the workspace: the other workspaces keep theirs. `wm list workspaces` shows each one.\n`floating` floats every window where it is, and a window that opens floats in the frame that tiling would give it. A switch to\nanother layout leaves the windows floating; only the windows that open later are tiled.",
             example: "wm layout set master"),
         CommandSpec(
             "layout master promote", "", "", "Swap the window with the master.",

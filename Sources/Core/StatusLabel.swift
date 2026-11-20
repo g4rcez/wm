@@ -39,6 +39,7 @@ public enum StatusLabel {
         case .tiling: return "T"
         case .scrolling: return "S"
         case .master: return "M"
+        case .monocle: return "O"
         case .floating: return "F"
         case nil: return "?"
         }
