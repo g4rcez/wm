@@ -17,7 +17,7 @@ public final class PrefixLabel {
     public var isShown: Bool { panel.isVisible }
 
     public init() {
-        panel.isOpaque = true
+        panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
         panel.ignoresMouseEvents = true
@@ -25,20 +25,19 @@ public final class PrefixLabel {
         panel.hidesOnDeactivate = false
         panel.level = .popUpMenu
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle, .transient]
-        effect.material = .hudWindow
-        effect.blendingMode = .behindWindow
-        effect.state = .active
-        effect.appearance = NSAppearance(named: .darkAqua)
         effect.addSubview(pill)
         panel.contentView = effect
     }
 
     /// `workArea` is the focused monitor's usable area in Accessibility coordinates (origin top-left, y down).
     /// Calling `show` again only updates the content and the position.
-    public func show(_ content: LabelContent, settings: PrefixLabelSettings, on workArea: CGRect) {
+    public func show(_ content: LabelContent, settings: PrefixLabelSettings, style: ResolvedStyle, on workArea: CGRect) {
+        let theme = Theme(style)
+        theme.configure(effect)
+        panel.hasShadow = style.shadow
         // At a side of the screen the keys are a list, one per line; in the middle they are a grid in a row.
         let geometry = PillGeometry.make(
-            content, settings: settings, vertical: settings.position.isSide,
+            content, settings: settings, theme: theme, vertical: settings.position.isSide,
             maxWidth: workArea.width * 0.8, maxHeight: workArea.height * 0.7)
         let rect = Self.rect(
             for: geometry.size, position: settings.position,
@@ -46,24 +45,11 @@ public final class PrefixLabel {
         )
         pill.geometry = geometry
         pill.frame = CGRect(origin: .zero, size: geometry.size)
-        effect.maskImage = Self.roundedMask(radius: geometry.radius)
+        effect.maskImage = Theme.roundedMask(radius: geometry.radius)
         panel.setFrame(Displays.cocoaRect(rect), display: true)
         pill.needsDisplay = true
         panel.orderFrontRegardless()
         panel.invalidateShadow()
-    }
-
-    /// A stretchable rounded shape that cuts the blur to the pill.
-    private static func roundedMask(radius: CGFloat) -> NSImage {
-        let edge = radius * 2 + 1
-        let image = NSImage(size: NSSize(width: edge, height: edge), flipped: false) { rect in
-            NSColor.black.setFill()
-            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
-            return true
-        }
-        image.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
-        image.resizingMode = .stretch
-        return image
     }
 
     public func hide() {
@@ -98,21 +84,23 @@ private struct PillGeometry {
 
     var size: CGSize
     var items: [Item]
-    var background: NSColor
+    var background: NSColor?
+    var border: NSColor
     var radius: CGFloat
 
-    static func make(_ content: LabelContent, settings: PrefixLabelSettings, vertical: Bool, maxWidth: CGFloat, maxHeight: CGFloat) -> PillGeometry {
-        let size = settings.fontSize
-        let foreground = color(settings.foreground)
+    static func make(_ content: LabelContent, settings: PrefixLabelSettings, theme: Theme, vertical: Bool, maxWidth: CGFloat, maxHeight: CGFloat) -> PillGeometry {
+        let size = theme.size(11)
+        let density = CGFloat(theme.style.scale)
+        let foreground = theme.foreground
+        let border = theme.border ?? theme.inkColor(0.12)
         // Small type, small chips and a lot of air around them, like Rex's panel.
-        let chipHeight = ceil(size * 1.75)
+        let chipHeight = ceil(size * 1.75 * density)
         let rowHeight = chipHeight
-        let padX = ceil(size * 1.3), padY = ceil(size * 0.85)
-        let blockGap = ceil(size * 1.45), keyGap = ceil(size * 0.55), rowGap = ceil(size * 0.5)
-        let radius = (rowHeight + 2 * padY) / 2
+        let padX = ceil(size * 1.3 * density), padY = ceil(size * 0.85 * density)
+        let blockGap = ceil(size * 1.45 * density), keyGap = ceil(size * 0.55 * density), rowGap = ceil(size * 0.5 * density)
 
         func font(_ scale: CGFloat, _ weight: NSFont.Weight) -> NSFont {
-            if let name = settings.fontName, let custom = NSFont(name: name, size: size * scale) { return custom }
+            if let name = theme.style.font, let custom = NSFont(name: name, size: size * scale) { return custom }
             return NSFont.systemFont(ofSize: size * scale, weight: weight)
         }
         func attributed(_ text: String, scale: CGFloat = 1, weight: NSFont.Weight, color: NSColor) -> NSAttributedString {
@@ -131,7 +119,7 @@ private struct PillGeometry {
             let rect = CGRect(origin: .zero, size: pillSize)
             return PillGeometry(
                 size: pillSize, items: [.text(text, origin: centered(text, in: rect))],
-                background: color(settings.background), radius: radius)
+                background: theme.tint, border: border, radius: min(theme.cornerRadius, pillSize.height / 2))
         }
 
         // The name chip is a column of its own on the left, centered in the height of the grid.
@@ -187,14 +175,14 @@ private struct PillGeometry {
         if let badge {
             let y = vertical ? padY : padY + (gridHeight - chipHeight) / 2
             let rect = CGRect(x: padX, y: y, width: badge.width, height: chipHeight)
-            items.append(.chip(rect: rect, fill: color(settings.accent).withAlphaComponent(0.4), text: badge.text, textOrigin: centered(badge.text, in: rect)))
+            items.append(.chip(rect: rect, fill: theme.accent.withAlphaComponent(0.4), text: badge.text, textOrigin: centered(badge.text, in: rect)))
         }
         for index in 0..<grid.visible {
             let (row, column) = grid.position(of: index)
             let top = gridTop + CGFloat(row) * (rowHeight + rowGap)
             let keyRect = CGRect(x: columnX[column], y: top, width: columnKeyWidth[column], height: chipHeight)
             let labelRect = CGRect(x: columnX[column] + columnKeyWidth[column] + keyGap, y: top, width: labelWidths[index], height: rowHeight)
-            items.append(.chip(rect: keyRect, fill: NSColor(white: 1, alpha: 0.09), text: keys[index], textOrigin: centered(keys[index], in: keyRect)))
+            items.append(.chip(rect: keyRect, fill: theme.inkColor(0.09), text: keys[index], textOrigin: centered(keys[index], in: keyRect)))
             items.append(.text(labels[index], origin: CGPoint(x: labelRect.minX, y: centered(labels[index], in: labelRect).y)))
         }
 
@@ -211,12 +199,9 @@ private struct PillGeometry {
         }
         let pillSize = CGSize(width: right + padX, height: gridTop + gridHeight + padY)
         // A list at a side is a rounded panel; a row in the middle is a capsule.
-        let corner = vertical ? min(ceil(size * 1.3), pillSize.height / 2) : min(radius, pillSize.height / 2)
-        return PillGeometry(size: pillSize, items: items, background: color(settings.background), radius: corner)
-    }
-
-    private static func color(_ color: Color) -> NSColor {
-        NSColor(srgbRed: color.red, green: color.green, blue: color.blue, alpha: color.alpha)
+        // The corner is the one of every overlay, and a capsule when that is bigger than the pill.
+        let corner = min(theme.cornerRadius, pillSize.height / 2)
+        return PillGeometry(size: pillSize, items: items, background: theme.tint, border: border, radius: corner)
     }
 }
 
@@ -229,9 +214,11 @@ private final class PillView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         guard let geometry else { return }
         let outline = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: geometry.radius, yRadius: geometry.radius)
-        geometry.background.setFill()
-        outline.fill()
-        NSColor(white: 1, alpha: 0.12).setStroke()
+        if let background = geometry.background {
+            background.setFill()
+            outline.fill()
+        }
+        geometry.border.setStroke()
         outline.lineWidth = 1
         outline.stroke()
         for item in geometry.items {
