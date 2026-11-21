@@ -73,7 +73,7 @@ private let extraValues: [String: [String]] = [
     "query": ["windows", "workspaces", "monitors", "keyboards", "memory"],
     "zen": ["on", "off"],
     "layout set": ["scrolling", "tiling", "master", "monocle", "floating"],
-    "init": ["i3"],  // a word with a digit is not a literal value of the spec
+    "init": ["omarchy", "osx", "windows", "i3", "hyprland", "niri"],  // the spec says [template], to keep the help narrow
     "resize": ["width", "height", "smart", "left", "right", "up", "down"],
     "window place": ["2", "3", "4", "5", "6", "2+1", "1+2", "2/3", "3/4", "1/4", "center"],
     "workspace float-all": ["on", "off", "2", "3", "4", "5", "6", "2+1", "1+2", "2/3", "3/4", "1/4"],

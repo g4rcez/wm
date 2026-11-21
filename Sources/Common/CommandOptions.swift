@@ -38,6 +38,10 @@ public let commandOptions: [String: [CommandOption]] = [
         CommandOption("--reverse", "With --cmdtab, start from the last app (bind it to cmd-shift-tab)."),
     ],
     "hints": [CommandOption("--wait", "Start in search mode; a label only highlights, and Return clicks.")],
+    "jump": [
+        CommandOption("--swap", "Swap the picked window with the focused one (tiled windows of one workspace), instead of focusing it."),
+        CommandOption("--close", "Close the picked window instead of focusing it."),
+    ],
     "notify": [CommandOption("--seconds=<n>", "How long the message stays (default 2).")],
     "list": [
         CommandOption("--focused", "Only the focused window (with `monitors`: the focused monitor)."),

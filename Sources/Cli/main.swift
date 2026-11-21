@@ -1,3 +1,4 @@
+import Cheatsheet
 import Common
 import Foundation
 import Scripting
@@ -86,7 +87,7 @@ if arguments == ["version"] || arguments == ["--version"] {
 if let first = arguments.first, !commandNames.contains(first) {
     die("unknown command '\(first)'", hint: unknownCommandHint(first) ?? "run `wm help` to see the commands", code: 2)
 }
-let localCommands = [["daemon", "start"], ["daemon", "stop"], ["subscribe"], ["logs"], ["pick"], ["init"], ["config", "check"], ["doctor"]]
+let localCommands = [["daemon", "start"], ["daemon", "stop"], ["subscribe"], ["logs"], ["pick"], ["init"], ["config", "check"], ["doctor"], ["cheatsheet"]]
 if windowId != nil || windowSelector != nil, localCommands.contains(where: { Array(arguments.prefix($0.count)) == $0 }) {
     die("--window does not apply to '\(arguments.prefix(2).filter { !$0.hasPrefix("--") }.joined(separator: " "))'", code: 2)
 }
@@ -103,6 +104,43 @@ func appBundle() -> URL? {
     let home = FileManager.default.homeDirectoryForCurrentUser
     return [URL(fileURLWithPath: "/Applications/wm.app"), home.appendingPathComponent("Applications/wm.app")]
         .first { FileManager.default.fileExists(atPath: $0.path) }
+}
+
+if arguments.first == "cheatsheet" {
+    let words = Array(arguments.dropFirst())
+    let usage = "usage: wm cheatsheet [tui|gui]"
+    guard words.count <= 1, words.first.map({ ["tui", "gui"].contains($0) }) ?? true else {
+        die("expected tui or gui", hint: usage, code: 2)
+    }
+    // Without a word: a terminal gets the sheet in the terminal; a bind, a script or a launcher (no terminal) gets the panel.
+    let onTerminal = isatty(STDIN_FILENO) == 1 && isatty(STDOUT_FILENO) == 1
+    if words.first == "gui" || (words.isEmpty && !onTerminal) {
+        arguments = ["cheatsheet", "gui"]
+    } else {
+        var binds: [CheatBind] = []
+        var mode: String?
+        if let answer = try? sendRequest(ClientRequest(args: ["list", "binds", "--json"]), timeoutSeconds: 2), answer.exitCode == 0 {
+            binds = CheatBind.decode(json: Data(answer.stdout.utf8))
+            if let status = try? sendRequest(ClientRequest(args: ["daemon", "status", "--json"]), timeoutSeconds: 2),
+               let object = try? JSONSerialization.jsonObject(with: Data(status.stdout.utf8)) as? [String: Any] {
+                mode = object["mode"] as? String
+            }
+        } else {
+            // wm does not run: the sheet reads the config, as `wm config check` does.
+            let config = defaultConfigURL()
+            switch loadBindRecords(at: config) {
+            case .success(let records): binds = records.map(CheatBind.init)
+            case .failure(let error): die(error.message, hint: "run `wm init <osx|windows|i3|hyprland|niri>` to make a config, or `wm daemon start`")
+            }
+        }
+        let sheet = buildCheatsheet(binds)
+        if onTerminal, ProcessInfo.processInfo.environment["TERM"] != "dumb", !sheet.pages.isEmpty {
+            runCheatsheetScreen(sheet, mode: mode, color: outputStyle.enabled)
+        } else {
+            printCheatsheet(sheet, color: outputStyle.enabled)
+        }
+        exit(0)
+    }
 }
 
 if arguments.first == "completion" {
@@ -190,23 +228,25 @@ if arguments.first == "lsp" {
 }
 
 if arguments.first == "init" {
-    let usage = "usage: wm init <\(InitTemplate.allCases.map(\.rawValue).joined(separator: "|"))> [--mod=<\(initModKeys.joined(separator: "|"))>] [--force]"
+    let usage = "usage: wm init [<\(InitTemplate.allCases.map(\.rawValue).joined(separator: "|"))>] [--mod=<\(initModKeys.joined(separator: "|"))>] [--force]"
     var rest = Array(arguments.dropFirst())
     let force = rest.contains("--force")
     rest.removeAll { $0 == "--force" }
     var mod = rest.first { $0.hasPrefix("--mod=") }.map { String($0.dropFirst("--mod=".count)) }
     rest.removeAll { $0.hasPrefix("--mod=") }
-    guard rest.count == 1, let template = InitTemplate(rawValue: rest[0]) else {
+    // No name: the first template, Omarchy.
+    guard rest.count <= 1, let template = rest.isEmpty ? InitTemplate.allCases.first : InitTemplate(rawValue: rest[0]) else {
         die("expected one template name", hint: usage, code: 2)
     }
     if let given = mod, !initModKeys.contains(given) { die("unknown mod key '\(given)'", hint: usage, code: 2) }
+    if let given = mod, !template.mods.contains(given) { die("the \(template.rawValue) template cannot use '\(given)' as its mod key", hint: "use one of: \(template.mods.joined(separator: ", "))", code: 2) }
     if mod == nil {
         if isatty(STDIN_FILENO) == 1 {
             // Enter alone takes the default of the template; another answer is asked again.
             while mod == nil {
-                write("mod key [\(initModKeys.joined(separator: "|"))] (default \(template.defaultMod)): ", to: .standardError)
+                write("mod key [\(template.mods.joined(separator: "|"))] (default \(template.defaultMod)): ", to: .standardError)
                 guard let answer = readLine(strippingNewline: true)?.trimmingCharacters(in: .whitespaces).lowercased() else { exit(1) }
-                if answer.isEmpty { mod = template.defaultMod } else if initModKeys.contains(answer) { mod = answer }
+                if answer.isEmpty { mod = template.defaultMod } else if template.mods.contains(answer) { mod = answer }
             }
         } else {
             mod = template.defaultMod

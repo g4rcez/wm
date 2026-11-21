@@ -249,6 +249,10 @@ public let commandSections: [CommandSection] = [
             details: "The scroll areas of the focused window get numbers; the largest one is active, and the pointer moves to it. h j k l scroll,\nShift makes them dash, d and u go half a page, gg and G go to the top and the bottom. Tab, the arrows, Ctrl-N and Ctrl-P, or\na digit, change the area. Escape closes.",
             example: "wm scroll toggle"),
         CommandSpec(
+            "jump", "[open|close|toggle]", "[--swap] [--close]", "Number the visible windows; type a number to pick one.",
+            details: "Every window on the workspaces that the monitors show gets a giant number in its middle: 1, 2, 3… from left to right over the\ndisplays, then from top to bottom. Typing the number focuses the window. With ten windows or more, 1 waits for a second digit;\nReturn picks the shorter number, and Backspace undoes a digit. With --swap the window trades places with the focused one (two\ntiled windows of one workspace; any other pair just moves the focus). With --close the window closes. Escape or a click\ncloses the mode.",
+            example: "wm jump --swap"),
+        CommandSpec(
             "select", "[open|close|toggle]", "", "Search the text on the screen; copy it or right-click it.",
             details: "Reads the text of the windows on the focused display. Typing searches it: case and accents do not count, and the places\nof the text are highlighted. Tab, the arrows, Ctrl-N and Ctrl-P change the focused one, and Return selects it. Then the keys\nare commands: h l move by a character, w b e by a word, j k by a line, 0 and $ go to the ends of the line, and v extends the\nselection. The two letters of a label take the selection to that match, and a second label extends it to there. y, Cmd-C or\nReturn copies, Shift-Return right-clicks, / goes back to the search and Escape closes. `wm.config { select = { keys = ... } }` changes\nthese keys.",
             example: "wm select"),
@@ -256,6 +260,10 @@ public let commandSections: [CommandSection] = [
             "palette", "[list]", "[--cmdtab] [--reverse]", "Search apps, windows, tabs, commands and menu items.",
             details: "One text field. Without a prefix it lists the running apps with their windows, and typing also finds the tabs\nof Chromium browsers, of Rex and of tmux. `>` finds wm commands (Tab completes one, and after a command it lists\nwhat can follow) and `/` finds the menu items of the app that was in front. Up and down move, Return runs the row\nand Escape closes. The list to start in is windows, apps, tabs, commands or menu. The tabs list holds the tabs of\nbrowsers, Rex and tmux, and the windows of the apps that have no tabs: a window is the tab of such an app.\n--cmdtab works like the Cmd+Tab of macOS: it lists the running apps, selects the previous one, Tab and Shift+Tab move while you hold\nthe modifier, and letting go of it switches to the app. wm swallows those keys, so the macOS switcher does not open.\n--reverse starts from the last app (bind it to cmd-shift-tab).",
             example: "wm palette --cmdtab"),
+        CommandSpec(
+            "cheatsheet", "[tui|gui]", "", "Show the keys of the config, grouped, with a filter.",
+            details: "Every key bind of the config, in sections (focus, windows, workspaces ...), with the keys as caps. Binds that only differ in a\ndirection or a number are one row (`✦ ←↑↓→`, `✦ 1–9`). A mode other than `main` has its own page. A bind with `hidden = true`\nis left out, as in the key panel. Typing filters the rows; Escape clears the filter, and closes the sheet when there is none.\ntui draws in the terminal (←/→ change the mode, ↑/↓ scroll). Without a terminal on stdout it prints the sheet as text, and when\nwm does not run it reads the config file. gui opens a panel over the screen (run it again to close it). Without a word it is tui\nin a terminal and gui everywhere else, so a bind such as `wm.bind(\"hyper-k\", \"cheatsheet\")` opens the panel.",
+            example: "wm cheatsheet gui"),
         CommandSpec(
             "palette reset", "", "", "Put the palette back at its first place on the screen.",
             details: "The palette opens where you last dragged it. This forgets that spot: the palette opens centered, a little above the\nmiddle, again. Cmd-0 does the same while the palette is open.",
@@ -359,8 +367,8 @@ public let commandSections: [CommandSection] = [
             details: "Prints the folder of the type stubs and the .luarc.json that lua-language-server needs, and the .taplo.toml that\ngives shortcuts.toml completion in Taplo. --write saves them next to the config file; --force replaces the files that are\nalready there. It works without the daemon.",
             example: "wm lsp --write"),
         CommandSpec(
-            "init", "<osx|windows|i3|hyprland|niri>", "[--mod=<alt|cmd|ctrl|hyper>] [--force]", "Write a starter init.lua with the binds of that system.",
-            details: "The templates follow the keys of macOS, Windows, i3, Hyprland and Niri. The mod key is the main modifier of the binds (the Super key of Linux): without --mod, wm asks for it on a terminal, and uses the default of the template (ctrl for osx, alt for the others) in a script. The file is the config path (see ENVIRONMENT). When it exists, wm prints the template and leaves the file as it is; --force replaces the file. It works without the daemon.",
+            "init", "[template]", "[--mod=<alt|cmd|ctrl|hyper>] [--force]", "Write a starter init.lua with the binds of that system.",
+            details: "The template is omarchy, osx, windows, i3, hyprland or niri, and follows the keys of that system. Omarchy is the default, when you give no name. The mod key is the main modifier of the binds (the Super key of Linux): without --mod, wm asks for it on a terminal, and uses the default of the template (cmd for omarchy, ctrl for osx, alt for the others) in a script. The omarchy template takes alt, cmd or ctrl, not hyper. The file is the config path (see ENVIRONMENT). When it exists, wm prints the template and leaves the file as it is; --force replaces the file. It works without the daemon.",
             example: "wm init niri --mod=alt"),
         CommandSpec(
             "completion", "<zsh|bash>", "", "Print the shell completion script.",
