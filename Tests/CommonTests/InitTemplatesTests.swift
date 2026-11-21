@@ -51,6 +51,6 @@ struct InitTemplatesTests {
     }
 
     @Test func theHelpShowsTheUsage() {
-        #expect(renderHelp(topic: "init")?.contains("wm init [template] [--mod=<alt|cmd|ctrl|hyper>] [--force]") == true)
+        #expect(renderHelp(topic: "init")?.contains("wm init [template] [--mod=<alt|cmd|ctrl|hyper>] [--lua] [--force]") == true)
     }
 }

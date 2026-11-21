@@ -71,7 +71,8 @@ public let commandOptions: [String: [CommandOption]] = [
     ],
     "init": [
         CommandOption("--mod=<key>", "The main modifier of the binds: alt, cmd, ctrl or hyper (CapsLock). Without it wm asks."),
-        CommandOption("--force", "Replace the config file that is there already."),
+        CommandOption("--lua", "Write all of it to init.lua, as Lua, and no shortcuts.toml."),
+        CommandOption("--force", "Replace the config files that are there already."),
     ],
     "exec": [
         CommandOption("--float, --tile", "The window opens floating, or tiled."),

@@ -228,10 +228,12 @@ if arguments.first == "lsp" {
 }
 
 if arguments.first == "init" {
-    let usage = "usage: wm init [<\(InitTemplate.allCases.map(\.rawValue).joined(separator: "|"))>] [--mod=<\(initModKeys.joined(separator: "|"))>] [--force]"
+    let usage = "usage: wm init [<\(InitTemplate.allCases.map(\.rawValue).joined(separator: "|"))>] [--mod=<\(initModKeys.joined(separator: "|"))>] [--lua] [--force]"
     var rest = Array(arguments.dropFirst())
     let force = rest.contains("--force")
     rest.removeAll { $0 == "--force" }
+    let luaOnly = rest.contains("--lua")
+    rest.removeAll { $0 == "--lua" }
     var mod = rest.first { $0.hasPrefix("--mod=") }.map { String($0.dropFirst("--mod=".count)) }
     rest.removeAll { $0.hasPrefix("--mod=") }
     // No name: the first template, Omarchy.
@@ -253,16 +255,30 @@ if arguments.first == "init" {
             printError("wm: mod key is \(template.defaultMod) (use --mod=<key> to choose another)\n")
         }
     }
-    let text = initConfig(template, mod: mod ?? template.defaultMod)
+    let chosenMod = mod ?? template.defaultMod
     let config = defaultConfigURL()
     do {
-        if try writeInitConfig(text, to: config, force: force) {
-            print("wrote \(config.path)")
-            print("wm loads it when it starts, and again each time that you save it. `wm daemon start` starts wm.")
+        if luaOnly {
+            let text = initConfig(template, mod: chosenMod)
+            if try writeInitConfig(text, to: config, force: force) {
+                print("wrote \(config.path)")
+            } else {
+                printError("wm: \(config.path) exists; printed the template instead (use --force to replace the file)\n")
+                print(text, terminator: "")
+                exit(0)
+            }
         } else {
-            printError("wm: \(config.path) exists; printed the template instead (use --force to replace the file)\n")
-            print(text, terminator: "")
+            let files = try initFiles(template, mod: chosenMod)
+            if try writeInitFiles(files, to: config, force: force) {
+                print("wrote \(config.path)")
+                print("wrote \(shortcutsURL(for: config).path)")
+            } else {
+                printError("wm: \(config.path) or \(shortcutsFileName) exists; printed the template instead (use --force to replace the files)\n")
+                print("-- \(config.lastPathComponent)\n\(files.lua)\n# \(shortcutsFileName)\n\(files.shortcuts)", terminator: "")
+                exit(0)
+            }
         }
+        print("wm loads it when it starts, and again each time that you save it. `wm daemon start` starts wm.")
     } catch {
         die("cannot write \(config.path): \(error)")
     }
