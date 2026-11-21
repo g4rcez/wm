@@ -43,6 +43,8 @@ final class InputRouter {
     private var pendingMode = "main"
     /// Runs while a persistent sequence (`wm.commands.mode`) waits for its next command; when it fires, the sequence ends.
     private var repeatTimer: Timer?
+    /// Runs while a mode with `timeout` waits for its next command; when it fires, the mode ends.
+    private var modeTimer: Timer?
     /// Set by the app: the switcher takes over the keys while it is open.
     var switcher: SwitcherController?
     /// Key codes of remaps that a panel used up, until their key comes up.
@@ -327,6 +329,22 @@ final class InputRouter {
         }
         // A `once` mode ends after its first action, unless the action went to another mode itself.
         if modeOptions[before]?.once == true, manager.mode == before { manager.modeBack() }
+        updateModeTimer(before: before)
+    }
+
+    /// A mode with `timeout` ends when that time passes without a command: each command of the mode restarts the timer, and the wait
+    /// for the first one has none. A command that goes to another mode stops it.
+    private func updateModeTimer(before: String) {
+        modeTimer?.invalidate()
+        modeTimer = nil
+        guard manager.mode == before, let seconds = modeOptions[before]?.timeout else { return }
+        modeTimer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.modeTimer = nil
+                if self.manager.mode == before { self.manager.modeBack() }
+            }
+        }
     }
 
     // MARK: Trackpad swipes with 3 or 4 fingers
@@ -460,7 +478,7 @@ final class InputRouter {
         for candidate in candidates {
             let steps = pending + [candidate]
             if let action = sequences[pendingMode]?[steps] ?? sequences[universalMode]?[steps] {
-                let commands = manager.settings.commands
+                let commands = manager.settings.commands.resolved(forPrefix: pending[0].description)
                 if commands.mode == .persistent {
                     pending = Array(steps.dropLast())
                     updatePending()

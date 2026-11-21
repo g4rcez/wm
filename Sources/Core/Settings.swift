@@ -279,6 +279,26 @@ public struct CommandSettings: Sendable, Equatable {
     public var mode = Mode.normal
     /// Seconds without a command after which a persistent sequence ends.
     public var timeout = 0.8
+    /// What one layer (the first chord of a sequence, as `Chord.description` says it) does instead of the two above.
+    public var layers: [String: Layer] = [:]
+
+    /// The settings of one layer; a missing value is the one of `wm.commands`.
+    public struct Layer: Sendable, Equatable {
+        public var mode: Mode?
+        /// Seconds.
+        public var timeout: Double?
+        public init(mode: Mode? = nil, timeout: Double? = nil) {
+            self.mode = mode
+            self.timeout = timeout
+        }
+    }
+
+    /// The mode and the timeout (seconds) for the sequences that start with the chord `prefix`.
+    public func resolved(forPrefix prefix: String) -> (mode: Mode, timeout: Double) {
+        let layer = layers[prefix]
+        return (layer?.mode ?? mode, layer?.timeout ?? timeout)
+    }
+
     public init() {}
 }
 

@@ -50,10 +50,14 @@ public struct ModeOptions: Sendable, Equatable {
     public var once: Bool
     /// A key that the mode does not bind is not typed into the app.
     public var swallow: Bool
+    /// Seconds without a command after which the mode ends and the mode before it is back. The wait for the first command has no
+    /// timeout; each command restarts the timer. `nil`: the mode stays on until it is left.
+    public var timeout: Double?
 
-    public init(once: Bool = false, swallow: Bool = false) {
+    public init(once: Bool = false, swallow: Bool = false, timeout: Double? = nil) {
         self.once = once
         self.swallow = swallow
+        self.timeout = timeout
     }
 }
 

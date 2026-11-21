@@ -251,6 +251,7 @@
 ---@class (exact) wm.ModeOptions
 ---@field once? boolean The mode ends after the first bind of it has run; the mode before it is back (`mode back`).
 ---@field swallow? boolean A key that the mode does not bind is not typed into the app. Default false.
+---@field timeout? number Milliseconds without a command after which the mode ends and the mode before it is back (`mode back`), 100 to 10000. The wait for the first command has no timeout; each command restarts it. Default: the mode stays on until it is left.
 
 --- The options of a bind (third argument of `wm.bind`, or a table with the action first in `wm.mode`).
 ---@class (exact) wm.BindOptions
@@ -297,6 +298,12 @@
 ---@class (exact) wm.CommandsConfig
 ---@field mode? "normal"|"persistent" `normal`: the sequence ends after one command. `persistent`: the keys after the prefix stay active until `timeout` passes without a command. Default `normal`.
 ---@field timeout? number Milliseconds without a command after which a persistent sequence ends, 100 to 10000. Default 800.
+---@field layers? table<string, wm.CommandsLayer> Settings for one layer: the first chord of its sequences is the key, for example `["hyper-w"] = { mode = "persistent", timeout = 1200 }`. What a layer leaves out comes from `mode` and `timeout` above.
+
+--- What one layer does after a command (`wm.commands.layers`).
+---@class (exact) wm.CommandsLayer
+---@field mode? "normal"|"persistent" `persistent`: the keys of this layer stay active after a command, until `timeout` passes without one. Default: `wm.commands.mode`.
+---@field timeout? number Milliseconds without a command after which the layer ends, 100 to 10000. Default: `wm.commands.timeout`.
 
 ---@class (exact) wm.SwallowConfig
 ---@field enabled? boolean A window that a program opens from a terminal takes the place of that terminal window, and the terminal comes back when it closes. Default false.

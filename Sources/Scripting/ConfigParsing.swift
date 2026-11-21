@@ -456,10 +456,24 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
         }
     }
 
-    if let commands = try top.table("commands", allowed: ["mode", "timeout"]) {
+    if let commands = try top.table("commands", allowed: ["mode", "timeout", "layers"]) {
         if let value = try commands.choice("mode", CommandSettings.Mode.self) { settings.commands.mode = value }
         // `wm.commands.timeout` is in milliseconds, as in Hyprland.
         if let milliseconds = try commands.number("timeout", min: 100, max: 10_000) { settings.commands.timeout = milliseconds / 1000 }
+        // `wm.commands.layers`: the same two keys for one prefix, such as `["hyper-w"]`.
+        if case .table(let named)? = commands.values["layers"], let layers = try commands.table("layers", allowed: Array(named.keys)) {
+            settings.commands.layers = [:]
+            for name in named.keys.sorted() {
+                let chord: Chord
+                do { chord = try parseChord(name) } catch { throw ConfigError(message: "wm.commands.layers: '\(name)': \(error)") }
+                guard let layer = try layers.table(name, allowed: ["mode", "timeout"]) else { continue }
+                settings.commands.layers[chord.description] = CommandSettings.Layer(
+                    mode: try layer.choice("mode", CommandSettings.Mode.self),
+                    timeout: try layer.number("timeout", min: 100, max: 10_000).map { $0 / 1000 })
+            }
+        } else if commands.values["layers"] != nil {
+            _ = try commands.table("layers", allowed: [])
+        }
     }
 
     if let binds = try top.table("binds", allowed: ["long_press_timeout", "disable_system_cmd_tab", "capslock"]) {

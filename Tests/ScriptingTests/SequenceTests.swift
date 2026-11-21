@@ -60,6 +60,38 @@ struct SequenceConfigTests {
         #expect(config.settings.commands.timeout == 0.5)
     }
 
+    @Test func aLayerHasItsOwnModeAndTimeout() throws {
+        let config = try load("""
+        wm.commands = { mode = 'normal', timeout = 500, layers = { ['hyper-w'] = { mode = 'persistent', timeout = 1200 }, ['ctrl-p'] = { mode = 'persistent' } } }
+        """)
+        let commands = config.settings.commands
+
+        #expect(commands.resolved(forPrefix: "hyper-w") == (.persistent, 1.2))
+        #expect(commands.resolved(forPrefix: "ctrl-p") == (.persistent, 0.5))
+        #expect(commands.resolved(forPrefix: "alt-space") == (.normal, 0.5))
+    }
+
+    @Test(arguments: [
+        "wm.commands = { layers = { ['hyper-w'] = { mode = 'forever' } } }",
+        "wm.commands = { layers = { ['hyper-w'] = { timeout = 5 } } }",
+        "wm.commands = { layers = { ['hyper-w'] = { sticky = true } } }",
+        "wm.commands = { layers = { ['nope-w'] = { mode = 'persistent' } } }",
+        "wm.commands = { layers = 3 }",
+    ])
+    func aWrongLayerIsAConfigError(script: String) {
+        #expect(throws: ConfigError.self) { try load(script) }
+    }
+
+    @Test func aModeCanHaveATimeoutInMilliseconds() throws {
+        let config = try load("wm.mode('vim', { h = 'focus left' }, { timeout = 800 })")
+
+        #expect(config.modeOptions["vim"]?.timeout == 0.8)
+    }
+
+    @Test func aModeTimeoutOutOfRangeIsAConfigError() {
+        #expect(throws: ConfigError.self) { try load("wm.mode('vim', {}, { timeout = 5 })") }
+    }
+
     @Test func commandsCanComeFromWmConfigToo() throws {
         let config = try load("wm.config { commands = { mode = 'persistent' } }")
 

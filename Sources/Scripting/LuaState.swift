@@ -715,8 +715,11 @@ private func nativeResetMode(_ L: OpaquePointer?) -> Int32 {
         let mode = readString(L, 1) ?? ""
         if mode == universalMode { throw ConfigError(message: "wm.mode: '*' is reserved for binds with universal = true") }
         if mode == "back" { throw ConfigError(message: "wm.mode: 'back' is reserved: `mode back` goes to the mode before") }
-        let fields = try Fields(readValue(L, 2), owner: "wm.mode", allowed: ["once", "swallow"])
-        let options = ModeOptions(once: try fields.bool("once") ?? false, swallow: try fields.bool("swallow") ?? false)
+        let fields = try Fields(readValue(L, 2), owner: "wm.mode", allowed: ["once", "swallow", "timeout"])
+        // `timeout` is in milliseconds, as in `wm.commands`.
+        let options = ModeOptions(
+            once: try fields.bool("once") ?? false, swallow: try fields.bool("swallow") ?? false,
+            timeout: try fields.number("timeout", min: 100, max: 10_000).map { $0 / 1000 })
         state.modeOptions[mode] = options == ModeOptions() ? nil : options
         state.longPressTimeouts[mode] = nil
         state.binds[mode] = [:]
