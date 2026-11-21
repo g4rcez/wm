@@ -1,12 +1,24 @@
 import Foundation
 
-/// The starter configs that `wm init` writes: the binds of macOS, Windows, i3, Hyprland or Niri.
+/// The starter configs that `wm init` writes: the binds of Omarchy (the default), macOS, Windows, i3, Hyprland or Niri.
+/// The first case is the default: `wm init` with no name and the setup window of the first run start from it.
 public enum InitTemplate: String, CaseIterable, Sendable {
-    case osx, windows, i3, hyprland, niri
+    case omarchy, osx, windows, i3, hyprland, niri
 
-    /// The modifier that the template uses when the user does not choose one. macOS uses ctrl for its Spaces keys; the
-    /// others use alt, the same key as the Mod1 of i3 (the Super key of the other systems clashes with cmd shortcuts).
-    public var defaultMod: String { self == .osx ? "ctrl" : "alt" }
+    /// The modifier that the template uses when the user does not choose one. Omarchy uses cmd, the Super key of a Mac
+    /// keyboard; macOS uses ctrl for its Spaces keys; the others use alt, the same key as the Mod1 of i3 (the Super key of
+    /// the other systems clashes with cmd shortcuts).
+    public var defaultMod: String {
+        switch self {
+        case .omarchy: "cmd"
+        case .osx: "ctrl"
+        default: "alt"
+        }
+    }
+
+    /// The modifiers that this template can use. Omarchy has binds with Super, Super+Alt and Super+Ctrl, so the main key
+    /// cannot be hyper (that is every modifier at once); a bind with alt or ctrl uses cmd in the place of the main key.
+    public var mods: [String] { self == .omarchy ? initModKeys.filter { $0 != "hyper" } : initModKeys }
 }
 
 /// The modifiers that a template can use as its main key. `hyper` is CapsLock (the template turns that on).
@@ -16,13 +28,15 @@ public let initModKeys = ["alt", "cmd", "ctrl", "hyper"]
 public func initConfig(_ template: InitTemplate, mod: String) -> String {
     let body: String
     switch template {
+    case .omarchy: body = omarchyTemplate
     case .osx: body = osxTemplate
     case .windows: body = windowsTemplate
     case .i3: body = i3Template
     case .hyprland: body = hyprlandTemplate
     case .niri: body = niriTemplate
     }
-    return "local mod = \"\(mod)\"\n" + initPrelude + body
+    let prelude = template == .omarchy ? initPrelude.replacingOccurrences(of: "alt, cmd, ctrl or hyper (CapsLock)", with: "alt, cmd or ctrl") : initPrelude
+    return "local mod = \"\(mod)\"\n" + prelude + body
 }
 
 /// Writes `text` to `url`. Returns `false` and leaves the file as it is when it exists and `force` is off.
@@ -296,4 +310,117 @@ bind("minus", "resize width -50")
 bind("equal", "resize width +50")
 bind("v", "window float")
 bind("shift-v", "focus layer")
+"""#
+
+private let omarchyTemplate = #"""
+-- Made by `wm init omarchy` (https://omarchy.org/manual/hotkeys/): the hotkeys of Omarchy, with `mod` in the place of Super.
+-- `mod` is cmd by default, the Super key of a Mac keyboard. Omarchy has binds with Super+Alt and Super+Ctrl: when `mod` is
+-- alt or ctrl, those binds use cmd in its place. The keys of Linux apps use the apps of macOS, and the panels and menus of
+-- Omarchy that macOS has no key for are left out.
+local alt = mod == "alt" and "cmd" or "alt"
+local ctrl = mod == "ctrl" and "cmd" or "ctrl"
+
+wm.config {
+  layout = "tiling",
+  gaps = { inner = 5, outer = 10 },
+  border = { enabled = true, width = 2, active = "#33ccff", inactive = "#595959" },
+  mouse = { move_modifier = drag, resize_modifier = drag },
+}
+
+local function app(keys, name) bind(keys, "exec open -a '" .. name .. "'") end
+
+-- Navigating
+bind("space", "palette")                       -- the Omarchy menu
+bind(alt .. "-space", "overview")              -- the app grid
+bind(ctrl .. "-l", "key press ctrl-cmd-q")     -- lock the computer
+bind("w", "window close")
+bind("q", "window close")
+bind("t", "window float")                      -- tiling or floating
+bind("j", "layout split toggle")
+bind("o", "window sticky")
+bind("p", "window pseudo")
+bind("f", "window fullscreen")
+bind(alt .. "-f", "window maximize")           -- full width
+bind(ctrl .. "-f", "window native-fullscreen")
+bind("shift-r", "daemon reload")
+
+-- Super+L cycles the layouts, Super+Alt+L cycles them in reverse
+local layouts, current = { "tiling", "scrolling", "floating" }, 1
+local function cycle(step)
+  return function()
+    current = (current - 1 + step) % #layouts + 1
+    wm.dispatch("layout set " .. layouts[current])
+  end
+end
+bind("l", cycle(1))
+bind(alt .. "-l", cycle(-1))
+
+-- Workspaces: mod-N shows one, mod-shift-N sends the window there (mod-shift-alt-N stays where it is)
+for n = 1, 9 do
+  bind(n, "workspace " .. n)
+  bind("shift-" .. n, "window send workspace " .. n)
+  bind("shift-" .. alt .. "-" .. n, "window send workspace " .. n .. " --stay")
+end
+bind("tab", "workspace next")
+bind("shift-tab", "workspace prev")
+bind(ctrl .. "-tab", "workspace back")
+
+-- The scratchpad and the Quake console are special workspaces
+bind("s", "workspace special scratch")
+bind(alt .. "-s", "window send workspace special:scratch")
+bind("backtick", "workspace special quake")
+bind("shift-backtick", "window send workspace special:quake")
+
+-- Focus, swap and monitors
+for _, dir in ipairs { "left", "right", "up", "down" } do
+  bind(dir, "focus " .. dir)
+  bind("shift-" .. dir, "swap " .. dir)
+  bind("shift-" .. ctrl .. "-" .. dir, "window send monitor " .. dir)
+  bind("shift-" .. alt .. "-" .. dir, "workspace move monitor " .. dir)
+end
+
+-- Resize: the steps are 50 points, 10 with alt and 200 with ctrl
+bind("minus", "resize width -50")
+bind("equal", "resize width +50")
+bind("shift-minus", "resize height -50")
+bind("shift-equal", "resize height +50")
+bind(alt .. "-minus", "resize width -10")
+bind(alt .. "-equal", "resize width +10")
+bind(ctrl .. "-minus", "resize width -200")
+bind(ctrl .. "-equal", "resize width +200")
+
+-- Groups are the tabs of a column in the scrolling layout
+bind("g", "layout stack tabs")
+bind(alt .. "-g", "layout stack leave")
+bind(alt .. "-tab", "focus next --wrap")
+for n = 1, 5 do bind(alt .. "-" .. n, "focus stack " .. n) end
+
+-- Alt+Tab cycles the windows. It stays out when `mod` is alt, because Super+Tab is the same key then.
+if mod ~= "alt" then
+  wm.bind("alt-tab", "switcher")
+  wm.bind("alt-shift-tab", "switcher prev")
+end
+
+-- Launching apps
+bind("return", "exec " .. terminal)
+bind("shift-return", "exec open -a Safari")
+bind("shift-f", "exec open -a Finder")
+app("shift-m", "Spotify")
+app("shift-slash", "1Password")
+app("shift-q", "Calculator")
+app("shift-t", "Activity Monitor")
+app("shift-c", "Calendar")
+app("shift-e", "Mail")
+app("shift-a", "ChatGPT")
+app("shift-g", "Signal")
+app("shift-p", "Photos")
+app("shift-s", "Maps")
+app("shift-o", "Obsidian")
+app(alt .. "-shift-g", "WhatsApp")
+bind("shift-y", "exec open https://www.youtube.com")
+
+-- Capture and the system
+bind(ctrl .. "-c", "key press cmd-shift-5")             -- the capture menu
+bind(ctrl .. "-" .. alt .. "-c", "key press cmd-shift-4") -- a screenshot of an area
+bind(ctrl .. "-e", "key press ctrl-cmd-space")          -- the emoji picker
 """#

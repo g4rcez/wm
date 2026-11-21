@@ -66,6 +66,9 @@ public final class TemplatePicker {
 
     private let panel = PickerPanel()
     private let view = PickerView()
+    private let blur = NSVisualEffectView()
+    /// The look of the picker, asked at each show so that a reloaded config applies.
+    public var style: @MainActor () -> ResolvedStyle = { AppearanceSettings().resolved() }
     private var selected = 0
     private var entries: [SplitTemplate?] = []
     private var allowsGrid = false
@@ -89,12 +92,7 @@ public final class TemplatePicker {
         panel.level = .popUpMenu
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle, .transient]
         // A blur behind the pictures: the windows under the panel stay out of the way of the text.
-        let blur = NSVisualEffectView()
-        blur.material = .hudWindow
-        blur.blendingMode = .behindWindow
-        blur.state = .active
         blur.wantsLayer = true
-        blur.layer?.cornerRadius = 18
         blur.layer?.masksToBounds = true
         view.autoresizingMask = [.width, .height]
         blur.addSubview(view)
@@ -115,18 +113,26 @@ public final class TemplatePicker {
     /// `workArea` is the focused monitor's usable area in Accessibility coordinates. `templates` are the pictures
     /// (the chain comes last). `current` starts the selection.
     public func show(on workArea: CGRect, templates: [SplitTemplate], current: SplitTemplate?, allowsGrid: Bool = false) {
+        let theme = Theme(style())
+        theme.configure(blur)
+        blur.layer?.cornerRadius = theme.cornerRadius
+        panel.hasShadow = theme.style.shadow
+        view.theme = theme
+        let k = CGFloat(theme.style.scale)
+        let tile = CGSize(width: Self.tile.width * k, height: Self.tile.height * k)
+        let gap = Self.gap * k, padding = Self.padding * k
         entries = TemplateGlyph.entries(templates)
         self.allowsGrid = allowsGrid
         isGridMode = false
         selected = entries.firstIndex { $0 == current } ?? 0
         let rows = (itemCount + Self.columns - 1) / Self.columns
         let size = CGSize(
-            width: 2 * Self.padding + CGFloat(Self.columns) * Self.tile.width + CGFloat(Self.columns - 1) * Self.gap,
-            height: 2 * Self.padding + CGFloat(rows) * Self.tile.height + CGFloat(rows - 1) * Self.gap
+            width: 2 * padding + CGFloat(Self.columns) * tile.width + CGFloat(Self.columns - 1) * gap,
+            height: 2 * padding + CGFloat(rows) * tile.height + CGFloat(rows - 1) * gap
         )
         let rect = CGRect(
             x: workArea.midX - size.width / 2, y: workArea.midY - size.height / 2, width: size.width, height: size.height)
-        view.configure(entries: entries, showsGridTile: allowsGrid, columns: Self.columns, tile: Self.tile, gap: Self.gap, padding: Self.padding)
+        view.configure(entries: entries, showsGridTile: allowsGrid, columns: Self.columns, tile: tile, gap: gap, padding: padding)
         view.selected = selected
         panel.setFrame(Displays.cocoaRect(rect), display: true)
         view.frame = CGRect(origin: .zero, size: size)
@@ -208,6 +214,7 @@ private final class PickerView: NSView {
     private static let titleHeight: CGFloat = 30
 
     var selected = 0 { didSet { needsDisplay = true } }
+    var theme = Theme.placeholder
     var isGridMode = false { didSet { dragStart = nil; dragEnd = nil; needsDisplay = true } }
     var onClick: ((Int) -> Void)?
     /// The cell of the top left corner and the size in cells of the rectangle that the user drew.
@@ -286,15 +293,15 @@ private final class PickerView: NSView {
 
     private func drawGrid() {
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: NSColor(white: 1, alpha: 0.7),
+            .font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: theme.inkColor(0.7),
         ]
         ("Drag to draw a frame. Esc goes back." as NSString).draw(at: CGPoint(x: padding, y: padding), withAttributes: attributes)
         let rect = gridRect
         let screen = NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6)
-        NSColor(white: 1, alpha: 0.06).setFill()
+        theme.inkColor(0.06).setFill()
         screen.fill()
         let cellWidth = rect.width / CGFloat(Self.gridColumns), cellHeight = rect.height / CGFloat(Self.gridRows)
-        NSColor(white: 1, alpha: 0.16).setStroke()
+        theme.inkColor(0.16).setStroke()
         for column in 1..<Self.gridColumns {
             let line = NSBezierPath()
             line.move(to: CGPoint(x: rect.minX + CGFloat(column) * cellWidth, y: rect.minY))
@@ -312,43 +319,42 @@ private final class PickerView: NSView {
                 x: rect.minX + CGFloat(selection.column) * cellWidth, y: rect.minY + CGFloat(selection.row) * cellHeight,
                 width: CGFloat(selection.columns) * cellWidth, height: CGFloat(selection.rows) * cellHeight)
             let box = NSBezierPath(roundedRect: area.insetBy(dx: 2, dy: 2), xRadius: 6, yRadius: 6)
-            NSColor(srgbRed: 0.537, green: 0.706, blue: 0.980, alpha: 0.5).setFill()
+            theme.accent.withAlphaComponent(0.5).setFill()
             box.fill()
         }
     }
 
-    private static let accent = NSColor(srgbRed: 0.537, green: 0.706, blue: 0.980, alpha: 1)
-
     /// One card: the key as a keycap in the corner, a monitor with the picture in the middle, the name under it. `picture`
     /// draws inside the monitor, a rectangle in the 16:10 shape of a screen.
     private func drawCard(_ cell: CGRect, key: String, label: String, isSelected: Bool, picture: (CGRect) -> Void) {
-        let card = NSBezierPath(roundedRect: cell, xRadius: 12, yRadius: 12)
-        NSColor(white: 1, alpha: isSelected ? 0.16 : 0.07).setFill()
+        let cardRadius = max(6, theme.cornerRadius - 6)
+        let card = NSBezierPath(roundedRect: cell, xRadius: cardRadius, yRadius: cardRadius)
+        theme.inkColor(isSelected ? 0.16 : 0.07).setFill()
         card.fill()
         if isSelected {
-            Self.accent.setStroke()
+            theme.accent.setStroke()
             card.lineWidth = 2
             card.stroke()
         }
         let width = cell.width - 30
         let monitor = CGRect(x: cell.midX - width / 2, y: cell.minY + 20, width: width, height: (width * 0.625).rounded())
-        NSColor(white: 1, alpha: isSelected ? 0.1 : 0.06).setFill()
+        theme.inkColor(isSelected ? 0.1 : 0.06).setFill()
         NSBezierPath(roundedRect: monitor, xRadius: 6, yRadius: 6).fill()
         picture(monitor.insetBy(dx: 3, dy: 3))
         if !key.isEmpty {
             let attributes: [NSAttributedString.Key: Any] = [
-                .font: NSFont.monospacedSystemFont(ofSize: 10, weight: .semibold), .foregroundColor: NSColor(white: 1, alpha: isSelected ? 0.9 : 0.65),
+                .font: NSFont.monospacedSystemFont(ofSize: 10, weight: .semibold), .foregroundColor: theme.inkColor(isSelected ? 0.9 : 0.65),
             ]
             let text = key as NSString
             let size = text.size(withAttributes: attributes)
             let cap = CGRect(x: cell.minX + 7, y: cell.minY + 7, width: max(size.height, size.width + 8), height: size.height + 2)
-            NSColor(white: 1, alpha: 0.1).setFill()
+            theme.inkColor(0.1).setFill()
             NSBezierPath(roundedRect: cap, xRadius: 4, yRadius: 4).fill()
             text.draw(at: CGPoint(x: cap.midX - size.width / 2, y: cap.minY + 1), withAttributes: attributes)
         }
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 11.5, weight: isSelected ? .semibold : .regular),
-            .foregroundColor: NSColor(white: 1, alpha: isSelected ? 1 : 0.65),
+            .foregroundColor: theme.inkColor(isSelected ? 1 : 0.65),
         ]
         let text = label as NSString
         let size = text.size(withAttributes: attributes)
@@ -357,7 +363,7 @@ private final class PickerView: NSView {
 
     private func drawGridTile(_ cell: CGRect, isSelected: Bool) {
         drawCard(cell, key: "g", label: "draw", isSelected: isSelected) { glyph in
-            NSColor(white: 1, alpha: isSelected ? 0.9 : 0.6).setStroke()
+            theme.inkColor(isSelected ? 0.9 : 0.6).setStroke()
             for column in 0..<3 {
                 for row in 0..<3 {
                     let box = CGRect(x: glyph.minX + CGFloat(column) * glyph.width / 3, y: glyph.minY + CGFloat(row) * glyph.height / 3, width: glyph.width / 3, height: glyph.height / 3)
@@ -371,8 +377,10 @@ private final class PickerView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         // The blur of the panel is behind: only a tint goes here, so that the text under the panel cannot be read through it.
-        NSColor(white: 0.05, alpha: 0.45).setFill()
-        NSBezierPath(roundedRect: bounds, xRadius: 18, yRadius: 18).fill()
+        if let tint = theme.tint {
+            tint.setFill()
+            NSBezierPath(roundedRect: bounds, xRadius: theme.cornerRadius, yRadius: theme.cornerRadius).fill()
+        }
         if isGridMode {
             drawGrid()
             return
@@ -381,7 +389,7 @@ private final class PickerView: NSView {
         for (index, template) in entries.enumerated() {
             let isSelected = index == selected
             drawCard(frame(of: index), key: TemplateGlyph.key(template), label: TemplateGlyph.label(template), isSelected: isSelected) { glyph in
-                TemplateGlyph.draw(template, in: glyph, color: NSColor(white: 1, alpha: isSelected ? 0.95 : 0.75))
+                TemplateGlyph.draw(template, in: glyph, color: theme.inkColor(isSelected ? 0.95 : 0.75))
             }
         }
     }
