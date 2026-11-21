@@ -4,10 +4,10 @@ description: "The keys of the six `wm init` templates: Omarchy, macOS, Windows, 
 group: Configure
 order: 6
 ---
-`wm init <name>` writes `~/.config/wm/init.lua` with the keys of one system (see [First five minutes](/docs/first-five-minutes)).
+`wm init <name>` writes the keys of one system to `~/.config/wm/shortcuts.toml` (`wm init <name> --lua` writes them to `init.lua` as Lua) (see [First five minutes](/docs/first-five-minutes)).
 This page lists them.
 
-- `mod` is the main modifier. You pick it in `wm init` (or with `--mod=alt`). To change it later, edit `local mod = "..."` at the top of `init.lua`.
+- `mod` is the main modifier. You pick it in `wm init` (or with `--mod=alt`). To change it later, run `wm init --force` again. With `--lua`, edit `local mod = "..."` at the top of `init.lua` instead.
 - `N` is a digit from 1 to 9.
 - Keys with a fixed modifier (`alt-h`, `cmd-tab`) ignore `mod`.
 - Every template also loads `shortcuts.toml` with `wm.shortcuts()`.

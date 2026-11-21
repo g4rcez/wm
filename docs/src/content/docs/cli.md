@@ -33,7 +33,7 @@ INSPECT          doctor [--json] | list [windows|workspaces|monitors|keyboards|m
 MEMORY           memory list | forget <app> [--title=<text>] [--all] | clear
 DAEMON           daemon start | stop | status | reload | version
 EDITOR           lsp [--write] [--force]
-CONFIG           init [template] [--mod=<alt|cmd|ctrl|hyper>] [--force]
+CONFIG           init [template] [--mod=<alt|cmd|ctrl|hyper>] [--lua] [--force]
                  config check [path]
 SHELL            completion <zsh|bash>
 ```

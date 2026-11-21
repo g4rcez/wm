@@ -43,7 +43,29 @@ wm.bind("alt-space>l", "resize width +50")
 - A key that is not a command of the prefix ends the sequence and goes on to the app. Fast typing loses no key. The first key after the prefix keeps the old rule: a wrong key is eaten.
 - A command that goes to another mode (`mode resize`) ends the sequence.
 - `wm.config { commands = { ... } }` is the same as `wm.commands = { ... }`.
-- Binding modes (`wm.mode`) are not changed. They stay on until you leave them.
+- Binding modes (`wm.mode`) stay on until you leave them, unless the mode has a `timeout` (see below).
+
+#### One setting per layer
+
+`layers` gives a layer its own `mode` and `timeout`, keyed by the first chord of its sequences. What a layer leaves out comes from `wm.commands`.
+
+```lua
+wm.commands = {
+    mode = "normal",                                        -- the default for every layer
+    layers = {
+        ["hyper-w"] = { mode = "persistent", timeout = 500 },   -- windows: a chain of commands
+        ["hyper-o"] = { mode = "normal" },                      -- open apps: one command
+    },
+}
+```
+
+#### A mode that ends by itself
+
+A mode (`wm.mode`) with `timeout` is a chain of commands too: it ends when `timeout` milliseconds pass without a command, and the mode before it is back (as `mode back`). The wait for the first command has no timeout, and each command restarts the timer.
+
+```lua
+wm.mode("resize", { h = "resize dir left 50", l = "resize dir right 50" }, { timeout = 1000 })
+```
 
 In one mode, two things are config errors:
 

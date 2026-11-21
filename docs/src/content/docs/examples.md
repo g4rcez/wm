@@ -35,6 +35,7 @@ While the mode is active, a panel lists its keys with the text from `description
 | Option | What it does |
 |---|---|
 | `once = true` | The mode ends after the first bind of it has run, and the mode before it is back. A bind that goes to another mode itself keeps that mode. |
+| `timeout = 800` | The mode ends after 800 ms (100 to 10000) without a command, and the mode before it is back: a chain of commands that you leave by waiting. The wait for the first command has no timeout; each command restarts the timer. |
 | `swallow = true` | A key that the mode does not bind is not typed into the app. Without it, such keys go on to the app (a hyper chord with no bind is always swallowed). |
 
 `wm mode back` (or `wm.dispatch("mode back")`) goes back to the mode before the current one.

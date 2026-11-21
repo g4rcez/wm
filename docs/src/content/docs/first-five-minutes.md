@@ -12,8 +12,9 @@ In a terminal, run `wm init [omarchy|osx|windows|i3|hyprland|niri]` to start fro
 
 - Without a name, it writes the [Omarchy](https://omarchy.org/manual/hotkeys/) keys. The setup window uses the same default.
 - It asks for the main modifier: `alt`, `cmd`, `ctrl` or `hyper`. `--mod=alt` skips the question.
-- It writes `~/.config/wm/init.lua`.
-- If that file exists, `wm init` prints the template and leaves the file alone. `--force` replaces it.
+- It writes the binds to `~/.config/wm/shortcuts.toml`, and `~/.config/wm/init.lua` with the settings, the modes and the line `wm.shortcuts()` (see [shortcuts.toml](/docs/config#shortcutstoml)). The Shortcuts window edits the binds.
+- `--lua` writes everything to `init.lua`, as Lua, and no `shortcuts.toml`.
+- If one of the files exists, `wm init` prints the template and leaves the files alone. `--force` replaces them.
 
 The Omarchy template uses `cmd` as its main modifier, in the place of Super. `alt` and `ctrl` also work. `hyper` does not:
 Omarchy also has binds with Super+Alt and Super+Ctrl, and those use `cmd` when the main modifier is that key.
