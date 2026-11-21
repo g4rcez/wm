@@ -65,6 +65,7 @@
 ---| "overview" | "overview open" | "overview close"
 ---| "hints" | "hints open" | "hints close"
 ---| "scroll" | "scroll open" | "scroll close"
+---| "jump" | "jump open" | "jump close" | "jump --swap" | "jump --close"
 ---| "select" | "select open" | "select close"
 ---| "mode main"
 ---| "pointer window" | "pointer monitor"
@@ -198,8 +199,6 @@
 ---@class (exact) wm.SwitcherConfig
 ---@field thumbnails? boolean Picture of each window (needs Screen Recording). Default true.
 ---@field delay? number Seconds before the overlay shows, >= 0. Default 0.12.
----@field background? wm.Color Default "#0000008c".
----@field selected? wm.Color Color of the selected window. Default "#89b4fa".
 ---@field max_scale? number Largest scale of the miniature, 0.3 to 1. Default 0.85.
 
 ---@class (exact) wm.PrefixOffset
@@ -212,11 +211,27 @@
 ---@field show_keys? boolean List the keys that can be pressed next (inside a mode, or after a prefix). Default true.
 ---@field position? wm.LabelPosition Default "bottom-center". "top" and "bottom" are the centered positions.
 ---@field offset? wm.PrefixOffset Moves the label from `position`.
----@field font_size? number 8 to 96. Default 11.
----@field font? string Name of a font, for example "SF Pro Rounded" or "Menlo". Empty or missing: the system font.
----@field background? wm.Color Default "#1e1e2ecc".
----@field foreground? wm.Color Default "#d6dff5".
----@field accent? wm.Color Color of the mode chip (drawn at 40% opacity). Default "#89b4fa".
+
+--- How the overlays look. One look for all of them: the palette, the cheatsheet, the switcher, the overview, the template picker
+--- and the key label. Every key is optional; a key that is absent comes from the preset of `style`.
+---@class (exact) wm.AppearanceConfig
+---@field style? "native"|"hud" "native" (default): system materials, light and dark, the accent and the selection of macOS. "hud": a dark blur with big corners and a blue accent.
+---@field density? "compact"|"comfortable"|"spacious" How much room rows, panels, chips and paddings take. Default "comfortable".
+---@field theme? "system"|"light"|"dark" Light or dark. Default "system" (the "hud" style is dark).
+---@field material? "popover"|"menu"|"hud"|"sidebar"|"sheet"|"window"|"none" The blur behind the overlays. "none" is a flat system color, without blur. The overview draws no blur and ignores it. Default "popover" ("hud" in the hud style).
+---@field accent? wm.Color The selected tile, the active tab, the chip of the mode. Default: the accent color of macOS.
+---@field background? wm.Color A tint over the blur. In the overview it is the dim layer behind the workspaces (never more opaque than 85%). Default: none.
+---@field foreground? wm.Color The text. Default: the label color of macOS.
+---@field secondary? wm.Color Quieter text. Default: the secondary label color of macOS.
+---@field selection? wm.Color The highlight of the selected row of the palette. Default: the selection color of macOS, with its own text color.
+---@field border? wm.Color The line around the overlays. Default: the separator color of macOS, where an overlay has a line.
+---@field border_width? number Points, 0 to 6. Default 1.
+---@field radius? number Corner radius in points, 0 to 48. Default 12 (20 in the hud style).
+---@field shadow? boolean Shadow of the windows. The switcher and the overview cover the screen and have none. Default true.
+---@field font? string Name of a font, for example "SF Pro Rounded". Default: the system font.
+---@field font_size? number Body size in points, 8 to 40. The other text scales with it. Default 13.
+---@field mono_font? string Name of a monospaced font, for hints and key caps. Default: the system one.
+---@field animation? number Seconds of the fades, 0 to 2. 0 turns them off. Default 0.12.
 
 ---@class (exact) wm.MasterConfig
 ---@field ratio? number Share of the screen that the master area takes: 0.1 to 0.9. Default 0.55.
@@ -312,7 +327,6 @@
 ---@class (exact) wm.OverviewConfig
 ---@field zoom? number A workspace is drawn as its screen times this, 0.2 to 0.75. Default 0.5.
 ---@field gap? number Points between two workspaces, 0 to 200. Default 48.
----@field backdrop? wm.Color The dim layer behind the workspaces. Default "#0f0f14db".
 
 ---@class (exact) wm.HintsConfig
 ---@field background? wm.Color The background of a label in hint mode, and the places of the text in select mode. Default "#ffd60af5".
@@ -384,6 +398,7 @@
 ---@field floating? wm.FloatingConfig Floating windows: whether they open where the last one closed.
 ---@field keyboards? wm.KeyboardsConfig Which keyboards wm manages: `{ default = true, ["Keyboard name"] = false, ["046d:c52b"] = true }`. See `wm query keyboards`.
 ---@field overview? wm.OverviewConfig The overview (`wm overview`): all workspaces, one under the other.
+---@field appearance? wm.AppearanceConfig How the overlays look: native macOS by default, or `style = "hud"`; colors, radius, fonts and sizes per overlay.
 ---@field hints? wm.HintsConfig The colors of the labels of `hints` and of the areas of `scroll`.
 ---@field select? wm.SelectConfig The keys of the select step of `wm select`.
 ---@field special? wm.SpecialConfig Special workspaces (`workspace special`): size, dim backdrop, when they hide.
