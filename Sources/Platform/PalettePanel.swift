@@ -58,10 +58,22 @@ public final class PalettePanel: NSObject, NSTextFieldDelegate, NSTableViewDataS
 
     /// The highlight of the selected row: a rounded, translucent rectangle, not the blue of the system.
     private final class RowView: NSTableRowView {
+        var theme = Theme.placeholder
+
         override func drawSelection(in dirtyRect: NSRect) {
             guard isSelected else { return }
-            NSColor.labelColor.withAlphaComponent(0.09).setFill()
-            NSBezierPath(roundedRect: bounds.insetBy(dx: 7, dy: 0), xRadius: 10, yRadius: 10).fill()
+            let radius = min(10, max(4, theme.cornerRadius / 2))
+            theme.selection.setFill()
+            NSBezierPath(roundedRect: bounds.insetBy(dx: radius > 6 ? 7 : 6, dy: 0), xRadius: radius, yRadius: radius).fill()
+        }
+    }
+
+    /// The texts of a row, so that the selection can recolor them.
+    private final class RowCell: NSView {
+        var texts: [(field: NSTextField, normal: NSColor)] = []
+
+        func setSelected(_ selected: Bool, theme: Theme) {
+            for (field, normal) in texts { field.textColor = theme.text(normal, selected: selected) }
         }
     }
 
@@ -69,17 +81,17 @@ public final class PalettePanel: NSObject, NSTextFieldDelegate, NSTableViewDataS
     private final class KeyCap: NSView {
         private let label: NSTextField
 
-        init(_ text: String) {
+        init(_ text: String, theme: Theme) {
             label = NSTextField(labelWithString: text)
-            label.font = .systemFont(ofSize: 12, weight: .medium)
-            label.textColor = .secondaryLabelColor
+            label.font = theme.font(12, .medium)
+            label.textColor = theme.secondary
             label.sizeToFit()
             let width = max(22, label.frame.width + 12)
             super.init(frame: NSRect(x: 0, y: 0, width: width, height: 22))
             wantsLayer = true
-            layer?.cornerRadius = 6
+            layer?.cornerRadius = min(6, max(3, theme.cornerRadius / 3))
             layer?.borderWidth = 1
-            layer?.borderColor = NSColor.separatorColor.cgColor
+            layer?.borderColor = theme.cg(theme.separator)
             label.frame = NSRect(x: (width - label.frame.width) / 2, y: (22 - label.frame.height) / 2, width: label.frame.width, height: label.frame.height)
             addSubview(label)
         }
@@ -91,7 +103,6 @@ public final class PalettePanel: NSObject, NSTextFieldDelegate, NSTableViewDataS
     /// With the preview the panel is wider: a list at the left and the picture of the window at the right.
     private static let previewWidth: CGFloat = 900
     private static let previewListWidth: CGFloat = 400
-    private static let rowHeight: CGFloat = 38
     private static let headerHeight: CGFloat = 60
     private static let sectionHeight: CGFloat = 30
     /// With a list the panel has one height, however many rows there are, so it does not jump while you type.
@@ -99,7 +110,6 @@ public final class PalettePanel: NSObject, NSTextFieldDelegate, NSTableViewDataS
     /// The action of the selected row floats over the bottom right corner of the list, in a capsule.
     private static let actionHeight: CGFloat = 36
     private static let actionMargin: CGFloat = 8
-    private static let cornerRadius: CGFloat = 24
     private static let hintsWidth: CGFloat = 200
 
     /// The text changed.
@@ -134,17 +144,26 @@ public final class PalettePanel: NSObject, NSTextFieldDelegate, NSTableViewDataS
     private var placing = false
     private var listWidth = PalettePanel.plainWidth
 
-    private var panelWidth: CGFloat { previewsEnabled ? Self.previewWidth : Self.plainWidth }
+    /// The look of the palette, asked at each show so that a reloaded config applies.
+    public var style: @MainActor () -> ResolvedStyle = { AppearanceSettings().resolved() }
+    private var theme = Theme.placeholder
+    private let tintView = NSView()
+
+    private var rowHeight: CGFloat { CGFloat(theme.style.paletteRowHeight) }
+    private var plainWidth: CGFloat { CGFloat(theme.style.paletteWidth) }
+    private var panelWidth: CGFloat { previewsEnabled ? plainWidth + (Self.previewWidth - Self.plainWidth) : plainWidth }
 
     public override init() { super.init() }
 
     public var isOpen: Bool { panel?.isVisible == true }
 
     public func show(text: String, placeholder: String) {
+        theme = Theme(style())
         let panel = self.panel ?? makePanel()
         self.panel = panel
+        applyTheme(to: panel)
         field.stringValue = text
-        field.placeholderAttributedString = NSAttributedString(string: placeholder, attributes: [.font: NSFont.systemFont(ofSize: 20), .foregroundColor: NSColor.tertiaryLabelColor])
+        field.placeholderAttributedString = NSAttributedString(string: placeholder, attributes: [.font: theme.font(20), .foregroundColor: theme.tertiary])
         setRows([], section: "", preview: false)
         // Where the user left it, as a fraction of the screen that has the mouse.
         let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
@@ -201,6 +220,47 @@ public final class PalettePanel: NSObject, NSTextFieldDelegate, NSTableViewDataS
 
     // MARK: - Building
 
+    /// What a style can change in a panel that already exists: the blur, the corners, the colors and the type.
+    private func applyTheme(to panel: KeyPanel) {
+        guard let background = panel.contentView as? NSVisualEffectView else { return }
+        theme.configure(background)
+        panel.hasShadow = theme.style.shadow
+        background.layer?.cornerRadius = theme.cornerRadius
+        background.layer?.borderWidth = CGFloat(theme.style.borderWidth)
+        background.layer?.borderColor = theme.cg(theme.separator)
+        tintView.layer?.backgroundColor = theme.tint?.cgColor
+        tintView.isHidden = theme.tint == nil
+        icon.contentTintColor = theme.secondary
+        field.font = theme.font(20)
+        field.textColor = theme.foreground
+        section.font = theme.font(12, .semibold)
+        section.textColor = theme.secondary
+        table.rowHeight = rowHeight
+        footer.layer?.borderColor = theme.cg(theme.separator)
+        previewPicture.layer?.borderColor = theme.cg(theme.separator)
+        previewPicture.layer?.cornerRadius = min(8, max(3, theme.cornerRadius / 3))
+        rebuildHints()
+    }
+
+    /// The `>` and `/` keys in the header.
+    private func rebuildHints() {
+        hints.subviews.forEach { $0.removeFromSuperview() }
+        var x: CGFloat = 0
+        for (key, name) in [(">", "Commands"), ("/", "Menu")] {
+            let cap = KeyCap(key, theme: theme)
+            cap.frame.origin = NSPoint(x: x, y: 0)
+            let label = NSTextField(labelWithString: name)
+            label.font = theme.font(13)
+            label.textColor = theme.tertiary
+            label.sizeToFit()
+            label.frame.origin = NSPoint(x: cap.frame.maxX + 6, y: (22 - label.frame.height) / 2)
+            hints.addSubview(cap)
+            hints.addSubview(label)
+            x = label.frame.maxX + 14
+        }
+        hints.frame.size = NSSize(width: x - 14, height: 22)
+    }
+
     private func makePanel() -> KeyPanel {
         let panel = KeyPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.isOpaque = false
@@ -213,46 +273,27 @@ public final class PalettePanel: NSObject, NSTextFieldDelegate, NSTableViewDataS
         panel.delegate = self
 
         let background = NSVisualEffectView()
-        background.material = .hudWindow
-        background.state = .active
         background.wantsLayer = true
-        background.layer?.cornerRadius = Self.cornerRadius
         background.layer?.cornerCurve = .continuous
         background.layer?.masksToBounds = true
-        background.layer?.borderWidth = 1
-        background.layer?.borderColor = NSColor.separatorColor.cgColor
         panel.contentView = background
+        // A tint over the blur, under everything else.
+        tintView.wantsLayer = true
+        tintView.autoresizingMask = [.width, .height]
+        background.addSubview(tintView)
 
         icon.image = NSImage(systemSymbolName: "rectangle.split.2x2", accessibilityDescription: nil)
-        icon.contentTintColor = .secondaryLabelColor
         icon.symbolConfiguration = .init(pointSize: 18, weight: .regular)
         background.addSubview(icon)
 
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
-        field.font = .systemFont(ofSize: 20)
         field.delegate = self
         background.addSubview(field)
 
-        var x: CGFloat = 0
-        for (key, name) in [(">", "Commands"), ("/", "Menu")] {
-            let cap = KeyCap(key)
-            cap.frame.origin = NSPoint(x: x, y: 0)
-            let label = NSTextField(labelWithString: name)
-            label.font = .systemFont(ofSize: 13)
-            label.textColor = .tertiaryLabelColor
-            label.sizeToFit()
-            label.frame.origin = NSPoint(x: cap.frame.maxX + 6, y: (22 - label.frame.height) / 2)
-            hints.addSubview(cap)
-            hints.addSubview(label)
-            x = label.frame.maxX + 14
-        }
-        hints.frame.size = NSSize(width: x - 14, height: 22)
         background.addSubview(hints)
 
-        section.font = .systemFont(ofSize: 12, weight: .semibold)
-        section.textColor = .secondaryLabelColor
         background.addSubview(section)
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("row"))
@@ -261,7 +302,6 @@ public final class PalettePanel: NSObject, NSTextFieldDelegate, NSTableViewDataS
         table.headerView = nil
         // The default style adds its own padding at both sides; the rows draw their own insets.
         table.style = .plain
-        table.rowHeight = Self.rowHeight
         table.intercellSpacing = .zero
         table.backgroundColor = .clear
         table.allowsEmptySelection = false
@@ -281,10 +321,8 @@ public final class PalettePanel: NSObject, NSTextFieldDelegate, NSTableViewDataS
         background.addSubview(divider)
         previewPicture.wantsLayer = true
         previewPicture.imageScaling = .scaleProportionallyUpOrDown
-        previewPicture.layer?.cornerRadius = 8
         previewPicture.layer?.masksToBounds = true
         previewPicture.layer?.borderWidth = 1
-        previewPicture.layer?.borderColor = NSColor.separatorColor.cgColor
         previewIcon.imageScaling = .scaleProportionallyUpOrDown
         previewArea.addSubview(previewPicture)
         previewArea.addSubview(previewIcon)
@@ -297,7 +335,6 @@ public final class PalettePanel: NSObject, NSTextFieldDelegate, NSTableViewDataS
         footer.layer?.cornerRadius = Self.actionHeight / 2
         footer.layer?.masksToBounds = true
         footer.layer?.borderWidth = 1
-        footer.layer?.borderColor = NSColor.separatorColor.cgColor
         background.addSubview(footer)
         return panel
     }
@@ -315,6 +352,7 @@ public final class PalettePanel: NSObject, NSTextFieldDelegate, NSTableViewDataS
         panel.setFrame(frame, display: true)
         placing = false
         let bounds = content.bounds
+        tintView.frame = bounds
         listWidth = showsPreview ? Self.previewListWidth : bounds.width
         let top = bounds.height - Self.headerHeight
         icon.frame = NSRect(x: 15, y: top + (Self.headerHeight - 22) / 2, width: 22, height: 22)
@@ -363,11 +401,11 @@ public final class PalettePanel: NSObject, NSTextFieldDelegate, NSTableViewDataS
         }
         let row = rows[table.selectedRow]
         let label = NSTextField(labelWithString: row.action)
-        label.font = .systemFont(ofSize: 13, weight: .medium)
-        label.textColor = .labelColor
+        label.font = theme.font(13, .medium)
+        label.textColor = theme.foreground
         label.sizeToFit()
         label.frame.origin = NSPoint(x: 14, y: (Self.actionHeight - label.frame.height) / 2)
-        let key = KeyCap(row.key)
+        let key = KeyCap(row.key, theme: theme)
         key.frame.origin = NSPoint(x: label.frame.maxX + 8, y: (Self.actionHeight - 22) / 2)
         footer.addSubview(label)
         footer.addSubview(key)
@@ -443,45 +481,54 @@ public final class PalettePanel: NSObject, NSTextFieldDelegate, NSTableViewDataS
 
     public func tableViewSelectionDidChange(_ notification: Notification) {
         updateFooter()
+        for row in 0..<rows.count {
+            (table.view(atColumn: 0, row: row, makeIfNecessary: false) as? RowCell)?.setSelected(row == table.selectedRow, theme: theme)
+        }
     }
 
     public func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
-        RowView()
+        let view = RowView()
+        view.theme = theme
+        return view
     }
 
     public func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let data = rows[row]
-        let cell = NSView(frame: NSRect(x: 0, y: 0, width: listWidth, height: Self.rowHeight))
+        let cell = RowCell(frame: NSRect(x: 0, y: 0, width: listWidth, height: rowHeight))
         let left: CGFloat = data.indent ? 37 : 15
         // The list is narrow beside the preview: the type of the row is its icon and indent.
         let accessory = NSTextField(labelWithString: showsPreview ? "" : data.accessory)
-        accessory.font = .systemFont(ofSize: 14)
-        accessory.textColor = .secondaryLabelColor
+        accessory.font = theme.font(14)
+        accessory.textColor = theme.secondary
         accessory.sizeToFit()
-        accessory.frame.origin = NSPoint(x: listWidth - 16 - accessory.frame.width, y: (Self.rowHeight - accessory.frame.height) / 2)
-        let picture = NSImageView(frame: NSRect(x: left, y: (Self.rowHeight - 22) / 2, width: 22, height: 22))
+        accessory.frame.origin = NSPoint(x: listWidth - 16 - accessory.frame.width, y: (rowHeight - accessory.frame.height) / 2)
+        let picture = NSImageView(frame: NSRect(x: left, y: (rowHeight - 22) / 2, width: 22, height: 22))
         picture.image = data.icon
         picture.imageScaling = .scaleProportionallyUpOrDown
         let textX = left + 22 + 12
         let room = accessory.frame.minX - 12 - textX
         let title = NSTextField(labelWithString: data.title)
-        title.font = .systemFont(ofSize: 14, weight: .medium)
+        title.font = theme.font(14, .medium)
+        title.textColor = theme.foreground
         title.lineBreakMode = .byTruncatingTail
         title.sizeToFit()
-        title.frame = NSRect(x: textX, y: (Self.rowHeight - title.frame.height) / 2, width: min(title.frame.width, room), height: title.frame.height)
+        title.frame = NSRect(x: textX, y: (rowHeight - title.frame.height) / 2, width: min(title.frame.width, room), height: title.frame.height)
         cell.addSubview(picture)
         cell.addSubview(title)
         if !data.subtitle.isEmpty, room - title.frame.width > 40 {
             let subtitle = NSTextField(labelWithString: data.subtitle)
-            subtitle.font = .systemFont(ofSize: 14)
-            subtitle.textColor = .secondaryLabelColor
+            subtitle.font = theme.font(14)
+            subtitle.textColor = theme.secondary
             subtitle.lineBreakMode = .byTruncatingMiddle
             subtitle.sizeToFit()
             let x = title.frame.maxX + 12
-            subtitle.frame = NSRect(x: x, y: (Self.rowHeight - subtitle.frame.height) / 2, width: min(subtitle.frame.width, accessory.frame.minX - 12 - x), height: subtitle.frame.height)
+            subtitle.frame = NSRect(x: x, y: (rowHeight - subtitle.frame.height) / 2, width: min(subtitle.frame.width, accessory.frame.minX - 12 - x), height: subtitle.frame.height)
             cell.addSubview(subtitle)
+            cell.texts.append((subtitle, theme.secondary))
         }
         cell.addSubview(accessory)
+        cell.texts += [(title, theme.foreground), (accessory, theme.secondary)]
+        cell.setSelected(row == table.selectedRow, theme: theme)
         return cell
     }
 }

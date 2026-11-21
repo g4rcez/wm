@@ -68,7 +68,7 @@ final class OnboardingWindow: NSObject, NSWindowDelegate {
         presetPopup.target = self
         presetPopup.action = #selector(presetChanged)
         presetPopup.setAccessibilityLabel("Starter config")
-        modPopup.addItems(withTitles: initModKeys)
+        modPopup.addItems(withTitles: InitTemplate.allCases[0].mods)
         modPopup.setAccessibilityLabel("Main modifier key")
         modPopup.selectItem(withTitle: InitTemplate.allCases[0].defaultMod)
         writeButton.title = "Write config"
@@ -161,7 +161,10 @@ final class OnboardingWindow: NSObject, NSWindowDelegate {
     @objc private func presetChanged() {
         let index = presetPopup.indexOfSelectedItem
         guard InitTemplate.allCases.indices.contains(index) else { return }
-        modPopup.selectItem(withTitle: InitTemplate.allCases[index].defaultMod)
+        let template = InitTemplate.allCases[index]
+        modPopup.removeAllItems()
+        modPopup.addItems(withTitles: template.mods)
+        modPopup.selectItem(withTitle: template.defaultMod)
     }
 
     @objc private func writeConfig() {

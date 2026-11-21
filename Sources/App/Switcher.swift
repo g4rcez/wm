@@ -327,17 +327,16 @@ final class SwitcherController {
         }
     }
 
-    private static func nsColor(_ color: Color) -> NSColor {
-        NSColor(red: color.red, green: color.green, blue: color.blue, alpha: color.alpha)
-    }
+    private func style() -> ResolvedStyle { manager.settings.appearance.resolved() }
 
     /// The transform that fits a layout into most of the screen; the overlay adds its own padding and title row.
     private func fit(_ overview: LayoutOverview, on monitor: Monitor) -> CGAffineTransform {
         let settings = manager.settings.switcher
+        let chrome = SwitcherOverlay.chromeSize(scale: manager.settings.appearance.density.scale)
         let bounds = CGRect(
             x: 0, y: 0,
-            width: monitor.frame.width * settings.maxScale - SwitcherOverlay.chromeSize.width,
-            height: monitor.frame.height * settings.maxScale - SwitcherOverlay.chromeSize.height
+            width: monitor.frame.width * settings.maxScale - chrome.width,
+            height: monitor.frame.height * settings.maxScale - chrome.height
         )
         return Miniature.transform(fitting: Array(overview.frames.values) + overview.viewports, into: bounds, padding: 0, maxScale: 1)
     }
@@ -509,16 +508,14 @@ final class SwitcherController {
         current.shown = true
         session = current
         if let data = current.overview {
-            let settings = manager.settings.switcher
             overviewOverlay.show(
                 geometry: data.geometry, rows: data.rows, cards: data.cards, row: data.focusedRow, selected: current.model.selected,
-                query: data.query, accent: Self.nsColor(settings.selected), backdrop: Self.nsColor(manager.settings.overview.backdrop),
-                on: current.monitorFrame, animated: data.animated)
+                query: data.query, style: style(), on: current.monitorFrame, animated: data.animated)
             if !data.query.isEmpty { overviewOverlay.setSearch(data.query, matches: matches(in: data), total: data.cards.count) }
         } else {
             overlay.show(
                 tiles: current.tiles, viewports: current.viewports, labels: [], panelSize: current.panelSize,
-                selected: current.model.selected, settings: manager.settings.switcher, on: current.monitorFrame
+                selected: current.model.selected, style: style(), on: current.monitorFrame
             )
         }
         guard manager.settings.switcher.thumbnails, ThumbnailService.hasPermission else { return }

@@ -50,11 +50,14 @@ final class InputRouter {
     /// While the palette is open its text field gets every key, so no bind runs; remaps still do, and the panel gets their target
     /// (`hyper-j` → `down`). The `--cmdtab` palette takes Tab and the arrow keys itself, so that macOS does not see its Cmd+Tab.
     var palette: PaletteController?
+    /// The cheatsheet panel reads its own keys: the router lets them through while it is open.
+    var cheatsheet: CheatsheetController?
     /// Set by the app: the template picker takes over the keys while it is open.
     var picker: TemplatePicker?
     /// Set by the app: hint mode, scroll mode and select mode take over the keys while they are on.
     var hints: HintController?
     var scroller: ScrollController?
+    var jump: JumpController?
     var selector: SelectController?
     /// While set (the Shortcuts window records a shortcut), every key press goes to this closure and nothing else: no bind, remap
     /// or sequence runs, and the app under the window does not see the key. The hyper key counts, as in any chord.
@@ -118,6 +121,7 @@ final class InputRouter {
                 switcher?.pointerPressed(at: event.location)
                 hints?.pointerPressed()
                 scroller?.pointerPressed()
+                jump?.pointerPressed()
                 selector?.pointerPressed()
             }
             return manager.handleMouse(event)
@@ -196,18 +200,20 @@ final class InputRouter {
     }
 
     private var overlayIsOpen: Bool {
-        hints?.isOpen == true || scroller?.isOpen == true || selector?.isOpen == true
-            || palette?.isOpen == true || switcher?.isOpen == true || picker?.isOpen == true
+        hints?.isOpen == true || scroller?.isOpen == true || jump?.isOpen == true || selector?.isOpen == true
+            || palette?.isOpen == true || switcher?.isOpen == true || picker?.isOpen == true || cheatsheet?.isOpen == true
     }
 
     /// The open panel (hints, scroll, select, palette, switcher, template picker) takes the key. `nil` when no panel is open.
     private func overlayKey(_ key: String, flags: CGEventFlags) -> Bool? {
         if let hints, hints.isOpen { return hints.handleKey(key, flags: flags) }
         if let scroller, scroller.isOpen { return scroller.handleKey(key, flags: flags) }
+        if let jump, jump.isOpen { return jump.handleKey(key, flags: flags) }
         if let selector, selector.isOpen { return selector.handleKey(key, flags: flags) }
         if let palette, palette.isOpen { return palette.handleKey(key, flags: flags) }
         if let switcher, switcher.isOpen { return switcher.handleKey(key, flags: flags) }
         if let picker, picker.isOpen { return picker.handleKey(key) }
+        if let cheatsheet, cheatsheet.isOpen { return cheatsheet.handleKey(key, flags: flags) }
         return nil
     }
 

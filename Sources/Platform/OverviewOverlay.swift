@@ -63,6 +63,7 @@ public final class OverviewOverlay {
     /// The column of workspaces: as tall as the geometry says, and moved up and down to scroll.
     private let world = CALayer()
     private let search = SearchLayer()
+    private var theme = Theme.placeholder
 
     private var slots: [SlotLayer] = []
     private var cards: [WindowID: WindowCardLayer] = [:]
@@ -97,9 +98,10 @@ public final class OverviewOverlay {
     /// `monitor` is the screen frame in Accessibility coordinates; the overview covers it. `row` is the slot that starts in the
     /// middle. With `animated` the overview fades in; else it is just there.
     public func show(
-        geometry: OverviewGeometry, rows: [RowInfo], cards newCards: [Card], row: Int, selected: WindowID?, query: String, accent: NSColor,
-        backdrop color: NSColor, on monitor: CGRect, animated: Bool
+        geometry: OverviewGeometry, rows: [RowInfo], cards newCards: [Card], row: Int, selected: WindowID?, query: String,
+        style: ResolvedStyle, on monitor: CGRect, animated: Bool
     ) {
+        theme = Theme(style)
         generation += 1
         isHiding = false
         root.layer?.removeAllAnimations()
@@ -111,15 +113,15 @@ public final class OverviewOverlay {
         root.frame = CGRect(origin: .zero, size: cocoa.size)
         screenSize = cocoa.size
         let scale = NSScreen.screens.first { $0.frame.intersects(cocoa) }?.backingScaleFactor ?? 2
-        let accentColor = accent.cgColor
+        let accentColor = theme.cg(theme.accent)
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         backdrop.frame = root.bounds
-        backdrop.backgroundColor = color.cgColor
+        backdrop.backgroundColor = theme.style.overviewBackdrop.map(Theme.cgColor) ?? theme.scrimCG(0.6)
         world.frame = CGRect(x: 0, y: 0, width: geometry.screen.width, height: geometry.worldHeight)
         for (index, slot) in geometry.slots.enumerated() where rows.indices.contains(index) {
-            let layer = SlotLayer(info: rows[index], accent: accentColor, scale: scale)
+            let layer = SlotLayer(info: rows[index], theme: theme, accent: accentColor, scale: scale)
             layer.frame = worldRect(slot.frame)
             layer.relayout(viewports: slot.viewports.map { $0.offsetBy(dx: -slot.frame.minX, dy: -slot.frame.minY) })
             world.addSublayer(layer)
@@ -129,13 +131,13 @@ public final class OverviewOverlay {
             guard let rect = geometry.cards[card.id] else { continue }
             let layer = WindowCardLayer(
                 id: card.id, title: card.title, appName: card.appName, icon: card.icon, image: card.image, isFloating: card.isFloating,
-                accent: accentColor, scale: scale)
+                theme: theme, accent: accentColor, scale: scale)
             layer.frame = worldRect(rect)
             layer.relayout()
             world.addSublayer(layer)
             cards[card.id] = layer
         }
-        search.configure(accent: accentColor, scale: scale)
+        search.configure(theme: theme, accent: accentColor, scale: scale)
         let searchWidth = min(520, screenSize.width * 0.5)
         search.frame = CGRect(x: (screenSize.width - searchWidth) / 2, y: screenSize.height - 28 - SearchLayer.height, width: searchWidth, height: SearchLayer.height)
         search.update(query: query, count: newCards.count)
@@ -147,7 +149,7 @@ public final class OverviewOverlay {
         root.layer?.opacity = 1
         let wasShown = panel.isVisible
         panel.orderFrontRegardless()
-        if animated, !wasShown { animateOpen() }
+        if animated, !wasShown, theme.duration > 0 { animateOpen() }
     }
 
     public func hide() {
@@ -158,7 +160,7 @@ public final class OverviewOverlay {
         pressed = nil
         dragging = false
         panel.ignoresMouseEvents = true
-        let duration = 0.12
+        let duration = theme.duration
         CATransaction.begin()
         CATransaction.setAnimationDuration(duration)
         CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeIn))
@@ -179,7 +181,7 @@ public final class OverviewOverlay {
         let fade = CABasicAnimation(keyPath: "opacity")
         fade.fromValue = 0
         fade.toValue = 1
-        fade.duration = 0.12
+        fade.duration = theme.duration
         fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
         root.layer?.add(fade, forKey: "open-fade")
     }
@@ -440,21 +442,15 @@ private final class SearchLayer: CALayer {
     private let countText = CATextLayer()
     private let glass = CAShapeLayer()
     private var accent = CGColor(gray: 1, alpha: 1)
+    private var theme = Theme.placeholder
 
     override init() {
         super.init()
         cornerRadius = Self.height / 2
-        backgroundColor = CGColor(gray: 1, alpha: 0.09)
         borderWidth = 1
         text.truncationMode = .start
-        text.fontSize = 14
-        text.font = NSFont.systemFont(ofSize: 14)
-        countText.fontSize = 12
-        countText.font = NSFont.systemFont(ofSize: 12)
         countText.alignmentMode = .right
-        countText.foregroundColor = CGColor(gray: 1, alpha: 0.45)
         glass.fillColor = nil
-        glass.strokeColor = CGColor(gray: 1, alpha: 0.55)
         glass.lineWidth = 1.6
         glass.lineCap = .round
         for layer in [glass, text, countText] { addSublayer(layer) }
@@ -466,8 +462,16 @@ private final class SearchLayer: CALayer {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    func configure(accent: CGColor, scale: CGFloat) {
+    func configure(theme: Theme, accent: CGColor, scale: CGFloat) {
         self.accent = accent
+        self.theme = theme
+        backgroundColor = theme.ink(0.09)
+        glass.strokeColor = theme.ink(0.55)
+        text.fontSize = theme.size(14)
+        text.font = theme.font(14)
+        countText.fontSize = theme.size(12)
+        countText.font = theme.font(12)
+        countText.foregroundColor = theme.ink(0.45)
         for layer in [self, glass, text, countText] { layer.contentsScale = scale }
         let middle = Self.height / 2
         let path = CGMutablePath()
@@ -483,9 +487,9 @@ private final class SearchLayer: CALayer {
         countText.string = counted
         countText.frame = CGRect(x: width - 18 - 110, y: (Self.height - 15) / 2, width: 110, height: 15)
         text.string = query.isEmpty ? "Type to search…" : query
-        text.foregroundColor = CGColor(gray: 1, alpha: query.isEmpty ? 0.42 : 0.95)
+        text.foregroundColor = theme.ink(query.isEmpty ? 0.42 : 0.95)
         text.frame = CGRect(x: 40, y: (Self.height - 17) / 2, width: max(0, width - 40 - 140), height: 17)
-        borderColor = query.isEmpty ? CGColor(gray: 1, alpha: 0.12) : accent.copy(alpha: 0.7)
+        borderColor = query.isEmpty ? theme.ink(0.12) : accent.copy(alpha: 0.7)
     }
 }
 
@@ -493,6 +497,7 @@ private final class SearchLayer: CALayer {
 private final class SlotLayer: CALayer {
     let info: OverviewOverlay.RowInfo
     private let accent: CGColor
+    private let theme: Theme
     private let label = CATextLayer()
     private let note = CATextLayer()
     private let edge = CAShapeLayer()
@@ -502,22 +507,23 @@ private final class SlotLayer: CALayer {
     /// A card is dragged over this slot.
     var isDropTarget = false { didSet { if oldValue != isDropTarget { applyState() } } }
 
-    init(info: OverviewOverlay.RowInfo, accent: CGColor, scale: CGFloat) {
+    init(info: OverviewOverlay.RowInfo, theme: Theme, accent: CGColor, scale: CGFloat) {
         self.info = info
+        self.theme = theme
         self.accent = accent
         self.scale = scale
         super.init()
         contentsScale = scale
-        cornerRadius = 14
+        cornerRadius = theme.cornerRadius
         for layer in [label, note, edge] { layer.contentsScale = scale }
         label.truncationMode = .end
         label.alignmentMode = .left
         note.alignmentMode = .center
-        note.fontSize = 12
-        note.font = NSFont.systemFont(ofSize: 12, weight: .medium)
-        note.foregroundColor = CGColor(gray: 1, alpha: 0.4)
+        note.fontSize = theme.size(12)
+        note.font = theme.font(12, .medium)
+        note.foregroundColor = theme.ink(0.4)
         edge.fillColor = nil
-        edge.strokeColor = CGColor(gray: 1, alpha: 0.25)
+        edge.strokeColor = theme.ink(0.25)
         edge.lineWidth = 1.2
         edge.lineDashPattern = [6, 5]
         addSublayer(label)
@@ -530,6 +536,7 @@ private final class SlotLayer: CALayer {
         let other = layer as! SlotLayer
         info = other.info
         accent = other.accent
+        theme = other.theme
         scale = other.scale
         super.init(layer: layer)
     }
@@ -542,11 +549,11 @@ private final class SlotLayer: CALayer {
         let name: String = info.isNew ? "New workspace" : info.name
         let text = NSMutableAttributedString()
         if info.isCurrent {
-            text.append(NSAttributedString(string: "● ", attributes: [.font: NSFont.systemFont(ofSize: 10), .foregroundColor: NSColor(cgColor: accent) ?? .systemBlue]))
+            text.append(NSAttributedString(string: "● ", attributes: [.font: theme.font(10), .foregroundColor: NSColor(cgColor: accent) ?? .systemBlue]))
         }
-        text.append(NSAttributedString(string: name, attributes: [.font: NSFont.systemFont(ofSize: 15, weight: .semibold), .foregroundColor: NSColor(white: 1, alpha: info.isNew ? 0.45 : 0.92)]))
+        text.append(NSAttributedString(string: name, attributes: [.font: theme.font(15, .semibold), .foregroundColor: theme.inkColor(info.isNew ? 0.45 : 0.92)]))
         if !info.isNew {
-            text.append(NSAttributedString(string: "   " + info.subtitle, attributes: [.font: NSFont.systemFont(ofSize: 11, weight: .medium), .foregroundColor: NSColor(white: 1, alpha: 0.45)]))
+            text.append(NSAttributedString(string: "   " + info.subtitle, attributes: [.font: theme.font(11, .medium), .foregroundColor: theme.inkColor(0.45)]))
         }
         label.string = text
         label.frame = CGRect(x: 4, y: size.height + 8, width: max(0, size.width - 8), height: 20)
@@ -557,7 +564,7 @@ private final class SlotLayer: CALayer {
         note.frame = CGRect(x: 0, y: (size.height - 15) / 2, width: size.width, height: 15)
         edge.isHidden = !showsNote
         edge.frame = bounds
-        edge.path = CGPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), cornerWidth: 14, cornerHeight: 14, transform: nil)
+        edge.path = CGPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), cornerWidth: theme.cornerRadius, cornerHeight: theme.cornerRadius, transform: nil)
 
         for outline in outlines { outline.removeFromSuperlayer() }
         outlines = viewports.map { viewport in
@@ -584,12 +591,12 @@ private final class SlotLayer: CALayer {
 
     private func applyState() {
         let isNew = info.isNew
-        backgroundColor = CGColor(gray: 1, alpha: isDropTarget ? 0.13 : info.isCurrent ? 0.075 : isNew ? 0.02 : 0.05)
+        backgroundColor = theme.ink(isDropTarget ? 0.13 : info.isCurrent ? 0.075 : isNew ? 0.02 : 0.05)
         if isDropTarget {
             borderColor = accent.copy(alpha: 0.95)
             borderWidth = 2
         } else {
-            borderColor = info.isCurrent ? accent.copy(alpha: 0.4) : CGColor(gray: 1, alpha: 0.08)
+            borderColor = info.isCurrent ? accent.copy(alpha: 0.4) : theme.ink(0.08)
             borderWidth = info.isCurrent ? 1.5 : 1
         }
     }

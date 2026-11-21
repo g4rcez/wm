@@ -53,11 +53,13 @@ public final class SwitcherOverlay {
     public var onDrop: ((WindowID, Int) -> Void)?
     public var isShown: Bool { panel.isVisible }
 
-    private static let padding: CGFloat = 20
-    private static let titleHeight: CGFloat = 52
-    private static let cornerRadius: CGFloat = 18
+    private static let basePadding: CGFloat = 20
+    private static let baseTitleHeight: CGFloat = 52
     /// What the panel adds around the miniature, so the caller can leave room: padding at both sides, and the header.
-    public static let chromeSize = CGSize(width: 2 * padding, height: 2 * padding + titleHeight)
+    public static func chromeSize(scale: Double) -> CGSize {
+        let k = CGFloat(scale)
+        return CGSize(width: 2 * basePadding * k, height: 2 * basePadding * k + baseTitleHeight * k)
+    }
 
     private let panel = SwitcherPanel()
     private let clickView = ClickView()
@@ -73,6 +75,9 @@ public final class SwitcherOverlay {
     private var labelLayers: [CATextLayer] = []
     private let dropHighlight = CAShapeLayer()
     private var selectedColor = CGColor(gray: 1, alpha: 1)
+    private var theme = Theme.placeholder
+    private var padding = SwitcherOverlay.basePadding
+    private var titleHeight = SwitcherOverlay.baseTitleHeight
     /// Where the panel starts in the view that covers the monitor: tile and row rectangles are given in the panel.
     private var panelOrigin: CGPoint = .zero
     private var rowFrames: [CGRect] = []
@@ -84,33 +89,20 @@ public final class SwitcherOverlay {
         clickView.onClick = { [weak self] id in self?.onClick?(id) }
         clickView.onDragMove = { [weak self] id, point in self?.dragMoved(id, to: point) }
         clickView.onDragEnd = { [weak self] id, point in self?.dragEnded(id, at: point) }
-        dropHighlight.fillColor = CGColor(gray: 1, alpha: 0.10)
         dropHighlight.lineWidth = 2
         dropHighlight.isHidden = true
-        effect.material = .hudWindow
-        effect.blendingMode = .behindWindow
-        effect.state = .active
-        effect.appearance = NSAppearance(named: .darkAqua)
-        effect.maskImage = Self.roundedMask(radius: Self.cornerRadius)
         clickView.addSubview(effect)
 
         host.wantsLayer = true
         host.layer?.addSublayer(tint)
         host.layer?.addSublayer(dropHighlight)
-        tint.cornerRadius = Self.cornerRadius
         tint.masksToBounds = true
-        titleLayer.fontSize = 20
-        titleLayer.font = NSFont.systemFont(ofSize: 20, weight: .semibold)
         titleLayer.alignmentMode = .center
         titleLayer.truncationMode = .end
-        titleLayer.foregroundColor = CGColor(gray: 1, alpha: 0.95)
         titleLayer.allowsFontSubpixelQuantization = true
         host.layer?.addSublayer(titleLayer)
         workspaceChip.cornerRadius = 9
-        workspaceText.fontSize = 16
-        workspaceText.font = NSFont.systemFont(ofSize: 16, weight: .medium)
         workspaceText.alignmentMode = .center
-        workspaceText.foregroundColor = CGColor(gray: 1, alpha: 1)
         workspaceChip.addSublayer(workspaceText)
         host.layer?.addSublayer(workspaceChip)
         effect.addSubview(host)
@@ -119,14 +111,26 @@ public final class SwitcherOverlay {
     /// `monitor` is the screen frame in Accessibility coordinates. `tiles` and `viewports` are in panel points.
     public func show(
         tiles: [Tile], viewports: [CGRect], labels: [Label] = [], panelSize: CGSize, selected: WindowID?,
-        settings: SwitcherSettings, on monitor: CGRect
+        style: ResolvedStyle, on monitor: CGRect
     ) {
+        theme = Theme(style)
         let cocoa = Displays.cocoaRect(monitor)
         panel.setFrame(cocoa, display: false)
+        theme.configure(effect)
+        effect.maskImage = Theme.roundedMask(radius: theme.cornerRadius)
+        titleLayer.font = theme.font(20, .semibold)
+        titleLayer.fontSize = theme.size(20)
+        titleLayer.foregroundColor = theme.ink(0.95)
+        workspaceText.font = theme.font(16, .medium)
+        workspaceText.fontSize = theme.size(16)
+        workspaceText.foregroundColor = theme.ink(1)
+        dropHighlight.fillColor = theme.ink(0.10)
         let scale = NSScreen.screens.first { $0.frame.intersects(cocoa) }?.backingScaleFactor ?? 2
 
-        let pad = Self.padding
-        let size = CGSize(width: panelSize.width + 2 * pad, height: panelSize.height + 2 * pad + Self.titleHeight)
+        let pad = Self.basePadding * CGFloat(style.scale)
+        padding = pad
+        titleHeight = Self.baseTitleHeight * CGFloat(style.scale)
+        let size = CGSize(width: panelSize.width + 2 * pad, height: panelSize.height + 2 * pad + titleHeight)
         let origin = CGPoint(x: ((cocoa.width - size.width) / 2).rounded(), y: ((cocoa.height - size.height) / 2).rounded())
         let panelRect = CGRect(origin: origin, size: size)
         clickView.frame = CGRect(origin: .zero, size: cocoa.size)
@@ -146,11 +150,14 @@ public final class SwitcherOverlay {
         dropHighlight.isHidden = true
 
         tint.frame = host.bounds
-        tint.backgroundColor = Self.cgColor(settings.background)
+        tint.cornerRadius = theme.cornerRadius
+        tint.backgroundColor = theme.tint?.cgColor
+        tint.borderColor = theme.border?.cgColor
+        tint.borderWidth = theme.border == nil ? 0 : CGFloat(style.borderWidth)
         titleLayer.contentsScale = scale
         workspaceText.contentsScale = scale
         headerWidth = size.width
-        selectedColor = Self.cgColor(settings.selected)
+        selectedColor = theme.cg(theme.accent)
 
         /// Miniature space has its origin top-left; the layers use Cocoa's bottom-left.
         func place(_ rect: CGRect) -> CGRect {
@@ -166,7 +173,7 @@ public final class SwitcherOverlay {
                 cornerWidth: 6, cornerHeight: 6, transform: nil
             )
             outline.fillColor = nil
-            outline.strokeColor = CGColor(gray: 1, alpha: 0.5)
+            outline.strokeColor = theme.ink(0.5)
             outline.lineWidth = 1
             outline.lineDashPattern = [6, 4]
             host.layer?.addSublayer(outline)
@@ -181,8 +188,9 @@ public final class SwitcherOverlay {
             let text = CATextLayer()
             let row = place(label.frame)
             text.string = label.text
-            text.fontSize = 14
-            text.foregroundColor = CGColor(gray: 1, alpha: 0.8)
+            text.fontSize = theme.size(14)
+            text.font = theme.font(14)
+            text.foregroundColor = theme.ink(0.8)
             text.truncationMode = .end
             text.contentsScale = scale
             text.frame = CGRect(x: row.minX, y: row.maxY + 3, width: row.width, height: 18)
@@ -192,7 +200,7 @@ public final class SwitcherOverlay {
 
         var hitRects: [(WindowID, CGRect)] = []
         for tile in tiles {
-            let layer = TileLayer(tile: tile, scale: scale)
+            let layer = TileLayer(tile: tile, scale: scale, theme: theme)
             layer.frame = place(tile.frame)
             layer.relayout()
             host.layer?.addSublayer(layer)
@@ -283,7 +291,7 @@ public final class SwitcherOverlay {
     private func putBack(_ id: WindowID) {
         guard let layer = tileLayers[id], let home = dragHome.removeValue(forKey: id) else { return }
         CATransaction.begin()
-        CATransaction.setAnimationDuration(0.12)
+        CATransaction.setAnimationDuration(theme.duration)
         layer.position = home
         CATransaction.commit()
     }
@@ -295,8 +303,8 @@ public final class SwitcherOverlay {
 
     private func applySelection(_ id: WindowID?, animated: Bool) {
         CATransaction.begin()
-        if animated {
-            CATransaction.setAnimationDuration(0.12)
+        if animated && theme.duration > 0 {
+            CATransaction.setAnimationDuration(theme.duration)
         } else {
             CATransaction.setDisableActions(true)
         }
@@ -312,14 +320,14 @@ public final class SwitcherOverlay {
     /// The text of the header: the chip with the workspace, and the app and title of the selected window in the middle. The
     /// title keeps the same room at both sides, so it stays centered.
     private func layoutHeader(title: String, workspace: String) {
-        let height = Self.titleHeight
-        let pad = Self.padding
+        let height = titleHeight
+        let pad = padding
         var side = pad
         if workspace.isEmpty {
             workspaceChip.isHidden = true
         } else {
             let text = workspace.allSatisfy(\.isNumber) ? "Workspace " + workspace : workspace
-            let font = NSFont.systemFont(ofSize: 16, weight: .medium)
+            let font = theme.font(16, .medium)
             let width = ceil((text as NSString).size(withAttributes: [.font: font]).width) + 24
             workspaceChip.isHidden = false
             workspaceChip.backgroundColor = selectedColor.copy(alpha: 0.3)
@@ -332,21 +340,6 @@ public final class SwitcherOverlay {
         titleLayer.frame = CGRect(x: side, y: (height - 26) / 2, width: max(0, headerWidth - 2 * side), height: 26)
     }
 
-    private static func cgColor(_ color: Color) -> CGColor {
-        CGColor(red: color.red, green: color.green, blue: color.blue, alpha: color.alpha)
-    }
-
-    private static func roundedMask(radius: CGFloat) -> NSImage {
-        let edge = radius * 2 + 1
-        let image = NSImage(size: NSSize(width: edge, height: edge), flipped: false) { rect in
-            NSColor.black.setFill()
-            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
-            return true
-        }
-        image.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
-        image.resizingMode = .stretch
-        return image
-    }
 }
 
 /// Never key, never main: the app that the user works in keeps focus.
@@ -427,11 +420,13 @@ private final class TileLayer: CALayer {
     private let dash = CAShapeLayer()
     private let hint = CATextLayer()
     private let scale: CGFloat
+    private let theme: Theme
     private var isSelected = false
 
-    init(tile: SwitcherOverlay.Tile, scale: CGFloat) {
+    init(tile: SwitcherOverlay.Tile, scale: CGFloat, theme: Theme) {
         self.tile = tile
         self.scale = scale
+        self.theme = theme
         super.init()
         contentsScale = scale
         cornerRadius = 8
@@ -448,32 +443,33 @@ private final class TileLayer: CALayer {
         badge.contentsGravity = .resizeAspect
         icon.contentsGravity = .resizeAspect
         label.contentsScale = scale
-        label.fontSize = 14
-        label.font = NSFont.systemFont(ofSize: 14, weight: .medium)
+        label.fontSize = theme.size(14)
+        label.font = theme.font(14, .medium)
         label.alignmentMode = .center
         label.truncationMode = .end
-        label.foregroundColor = CGColor(gray: 1, alpha: 1)
+        label.foregroundColor = theme.ink(1)
         addSublayer(label)
         dash.fillColor = nil
-        dash.strokeColor = CGColor(gray: 1, alpha: 0.8)
+        dash.strokeColor = theme.ink(0.8)
         dash.lineWidth = 1.5
         dash.lineDashPattern = [5, 3]
         addSublayer(dash)
         hint.contentsScale = scale
-        hint.fontSize = 15
-        hint.font = NSFont.monospacedSystemFont(ofSize: 15, weight: .bold)
+        hint.fontSize = theme.size(15)
+        hint.font = theme.monoFont(15, .bold)
         hint.alignmentMode = .center
-        hint.foregroundColor = CGColor(gray: 1, alpha: 1)
-        hint.backgroundColor = CGColor(gray: 0, alpha: 0.75)
+        hint.foregroundColor = theme.ink(1)
+        hint.backgroundColor = theme.scrimCG(0.75)
         hint.cornerRadius = 4
         addSublayer(hint)
-        applyStyle(color: CGColor(gray: 1, alpha: 1))
+        applyStyle(color: theme.ink(1))
     }
 
     override init(layer: Any) {
         let other = layer as! TileLayer
         tile = other.tile
         scale = other.scale
+        theme = other.theme
         super.init(layer: layer)
     }
 
@@ -532,8 +528,8 @@ private final class TileLayer: CALayer {
     }
 
     private func applyStyle(color: CGColor) {
-        borderColor = isSelected ? color : CGColor(gray: 1, alpha: 0.25)
+        borderColor = isSelected ? color : theme.ink(0.25)
         borderWidth = isSelected ? 2 : 1
-        backgroundColor = CGColor(gray: 1, alpha: isSelected ? 0.22 : 0.08)
+        backgroundColor = theme.ink(isSelected ? 0.22 : 0.08)
     }
 }

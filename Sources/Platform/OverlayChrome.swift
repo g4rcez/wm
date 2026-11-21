@@ -12,6 +12,7 @@ final class WindowCardLayer: CALayer {
     private(set) var icon: NSImage?
     private(set) var isFloating: Bool
     private let accent: CGColor
+    private let theme: Theme
     private let scale: CGFloat
     private let clip = CALayer()
     private let picture = CALayer()
@@ -29,12 +30,13 @@ final class WindowCardLayer: CALayer {
     var isHovered = false { didSet { if oldValue != isHovered { applyState() } } }
     var isDimmed = false { didSet { if oldValue != isDimmed { applyState() } } }
 
-    init(id: WindowID, title: String, appName: String, icon: NSImage?, image: CGImage?, isFloating: Bool, accent: CGColor, scale: CGFloat) {
+    init(id: WindowID, title: String, appName: String, icon: NSImage?, image: CGImage?, isFloating: Bool, theme: Theme, accent: CGColor, scale: CGFloat) {
         windowID = id
         self.title = title
         self.appName = appName
         self.icon = icon
         self.isFloating = isFloating
+        self.theme = theme
         self.accent = accent
         self.scale = scale
         super.init()
@@ -45,15 +47,15 @@ final class WindowCardLayer: CALayer {
         shadowOffset = .zero
 
         clip.masksToBounds = true
-        clip.backgroundColor = CGColor(gray: 0.13, alpha: 1)
+        clip.backgroundColor = theme.isDark ? CGColor(gray: 0.13, alpha: 1) : CGColor(gray: 0.9, alpha: 1)
         addSublayer(clip)
         // The picture fills the whole card; what does not fit is cut off, so no empty bands show.
         picture.contentsGravity = .resizeAspectFill
         iconLayer.contentsGravity = .resizeAspect
         footer.backgroundColor = CGColor(gray: 0, alpha: 0.58)
         footerIcon.contentsGravity = .resizeAspect
-        footerText.fontSize = 11
-        footerText.font = NSFont.systemFont(ofSize: 11, weight: .medium)
+        footerText.fontSize = theme.size(11)
+        footerText.font = theme.font(11, .medium)
         footerText.foregroundColor = CGColor(gray: 1, alpha: 0.95)
         footerText.truncationMode = .end
         footerText.alignmentMode = .left
@@ -68,7 +70,7 @@ final class WindowCardLayer: CALayer {
         clip.addSublayer(dim)
         addSublayer(ring)
         dash.fillColor = nil
-        dash.strokeColor = CGColor(gray: 1, alpha: 0.55)
+        dash.strokeColor = theme.ink(0.55)
         dash.lineWidth = 1.2
         dash.lineDashPattern = [5, 3]
         dash.isHidden = !isFloating
@@ -89,13 +91,14 @@ final class WindowCardLayer: CALayer {
         icon = other.icon
         isFloating = other.isFloating
         accent = other.accent
+        theme = other.theme
         scale = other.scale
         super.init(layer: layer)
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    private var radius: CGFloat { min(max(min(bounds.width, bounds.height) * 0.07, 5), 12) }
+    private var radius: CGFloat { min(max(min(bounds.width, bounds.height) * 0.07, 5), max(5, theme.cornerRadius - 2)) }
 
     /// The close button, in the coordinates of this layer.
     static let closeSize: CGFloat = 22
@@ -174,7 +177,7 @@ final class WindowCardLayer: CALayer {
             ring.shadowOffset = .zero
         } else {
             ring.borderWidth = isHovered ? 1.5 : 1
-            ring.borderColor = CGColor(gray: 1, alpha: isHovered ? 0.4 : 0.16)
+            ring.borderColor = theme.ink(isHovered ? 0.4 : 0.16)
             ring.shadowOpacity = 0
         }
     }

@@ -33,8 +33,25 @@ public struct AreaBadge: Sendable, Equatable {
     }
 }
 
+/// A giant number in the middle of a window (`wm jump`).
+public struct WindowLabel: Sendable, Equatable {
+    public var frame: CGRect
+    public var text: String
+    public var focused: Bool
+    /// The number does not start with the digits typed: it is faded.
+    public var dimmed: Bool
+
+    public init(frame: CGRect, text: String, focused: Bool = false, dimmed: Bool = false) {
+        self.frame = frame
+        self.text = text
+        self.focused = focused
+        self.dimmed = dimmed
+    }
+}
+
 public struct HintContent: Sendable, Equatable {
     public var badges: [HintBadge] = []
+    public var windowLabels: [WindowLabel] = []
     public var areas: [AreaBadge] = []
     /// The select mode: the places of the search text, and the lines of the selection.
     public var matches: [CGRect] = []
@@ -45,9 +62,11 @@ public struct HintContent: Sendable, Equatable {
     public var colors = HintSettings()
 
     public init(
-        badges: [HintBadge] = [], areas: [AreaBadge] = [], note: String? = nil, noteAnchor: CGPoint = .zero, colors: HintSettings = HintSettings()
+        badges: [HintBadge] = [], areas: [AreaBadge] = [], windowLabels: [WindowLabel] = [], note: String? = nil, noteAnchor: CGPoint = .zero,
+        colors: HintSettings = HintSettings()
     ) {
         self.colors = colors
+        self.windowLabels = windowLabels
         self.badges = badges
         self.areas = areas
         self.note = note
@@ -134,6 +153,7 @@ private final class HintView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         for area in content.areas where area.frame.intersects(display) { draw(area) }
+        for label in content.windowLabels where label.frame.intersects(display) { draw(label) }
         fill(content.matches, amber.withAlphaComponent(0.35))
         fill(content.selection, green.withAlphaComponent(0.45))
         // The focused one goes last, so nothing covers it.
@@ -158,6 +178,30 @@ private final class HintView: NSView {
             path.fill()
         }
         pill("\(area.number)", at: CGPoint(x: frame.minX + 6, y: frame.minY + 6), fill: color, text: .white, font: Self.font)
+    }
+
+    /// A big number in a rounded box at the center of the window. The size follows the window, between 48 and 220 points.
+    private func draw(_ label: WindowLabel) {
+        let frame = local(label.frame)
+        let size = min(max(min(frame.width, frame.height) * 0.3, 48), 220)
+        let font = NSFont.systemFont(ofSize: size, weight: .heavy).withRoundedDesign()
+        let fill = label.focused ? green : amber
+        let alpha = label.dimmed ? 0.25 : 1.0
+        let text = NSAttributedString(string: label.text, attributes: [.font: font, .foregroundColor: ink.withAlphaComponent(alpha)])
+        let extent = text.size()
+        let box = CGRect(
+            x: frame.midX - (extent.width + size * 0.5) / 2, y: frame.midY - (extent.height + size * 0.2) / 2,
+            width: max(extent.width + size * 0.5, extent.height + size * 0.2), height: extent.height + size * 0.2)
+        NSGraphicsContext.saveGraphicsState()
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.4 * alpha)
+        shadow.shadowBlurRadius = size * 0.15
+        shadow.shadowOffset = NSSize(width: 0, height: -size * 0.04)
+        shadow.set()
+        fill.withAlphaComponent(alpha).setFill()
+        NSBezierPath(roundedRect: box, xRadius: size * 0.25, yRadius: size * 0.25).fill()
+        NSGraphicsContext.restoreGraphicsState()
+        text.draw(at: CGPoint(x: box.midX - extent.width / 2, y: box.midY - extent.height / 2))
     }
 
     private func draw(_ badge: HintBadge) {
@@ -213,5 +257,13 @@ private final class HintView: NSView {
         fill.setFill()
         NSBezierPath(roundedRect: box, xRadius: 5, yRadius: 5).fill()
         text.draw(at: CGPoint(x: box.midX - size.width / 2, y: box.minY + 2))
+    }
+}
+
+private extension NSFont {
+    /// The rounded design of the system font, when macOS has it.
+    func withRoundedDesign() -> NSFont {
+        guard let descriptor = fontDescriptor.withDesign(.rounded), let font = NSFont(descriptor: descriptor, size: pointSize) else { return self }
+        return font
     }
 }

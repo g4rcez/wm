@@ -1,4 +1,5 @@
 import AppKit
+import Cheatsheet
 import Common
 import Core
 import Foundation
@@ -20,10 +21,12 @@ final class AppController: HostBridge, @unchecked Sendable {
     @MainActor private var idleWatcher: IdleWatcher!
     @MainActor private var wallpaper: WallpaperSwitcher!
     @MainActor private(set) var palette: PaletteController!
+    @MainActor let cheatsheet = CheatsheetController()
     /// The window that `tile` with no argument (the picker) applies the chosen pattern to.
     @MainActor private var pickerTarget: WindowID?
     @MainActor private lazy var picker: TemplatePicker = {
         let picker = TemplatePicker()
+        picker.style = { [unowned self] in manager.settings.appearance.resolved() }
         picker.onChoose = { [unowned self] template in
             if let template, template.isFrame, !manager.templates(of: pickerTarget).contains(template) { manager.remember(frame: template) }
             _ = run(["layout", "tile", TemplateGlyph.label(template)], target: pickerTarget)
@@ -34,6 +37,9 @@ final class AppController: HostBridge, @unchecked Sendable {
         deliver: { [unowned self] events in input.handleFinger(events) }, pinch: { [unowned self] pinch in input.handlePinch(pinch) })
     @MainActor private lazy var hints = HintController { [unowned self] in manager.settings.hints }
     @MainActor private lazy var scroller = ScrollController { [unowned self] in manager.settings.hints }
+    @MainActor private lazy var jump = JumpController(
+        colors: { [unowned self] in manager.settings.hints }, windows: { [unowned self] in manager.jumpWindows() },
+        choose: { [unowned self] id, action in manager.jumpChoose(id, action) })
     @MainActor private lazy var selector = SelectController(
         colors: { [unowned self] in manager.settings.hints }, keys: { [unowned self] in manager.settings.select }, display: { [unowned self] in manager.focusedMonitor.map { ($0.id, $0.frame) } },
         notify: { [unowned self] text in onNotify(text, 2) })
@@ -74,12 +80,14 @@ final class AppController: HostBridge, @unchecked Sendable {
             run: { [unowned self] words in run(words) },
             notify: { [unowned self] text in onNotify(text, 3) })
         input.palette = palette
+        input.cheatsheet = cheatsheet
         input.picker = picker
         input.hints = hints
         input.scroller = scroller
+        input.jump = jump
         input.selector = selector
         switcher.chordFlags = { [unowned input = input!] in input.currentFlags }
-        idleWatcher = IdleWatcher(emit: { [unowned self] name, payload in manager.events.emit(name, payload) }, isPaused: { [unowned self] in manager.isPaused })
+        idleWatcher = IdleWatcher(emit: { [manager] name, payload in manager.events.emit(name, payload) }, isPaused: { [manager] in manager.isPaused })
         wallpaper = WallpaperSwitcher()
         manager.onWorkspacesShown = { [unowned self] shown in wallpaper.update(shown: shown) }
         manager.runOnEmpty = { [unowned self] request in
@@ -228,7 +236,7 @@ final class AppController: HostBridge, @unchecked Sendable {
             }
             return onMain {
                 // One mode at a time: each takes every key.
-                if mode != "close" { selector.close() }
+                if mode != "close" { selector.close(); jump.close() }
                 let error: String?
                 if args[0] == "hints" {
                     if mode != "close" { scroller.close() }
@@ -239,6 +247,20 @@ final class AppController: HostBridge, @unchecked Sendable {
                 }
                 return error.map { fail($0) } ?? ok()
             }
+        case "jump":
+            let flags = Set(args.dropFirst().filter { $0.hasPrefix("--") })
+            let words = args.dropFirst().filter { !$0.hasPrefix("--") }
+            if let bad = unknownOption(flags, allowed: ["--swap", "--close"], usage: "jump") { return bad }
+            let mode = words.first
+            guard words.count <= 1, mode == nil || ["open", "close", "toggle"].contains(mode) else {
+                return fail("jump takes open, close or toggle", 2, usage: "jump")
+            }
+            guard flags.count < 2 else { return fail("jump takes --swap or --close, not both", 2, usage: "jump") }
+            let action: JumpAction = flags.contains("--swap") ? .swap : flags.contains("--close") ? .close : .focus
+            return onMain {
+                if mode != "close" { hints.close(); scroller.close(); selector.close() }
+                return jump.command(mode ?? "toggle", action: action).map { fail($0) } ?? ok()
+            }
         case "select":
             let mode = args.dropFirst().first
             guard args.count <= 2, mode == nil || ["open", "close", "toggle"].contains(mode) else {
@@ -248,6 +270,7 @@ final class AppController: HostBridge, @unchecked Sendable {
                 if mode != "close" {
                     hints.close()
                     scroller.close()
+                    jump.close()
                 }
                 return selector.command(mode ?? "toggle").map { fail($0) } ?? ok()
             }
@@ -263,6 +286,8 @@ final class AppController: HostBridge, @unchecked Sendable {
                 picker.show(on: monitor.workArea, templates: manager.templates(of: id), current: manager.template(of: id), allowsGrid: manager.layoutKind(of: id) == .tiling)
                 return ok()
             }
+        case "cheatsheet":
+            return cheatsheetCommand(Array(args.dropFirst()))
         case "list" where args.dropFirst().first == "binds":
             return onMain { listBinds(Set(args.filter { $0.hasPrefix("--") })) }
         case "daemon": return daemon(Array(args.dropFirst()))
@@ -347,6 +372,20 @@ final class AppController: HostBridge, @unchecked Sendable {
         }
     }
 
+    /// `cheatsheet [gui]`: the panel with the keys of the config; again to close it. The terminal sheet is drawn by the CLI itself.
+    private func cheatsheetCommand(_ words: [String]) -> ServerAnswer {
+        guard words.count <= 1, words.first.map({ ["tui", "gui"].contains($0) }) ?? true else {
+            return fail("expected tui or gui", 2, usage: "cheatsheet")
+        }
+        if words.first == "tui" {
+            return fail("the terminal sheet is drawn by `wm` in a terminal", 2, usage: "cheatsheet", hint: "run `wm cheatsheet tui` in a terminal")
+        }
+        return onMain {
+            cheatsheet.toggle(binds: bindRecords.map(CheatBind.init), mode: manager.mode, style: manager.settings.appearance.resolved())
+            return ok()
+        }
+    }
+
     /// `list binds [--json]`: every bind with its keys, trigger, command and description.
     @MainActor private func listBinds(_ flags: Set<String>) -> ServerAnswer {
         if let bad = unknownOption(flags, allowed: ["--json"], usage: "list") { return bad }
@@ -357,6 +396,7 @@ final class AppController: HostBridge, @unchecked Sendable {
                     "mode": .string(record.mode), "keys": .string(record.keys), "trigger": .string(record.trigger.rawValue),
                     "command": .string(record.action), "description": record.options.description.map { .string($0) } ?? .nil,
                     "repeating": record.options.repeating.map { .bool($0) } ?? .nil, "universal": .bool(record.options.universal),
+                    "hidden": .bool(record.options.hidden),
                 ])
             }).json + "\n")
         }
