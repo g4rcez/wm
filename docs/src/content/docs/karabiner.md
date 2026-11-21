@@ -4,10 +4,14 @@ description: "Move a Karabiner-Elements setup to wm, and what is different."
 group: Guides
 order: 2
 ---
-wm can do the common part of a Karabiner-Elements setup that is built around a hyper key: CapsLock as the hyper key (Esc when
-tapped alone), keys that type other keys (`hyper-h` types Left), layers of shortcuts (`hyper-w`, then a key) that run
-commands, open apps and URLs or send media keys, and a layer that stays on (a vim mode). It does not do everything
-that Karabiner does, see [What wm does not do](#what-wm-does-not-do).
+wm does the common part of a Karabiner-Elements setup built around a hyper key:
+
+- CapsLock as the hyper key (Esc when tapped alone).
+- Keys that type other keys (`hyper-h` types Left).
+- Layers of shortcuts (`hyper-w`, then a key) that run commands, open apps and URLs or send media keys.
+- A layer that stays on (a vim mode).
+
+It does not do everything Karabiner does. See [What wm does not do](#what-wm-does-not-do).
 
 ## Karabiner to wm
 
@@ -23,29 +27,39 @@ that Karabiner does, see [What wm does not do](#what-wm-does-not-do).
 | The layer notification | the key panel, which lists the keys that can follow, with their `description` |
 | Several actions for one key (`to` is a list) | one function bind that calls `wm.exec`, `wm.press` and `wm.dispatch` |
 
-Key names: `return_or_enter` is `enter`, `spacebar` is `space`, `escape` is `esc`, `delete_or_backspace` is `backspace`,
-`delete_forward` is `delete`, `hyphen` is `minus`, `equal_sign` is `equal`, `open_bracket` is `leftsquarebracket`,
-`close_bracket` is `rightsquarebracket`, `grave_accent_and_tilde` is `backtick`, and `left_arrow`, `right_arrow`, `up_arrow`
-and `down_arrow` are `left`, `right`, `up` and `down`. Letters, digits, `tab`, `comma`, `period`, `slash`, `backslash`,
-`semicolon`, `quote`, `home`, `end`, `pageup`, `pagedown` and `f1` to `f20` have the same names.
+Key names:
+
+| Karabiner | wm |
+|---|---|
+| `return_or_enter` | `enter` |
+| `spacebar` | `space` |
+| `escape` | `esc` |
+| `delete_or_backspace` | `backspace` |
+| `delete_forward` | `delete` |
+| `hyphen` | `minus` |
+| `equal_sign` | `equal` |
+| `open_bracket` | `leftsquarebracket` |
+| `close_bracket` | `rightsquarebracket` |
+| `grave_accent_and_tilde` | `backtick` |
+| `left_arrow`, `right_arrow`, `up_arrow`, `down_arrow` | `left`, `right`, `up`, `down` |
+
+These keep the same names: letters, digits, `tab`, `comma`, `period`, `slash`, `backslash`, `semicolon`, `quote`, `home`, `end`, `pageup`, `pagedown` and `f1` to `f20`.
 
 ## Move over
 
-If you want a full configuration to read first, the author's is [on GitHub](https://github.com/g4rcez/dotfiles/blob/master/config/wm/init.lua).
+For a full configuration to read first, see the author's [on GitHub](https://github.com/g4rcez/dotfiles/blob/master/config/wm/init.lua).
 
-1. **Quit Karabiner-Elements** and stop it from starting at login. It takes the keyboard before wm sees it, so both cannot
-   own CapsLock.
+1. **Quit Karabiner-Elements** and stop it from starting at login. It takes the keyboard before wm sees it, so both cannot own CapsLock.
 2. Give wm the Accessibility permission, as for the other binds (see [Permissions](/docs/install#permissions)).
 3. Put the new binds in their own file, `~/.config/wm/hyper.lua`, and load it at the end of `init.lua`:
 
    ```lua
    require("hyper")
    ```
-4. Run `wm daemon reload`. A mistake in the file is in the menu bar, in the output of the command and in `wm logs`. Then
-   `wm list binds` shows what wm took.
-5. Try each kind of bind (see the list below), then delete the Karabiner configuration when you are sure.
+4. Run `wm daemon reload`. A mistake in the file shows in the menu bar, in the command output and in `wm logs`. `wm list binds` shows what wm took.
+5. Try each kind of bind (see the list below). Delete the Karabiner configuration when you are sure.
 
-An example of `hyper.lua`, with the shapes that you need to translate a whole file:
+Example `hyper.lua`, with the shapes you need to translate a whole file:
 
 ```lua
 wm.config { binds = { capslock = "hyper" } }
@@ -105,22 +119,26 @@ wm.mode("vim", {
 What to try after the reload:
 
 - Tap CapsLock alone: Esc. Tap it while the key panel is open: the panel closes.
-- Hold CapsLock and press `k`: Up, and holding `k` repeats it. With Shift also held, it selects.
+- Hold CapsLock and press `k`: Up. Holding `k` repeats it. With Shift held, it selects.
 - Press `hyper-w`: the key panel shows the keys that follow. Press `1`: workspace 1. Esc cancels a sequence.
-- Press `hyper-v`: the vim mode shows in the panel. `h`, `j`, `k` and `l` move, and Esc leaves.
+- Press `hyper-v`: the panel shows the vim mode. `h`, `j`, `k` and `l` move. Esc leaves.
 - Quit wm: CapsLock works as it did before.
 
 ## What is different
 
-- **A layer is a sequence, not a held key.** In Karabiner a layer works while you hold the hyper key, or stays on after a
-  tap, depending on its `hold` setting. In wm, `hyper-w>1` is hyper + `w`, then `1`; the hyper key may stay down or be
-  released between the two keys. Releasing it does not cancel the layer; Esc does. A layer that must stay on is a mode.
-- **A chord is a bind or the start of a sequence, not both.** `hyper-w` cannot do something by itself and also start
-  `hyper-w>1`. wm rejects this when the config loads. A sequence cannot start a longer one either (`a>b` and `a>b>c`).
+- **A layer is a sequence, not a held key.**
+  - In Karabiner, a layer works while you hold the hyper key, or stays on after a tap, depending on its `hold` setting.
+  - In wm, `hyper-w>1` is hyper + `w`, then `1`. The hyper key may stay down or be released between the two keys.
+  - Releasing it does not cancel the layer. Esc does.
+  - A layer that must stay on is a mode.
+- **A chord is a bind or the start of a sequence, not both.**
+  - `hyper-w` cannot act by itself and also start `hyper-w>1`. wm rejects this when the config loads.
+  - A sequence cannot start a longer one either (`a>b` and `a>b>c`).
 - **Every hyper chord that is not bound is swallowed**, so a typo never types a letter into the app.
-- **How CapsLock is remapped.** wm sets the key mapping of the keyboards, as `hidutil` does, to send CapsLock as F18, and
-  takes it away when it quits. It replaces any other `UserKeyMapping` that is set while wm runs. A keyboard that connects
-  later (Bluetooth) gets the mapping after the next wake, or after `wm daemon reload`.
+- **How CapsLock is remapped.**
+  - wm sets the key mapping of the keyboards, as `hidutil` does, to send CapsLock as F18. It removes the mapping when it quits.
+  - It replaces any other `UserKeyMapping` set while wm runs.
+  - A keyboard that connects later (Bluetooth) gets the mapping after the next wake, or after `wm daemon reload`.
 - **If wm crashes**, CapsLock stays mapped to F18 until wm starts again. This puts it back at once:
 
   ```sh
@@ -129,13 +147,8 @@ What to try after the reload:
 
 ## What wm does not do
 
-- **Secure Keyboard Entry.** Password fields and some terminals block every event tap, so hyper chords and remaps do nothing
-  there. Karabiner works in those places because it is a driver.
-- **No per-app or per-device rules.** There is no `frontmost_application_if` or `device_if`. For a chord that must act
-  differently in an app, use a function bind and look at `wm.query("focused")`.
-- **No left and right modifier distinction**, no `fn` or Globe key, no modifier-only chords (apart from the hyper key), no
-  simultaneous keys, and no mouse button or pointing device remaps.
-- **Tap and hold is only for the hyper key** (and for any other chord with `long_press = true` in the bind options, see
-  [Bind options](/docs/key-panel#bind-options)). A tap of another modifier key does not do anything.
-- **Media keys** are typed as system events. `next` and `previous` send the same keys as F9 and F7. Brightness works on
-  displays that macOS can control with the keyboard.
+- **Secure Keyboard Entry.** Password fields and some terminals block every event tap, so hyper chords and remaps do nothing there. Karabiner works there because it is a driver.
+- **No per-app or per-device rules.** There is no `frontmost_application_if` or `device_if`. For a chord that must act differently in an app, use a function bind and look at `wm.query("focused")`.
+- **No left and right modifier distinction.** Also no `fn` or Globe key, no modifier-only chords (apart from the hyper key), no simultaneous keys, and no mouse button or pointing device remaps.
+- **Tap and hold is only for the hyper key**, and for any other chord with `long_press = true` in the bind options (see [Bind options](/docs/key-panel#bind-options)). A tap of another modifier key does nothing.
+- **Media keys** are typed as system events. `next` and `previous` send the same keys as F9 and F7. Brightness works on displays that macOS can control with the keyboard.

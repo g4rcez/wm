@@ -5,9 +5,32 @@ group: Start
 order: 3
 ---
 The setup window of the first run can write a starter config for you (see [First run](/docs/install#first-run)).
-To start from the keys of another system in a terminal, run `wm init <osx|windows|i3|hyprland|niri>`. It asks for the main modifier
-(`alt`, `cmd`, `ctrl` or `hyper`; `--mod=alt` skips the question) and writes `~/.config/wm/init.lua`. When that file exists,
-`wm init` prints the template and leaves the file alone; `--force` replaces it.
+
+## Start from a template
+
+In a terminal, run `wm init [omarchy|osx|windows|i3|hyprland|niri]` to start from the keys of another system.
+
+- Without a name, it writes the [Omarchy](https://omarchy.org/manual/hotkeys/) keys. The setup window uses the same default.
+- It asks for the main modifier: `alt`, `cmd`, `ctrl` or `hyper`. `--mod=alt` skips the question.
+- It writes `~/.config/wm/init.lua`.
+- If that file exists, `wm init` prints the template and leaves the file alone. `--force` replaces it.
+
+The Omarchy template uses `cmd` as its main modifier, in the place of Super. `alt` and `ctrl` also work. `hyper` does not:
+Omarchy also has binds with Super+Alt and Super+Ctrl, and those use `cmd` when the main modifier is that key.
+
+It keeps the keys that have a meaning on macOS:
+
+- `mod-space` opens the palette.
+- `mod-w` or `mod-q` closes a window.
+- `mod-N` and `mod-shift-N` move between workspaces and send windows.
+- `mod-arrows` focus and `mod-shift-arrows` swap.
+- `mod-l` cycles the layouts (tiling, scrolling, floating).
+- `mod-s` and `mod-backtick` show the scratchpad and the Quake console (special workspaces).
+- `mod-return` opens a terminal.
+
+The panels, menus and Linux apps of Omarchy that macOS has no key for are left out.
+
+## Write it by hand
 
 Or create `~/.config/wm/init.lua` by hand. This is a small config to start from:
 
@@ -39,11 +62,17 @@ wm.bind("alt-t", "layout set tiling")
 wm.bind("alt-shift-c", "daemon reload")
 ```
 
-Save the file. wm reloads it on its own, and `wm daemon reload` does the same by hand. Each reload shows a notification of
-macOS: `Config reloaded: init.lua`, or `wm: config error` with the message. The first one asks you to allow notifications for
-wm; if you say no, wm still reloads and the answer is in the menu bar and in `wm logs`. A new notification replaces the last
-one, so saving often does not fill Notification Center. The load when wm starts shows none. If the new file has an error, the
-old config stays active and the error shows in the notification, in the menu bar and in the output of `wm daemon reload`.
+## Reload
+
+Save the file. wm reloads it on its own. `wm daemon reload` does the same by hand.
+
+- Each reload shows a macOS notification: `Config reloaded: init.lua`, or `wm: config error` with the message.
+- The first notification asks you to allow notifications for wm. If you say no, wm still reloads. The answer is in the menu bar
+  and in `wm logs`.
+- A new notification replaces the last one, so saving often does not fill Notification Center.
+- The load when wm starts shows none.
+- If the new file has an error, the old config stays active. The error shows in the notification, in the menu bar and in the
+  output of `wm daemon reload`.
 
 The config path is `~/.config/wm/init.lua`, or `$XDG_CONFIG_HOME/wm/init.lua`, or the file named by `$WM_CONFIG`.
 

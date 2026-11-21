@@ -4,9 +4,12 @@ description: "Show workspaces, the focused window and the mode in any bar or wid
 group: Guides
 order: 5
 ---
-wm has no bar of its own. It gives a bar two things: the state now (`wm list --json`) and a stream of events
-(`wm subscribe`). Any bar or widget that can run a script can use them. The script below prints one line each time
-something changes.
+wm has no bar of its own. It gives a bar two things:
+
+- the state now (`wm list --json`);
+- a stream of events (`wm subscribe`).
+
+Any bar or widget that can run a script can use them. The script below prints one line each time something changes.
 
 ## One line of text
 
@@ -29,8 +32,9 @@ wm subscribe workspace_changed window_focus window_title window_open window_clos
 1 [2] 3  Terminal — 1: zsh
 ```
 
-The script asks for the whole state after each event. That is simple, and it cannot drift: it never merges the events itself.
-A script that must not start `wm` on each event can read the events, and the `--snapshot` line, instead:
+The script asks for the whole state after each event. It is simple, and it cannot drift: it never merges events itself.
+
+To avoid starting `wm` on each event, read the events and the `--snapshot` line instead:
 
 ```sh
 wm subscribe --snapshot workspace_changed window_focus | jq -c '
@@ -53,12 +57,12 @@ wm subscribe --snapshot workspace_changed window_focus | jq -c '
 | A terminal that a program took over | `window_swallow` (`id`, `terminal`, `workspace`) and `window_unswallow` (`id`, `program`, `workspace`) |
 | Config errors | `config_reloaded` |
 
-`displays_changed` also fires once when wm starts, and one dock or undock gives one event. A bar that is drawn on each monitor
+`displays_changed` also fires once when wm starts. One dock or undock gives one event. A bar that is drawn on each monitor
 redraws on it.
 
 ## One reading, no stream
 
-For a bar that polls (a widget that runs a command every second or on a click), use the state once:
+For a bar that polls (a widget that runs a command every second or on a click), read the state once:
 
 ```sh
 wm list workspaces --json
@@ -68,8 +72,8 @@ wm list monitors --json
 
 ## From Lua
 
-The same events reach `wm.on` in your config, so a Lua handler can write a file or call a program that the bar reads. A
-handler that takes more than 2 seconds is stopped.
+The same events reach `wm.on` in your config. A Lua handler can write a file or call a program that the bar reads.
+A handler that takes more than 2 seconds is stopped.
 
 ```lua
 wm.on("workspace_changed", function(e)

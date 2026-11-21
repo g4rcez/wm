@@ -9,8 +9,8 @@ timeout 300 swift test      # unit tests: layout engines, geometry, Lua host, IP
 ./build-app.sh debug        # a debug build of the app bundle
 ```
 
-The app icon is `assets/icon-windows.svg`. `bundle/wm.icns` is made from it by `assets/make-icns.sh` (it needs `rsvg-convert`,
-`magick` and `iconutil`), and `build-app.sh` copies it into the app. Run the script again when the SVG changes.
+The app icon is `assets/icon-windows.svg`. `assets/make-icns.sh` makes `bundle/wm.icns` from it. It needs `rsvg-convert`,
+`magick` and `iconutil`. `build-app.sh` copies the icns into the app. Run the script again when the SVG changes.
 
 | Target | Role |
 |---|---|
@@ -22,5 +22,5 @@ The app icon is `assets/icon-windows.svg`. `bundle/wm.icns` is made from it by `
 | `App` | `wmd`: window manager state, commands, config, menu bar, URL handler |
 | `Cli` | `wm` |
 
-The engines are plain values with no AppKit in them, so most behavior has a test with literal frames. The parts that need a
-real screen (overlays, the event tap, window moves) I checked by running the daemon.
+The engines are plain values with no AppKit, so most behavior has a test with literal frames. The parts that need a real
+screen (overlays, the event tap, window moves) were checked by running the daemon.

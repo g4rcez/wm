@@ -4,7 +4,7 @@ description: "Click, scroll and select text from the keyboard."
 group: Features
 order: 7
 ---
-Keyboard clicking, scrolling and text selection, as in Homerow. wm has no default keys for them:
+Click, scroll and select text from the keyboard, as in Homerow. wm has no default keys for these modes:
 
 ```lua
 wm.bind("cmd-shift-space", "hints")
@@ -14,17 +14,23 @@ wm.bind("cmd-shift-y", "select")
 
 ## Hints
 
-`hints` works like the flash plugin of Neovim. It puts a label of **two letters** on every clickable element of the focused
-window (buttons, links, fields, tabs, rows, checkboxes), of the menu bar, of the menu extras on its right, and of the Dock.
-Type the two letters and wm clicks the element. With more than 676 elements the labels have three letters.
+`hints` works like the flash plugin of Neovim. It puts a label of **two letters** on every clickable element of:
 
-Press `/` to search instead. The search works as in fzf: type words separated by spaces, in any order, and each word matches
-an element when its letters are in the title, description or value of the element in that order, with other letters between
-them (`sv as` and `as sv` both find "Save As"; case does not count). Only the elements that match keep a label. As in
-flash, a letter that could continue the last word in some match is never the first letter of a label, so every key is a label
-key or a search key, not both. While the last word is empty (right after `/` or a space) there are no labels. When the
-letters that are left for labels are too few for all the matches, the first matches (in reading order) get one: go on typing
-to narrow the search.
+- the focused window (buttons, links, fields, tabs, rows, checkboxes);
+- the menu bar and the menu extras on its right;
+- the Dock.
+
+Type the two letters and wm clicks the element. With more than 676 elements, labels have three letters.
+
+Press `/` to search instead. The search works as in fzf:
+
+- Type words separated by spaces, in any order.
+- A word matches an element when its letters are in the title, description or value of the element, in that order. Other letters may sit between them.
+- `sv as` and `as sv` both find "Save As". Case does not count.
+- Only the elements that match keep a label.
+- As in flash, a letter that could continue the last word in some match is never the first letter of a label. Every key is a label key or a search key, not both.
+- While the last word is empty (right after `/` or a space), there are no labels.
+- When too few letters are left for all the matches, the first matches (in reading order) get a label. Keep typing to narrow the search.
 
 | Key | Effect |
 | --- | --- |
@@ -38,20 +44,29 @@ to narrow the search.
 | `Return` again within 300 ms | double click |
 | `Esc`, a mouse click | close |
 
-A wrong second letter cancels the first one. A shortcut with Cmd, Ctrl or Alt ends the mode and goes to the app. A key that the mode does not accept (a function key, an arrow, a sign it has no use for) ends the mode too, so it never gets stuck. The screenshot shortcuts of macOS (Cmd+Shift+3, 4, 5, 6) go to macOS and leave the mode open, so the picture shows it. Web pages work
-too. A browser builds the tree of a page only for an assistive tool, so when wm finds a page with nothing in it, it sets
-`AXManualAccessibility` and `AXEnhancedUserInterface` on the app (once for each app) and reads again. wm turns the second one
-off and on around its own window moves, so the animations stay smooth. The click is
-a real mouse click at the center of the element, so it works in web pages, the menu bar and the Dock. The pointer stays there.
+- A wrong second letter cancels the first one.
+- A shortcut with Cmd, Ctrl or Alt ends the mode and goes to the app.
+- A key that the mode does not accept (a function key, an arrow, a sign it has no use for) ends the mode too, so it never gets stuck.
+- The screenshot shortcuts of macOS (Cmd+Shift+3, 4, 5, 6) go to macOS and leave the mode open, so the picture shows it.
+
+Web pages work too:
+
+- A browser builds the tree of a page only for an assistive tool.
+- When wm finds a page with nothing in it, it sets `AXManualAccessibility` and `AXEnhancedUserInterface` on the app (once for each app) and reads again.
+- wm turns the second one off and on around its own window moves, so the animations stay smooth.
+- The click is a real mouse click at the center of the element, so it works in web pages, the menu bar and the Dock. The pointer stays there.
 
 ## Two modes
 
 - **`hints`** (search and click): as above. Typing a label clicks the element.
-- **`hints --wait`** (search and wait): the search starts at once, with no `/`. A label does not click: it highlights its
-  element, and so does the first title match (the green ring). Tab, Down and Ctrl-N, or Shift-Tab, Up and Ctrl-P,
-  move the highlight. `Return` clicks it, `Shift-Return` right-clicks and `Cmd-Return` Cmd-clicks. `Return` again within
-  300 ms double-clicks. Every label stays visible. Type a label or words of the title: the element that matches is highlighted, and the others
-  are dimmed. Backspace widens the matches.
+- **`hints --wait`** (search and wait): the search starts at once, with no `/`.
+  - A label does not click. It highlights its element, and so does the first title match (the green ring).
+  - Tab, Down and Ctrl-N, or Shift-Tab, Up and Ctrl-P, move the highlight.
+  - `Return` clicks it, `Shift-Return` right-clicks and `Cmd-Return` Cmd-clicks.
+  - `Return` again within 300 ms double-clicks.
+  - Every label stays visible.
+  - Type a label or words of the title: the element that matches is highlighted, and the others are dimmed.
+  - Backspace widens the matches.
 
 ```lua
 wm.bind("cmd-shift-space", "hints")
@@ -69,8 +84,10 @@ wm.config { hints = {
 } }
 ```
 
-Colors are `"#rrggbb"` or `"#rrggbbaa"`. The letters of a label that you typed already are drawn with the same color, faded.
-A reload of the config changes them.
+- Colors are `"#rrggbb"` or `"#rrggbbaa"`.
+- The letters of a label that you typed already are drawn in the same color, faded.
+- A reload of the config changes them.
+- [`jump`](/docs/jump) uses the same colors for its numbers.
 
 ## Letters and scroll step
 
@@ -82,13 +99,13 @@ wm.config { hints = {
 } }
 ```
 
-`letters` takes 4 to 26 different lowercase letters. With fewer letters the labels need more keys: `n` letters give `n × n`
-labels. The select mode keeps its own letters.
+- `letters` takes 4 to 26 different lowercase letters.
+- With fewer letters, labels need more keys: `n` letters give `n × n` labels.
+- The select mode keeps its own letters.
 
 ## Scroll mode
 
-`scroll` numbers the scroll areas of the focused window (up to ten, in reading order) and scrolls the active one, the largest
-at first. The pointer moves to the active area, because scroll events go to the view under it.
+`scroll` numbers the scroll areas of the focused window (up to ten, in reading order). It scrolls the active one, the largest at first. The pointer moves to the active area, because scroll events go to the view under it.
 
 | Key | Effect |
 | --- | --- |
@@ -102,11 +119,13 @@ at first. The pointer moves to the active area, because scroll events go to the 
 
 ## Select text
 
-`select` reads the text of the windows on the focused display, and you select a part of it with the keyboard. Then you copy
-it, or right-click on it. It has two steps.
+`select` reads the text of the windows on the focused display. You select a part of it with the keyboard, then copy it or right-click on it. It has two steps.
 
-**Search.** Every key is text. Case and accents do not count, and the text can go over many words of one line. The places of
-the text are highlighted, and one of them is focused.
+**Search.** Every key is text.
+
+- Case and accents do not count.
+- The text can go over many words of one line.
+- The places of the text are highlighted, and one of them is focused.
 
 | Key | Effect |
 | --- | --- |
@@ -132,18 +151,29 @@ Without a text, `Return` selects the first word and every word gets a label.
 | `/`, `Backspace` | back to the search |
 | `Esc`, a mouse click | close |
 
-The text comes from the Accessibility tree. A window that gives fewer than 8 words (a terminal that draws its own text, a
-canvas) is read from a picture of the display with the text recognition of macOS, which needs the Screen Recording permission.
-Without it those windows have no text, and the pill at the bottom says so. Recognized text can have a wrong letter. A picture
-inside a window that gives its text is not read. Password fields are not read. A read gives at most 3000 words. A part of a
-word is highlighted in proportion to its letters, so the edge is near the letter, not on it. The right-click goes to what is
-under the text: it does not select the text in the app. The colors are the ones of the labels: `background` for the places
-and `focus` for the selection.
+Where the text comes from:
+
+- The text comes from the Accessibility tree.
+- A window that gives fewer than 8 words (a terminal that draws its own text, a canvas) is read from a picture of the display. wm uses the text recognition of macOS, which needs the Screen Recording permission.
+- Without that permission, those windows have no text, and the pill at the bottom says so.
+- Recognized text can have a wrong letter.
+- A picture inside a window that gives its text is not read.
+- Password fields are not read.
+- A read gives at most 3000 words.
+
+Highlights and clicks:
+
+- A part of a word is highlighted in proportion to its letters, so the edge is near the letter, not on it.
+- The right-click goes to what is under the text. It does not select the text in the app.
+- The colors are the ones of the labels: `background` for the places and `focus` for the selection.
 
 ### Change the keys of the select step
 
-Each action has a list of chords. An action that you set replaces its keys; the others keep theirs. A chord can belong to one
-action only, and `hyper` cannot be used. `Esc` always closes. A plain letter that is a key here never starts a label.
+- Each action has a list of chords.
+- An action that you set replaces its keys. The others keep theirs.
+- A chord can belong to one action only, and `hyper` cannot be used.
+- `Esc` always closes.
+- A plain letter that is a key here never starts a label.
 
 ```lua
 wm.config {
@@ -159,6 +189,10 @@ wm.config {
 }
 ```
 
-Hints and scroll mode read the Accessibility tree of the app, so they show what the app gives them. A read looks at most 6000 elements.
-On the first use in a browser wm waits a moment for the page; if it has no labels, press the key again. A web element that is not a link, button or field (a plain `div`
-with a click handler) has no label. Not in wm: Homerow's labels-only mode and its tutor.
+Limits:
+
+- Hints and scroll mode read the Accessibility tree of the app, so they show what the app gives them.
+- A read looks at most 6000 elements.
+- On the first use in a browser, wm waits a moment for the page. If it has no labels, press the key again.
+- A web element that is not a link, button or field (a plain `div` with a click handler) has no label.
+- Not in wm: Homerow's labels-only mode and its tutor.

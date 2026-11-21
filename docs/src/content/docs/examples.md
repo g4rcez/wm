@@ -4,8 +4,8 @@ description: "Configuration recipes: modes, prefix keys, layouts per workspace, 
 group: Guides
 order: 1
 ---
-A complete configuration in use, with binds, a prefix key, binding modes, window rules and layouts, is in the author's dotfiles:
-[`config/wm/init.lua`](https://github.com/g4rcez/dotfiles/blob/master/config/wm/init.lua). It is a good place to see how the pieces below fit together.
+The author's dotfiles have a full config with binds, a prefix key, binding modes, window rules and layouts:
+[`config/wm/init.lua`](https://github.com/g4rcez/dotfiles/blob/master/config/wm/init.lua).
 
 ## A resize mode with a key panel
 
@@ -20,7 +20,13 @@ wm.mode("resize", {
 wm.bind("alt-shift-r", "mode resize")
 ```
 
-`resize dir <left|right|up|down> <n>` moves the nearest divider on that axis toward the key, so the same key grows a window on one side of the divider and shrinks the one on the other. It passes to the next split when one is at its limit, and fails when the axis has no divider. In a scrolling layout the key moves a column's trailing edge (right and down grow it); on a floating window right and down grow it, left and up shrink it.
+`resize dir <left|right|up|down> <n>` moves the nearest divider on that axis toward the key.
+
+- The same key grows a window on one side of the divider and shrinks the one on the other.
+- If a split is at its limit, it passes to the next split.
+- It fails when the axis has no divider.
+- In a scrolling layout, the key moves the trailing edge of a column. Right and down grow it.
+- On a floating window, right and down grow it. Left and up shrink it.
 
 While the mode is active, a panel lists its keys with the text from `description`. See [The key panel](/docs/key-panel#the-key-panel).
 
@@ -31,8 +37,11 @@ While the mode is active, a panel lists its keys with the text from `description
 | `once = true` | The mode ends after the first bind of it has run, and the mode before it is back. A bind that goes to another mode itself keeps that mode. |
 | `swallow = true` | A key that the mode does not bind is not typed into the app. Without it, such keys go on to the app (a hyper chord with no bind is always swallowed). |
 
-`wm mode back` (or `wm.dispatch("mode back")`) goes back to the mode before the current one. wm keeps the last 8 modes, and
-`mode main` forgets them. `back` is not a name for a mode.
+`wm mode back` (or `wm.dispatch("mode back")`) goes back to the mode before the current one.
+
+- wm keeps the last 8 modes.
+- `mode main` forgets them.
+- `back` is not a name for a mode.
 
 ```lua
 wm.mode("focus", { h = "focus left", l = "focus right", j = "focus down", k = "focus up" }, { once = true, swallow = true })
@@ -49,7 +58,7 @@ wm.bind(PREFIX .. "f", "window fullscreen")
 wm.bind(PREFIX .. "tab", "switcher")
 ```
 
-After `alt-space`, wm waits for the next key (or Escape) and shows the keys that can follow.
+After `alt-space`, wm waits for the next key (or Escape). It shows the keys that can follow.
 
 ## A different layout per workspace and per monitor
 

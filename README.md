@@ -118,6 +118,11 @@ wm has no default key bindings. Until you bind keys in `init.lua`, it only react
   small copy of its screen. You can drag a card to another workspace. See [Switcher and overview](https://wm.garcez.dev/docs/switcher).
 - **Command palette:** one panel for windows, apps, browser tabs, tmux windows, wm commands (`>`) and menu items (`/`). It also
   works as a Cmd+Tab switcher. See [Command palette](https://wm.garcez.dev/docs/palette).
+- **Cheatsheet:** `wm cheatsheet [tui|gui]` lists the keys of your config in sections, with a filter, in the terminal or in a panel.
+  See [Cheatsheet](https://wm.garcez.dev/docs/cheatsheet).
+- **Appearance:** the overlays (palette, cheatsheet, switcher, overview, template picker, key label) look like macOS by default and follow
+  light and dark. One `wm.config { appearance = { ... } }` sets the style, theme, density, blur, accent, colors, corners and fonts of all of them.
+  See [Appearance](https://wm.garcez.dev/docs/appearance).
 - **Run or raise:** one key focuses an app, or starts it when it has no window. See [Run or raise](https://wm.garcez.dev/docs/run-or-raise).
 - **Menu Anywhere:** the menus of the focused app as a pop-up at the mouse pointer. See [Menu Anywhere](https://wm.garcez.dev/docs/menu-anywhere).
 
@@ -126,6 +131,8 @@ wm has no default key bindings. Until you bind keys in `init.lua`, it only react
 - **Hints:** two-letter labels on every clickable element of a window, the menu bar and the Dock, with fuzzy search. Works as
   Homerow does.
 - **Scroll mode:** number the scroll areas and scroll them with `h` `j` `k` `l`.
+- **Jump:** a giant number on every visible window; type it to focus the window (`--swap` and `--close` do other things).
+  See [Jump to a window](https://wm.garcez.dev/docs/jump).
 - **Select mode:** search the text on the screen, select it with vim keys or labels, then copy it (`y`, `Cmd-C` or `Return`) or
   right-click it. Every key of the select step can change with `wm.config { select = { keys = { ... } } }`.
 
@@ -249,9 +256,9 @@ Everything is on <https://wm.garcez.dev/docs/overview>. The source of the pages 
 | Group | Pages |
 |---|---|
 | Start | [Overview](https://wm.garcez.dev/docs/overview), [Install](https://wm.garcez.dev/docs/install), [First five minutes](https://wm.garcez.dev/docs/first-five-minutes) |
-| Configure | [Config reference](https://wm.garcez.dev/docs/config), [Keys, chords and the hyper key](https://wm.garcez.dev/docs/keys), [Key panel and bind options](https://wm.garcez.dev/docs/key-panel), [Gestures](https://wm.garcez.dev/docs/gestures), [Window and workspace rules](https://wm.garcez.dev/docs/rules) |
+| Configure | [Config reference](https://wm.garcez.dev/docs/config), [Keys, chords and the hyper key](https://wm.garcez.dev/docs/keys), [Key panel and bind options](https://wm.garcez.dev/docs/key-panel), [Appearance](https://wm.garcez.dev/docs/appearance), [Hotkeys of the starter templates](https://wm.garcez.dev/docs/hotkeys), [Gestures](https://wm.garcez.dev/docs/gestures), [Window and workspace rules](https://wm.garcez.dev/docs/rules) |
 | Layouts | [Tiling](https://wm.garcez.dev/docs/tiling), [Scrolling](https://wm.garcez.dev/docs/scrolling), [Master-stack](https://wm.garcez.dev/docs/master-stack), [Monocle](https://wm.garcez.dev/docs/monocle), [Tile templates](https://wm.garcez.dev/docs/templates), [Rotate, maximize and floating](https://wm.garcez.dev/docs/floating) |
-| Features | [Switcher and overview](https://wm.garcez.dev/docs/switcher), [Sticky windows and zen mode](https://wm.garcez.dev/docs/sticky-zen), [Run or raise](https://wm.garcez.dev/docs/run-or-raise), [Window memory](https://wm.garcez.dev/docs/window-memory), [Menu bar icon](https://wm.garcez.dev/docs/menubar), [Command palette](https://wm.garcez.dev/docs/palette), [Menu Anywhere](https://wm.garcez.dev/docs/menu-anywhere), [Hints, scroll and select mode](https://wm.garcez.dev/docs/hints), [Mouse](https://wm.garcez.dev/docs/mouse), [Special workspaces](https://wm.garcez.dev/docs/special-workspaces), [Window swallowing](https://wm.garcez.dev/docs/swallowing) |
+| Features | [Switcher and overview](https://wm.garcez.dev/docs/switcher), [Sticky windows and zen mode](https://wm.garcez.dev/docs/sticky-zen), [Run or raise](https://wm.garcez.dev/docs/run-or-raise), [Window memory](https://wm.garcez.dev/docs/window-memory), [Menu bar icon](https://wm.garcez.dev/docs/menubar), [Command palette](https://wm.garcez.dev/docs/palette), [Cheatsheet](https://wm.garcez.dev/docs/cheatsheet), [Menu Anywhere](https://wm.garcez.dev/docs/menu-anywhere), [Hints, scroll and select mode](https://wm.garcez.dev/docs/hints), [Jump to a window](https://wm.garcez.dev/docs/jump), [Mouse](https://wm.garcez.dev/docs/mouse), [Special workspaces](https://wm.garcez.dev/docs/special-workspaces), [Window swallowing](https://wm.garcez.dev/docs/swallowing) |
 | Reference | [Command line](https://wm.garcez.dev/docs/cli), [Lua API](https://wm.garcez.dev/docs/lua-api), [URL scheme](https://wm.garcez.dev/docs/url-scheme), [Saved state](https://wm.garcez.dev/docs/saved-state) |
 | Guides | [Examples](https://wm.garcez.dev/docs/examples), [Replace Karabiner-Elements](https://wm.garcez.dev/docs/karabiner), [Troubleshooting and limits](https://wm.garcez.dev/docs/troubleshooting), [Development](https://wm.garcez.dev/docs/development) |
 

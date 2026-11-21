@@ -11,20 +11,32 @@ wm.workspace("special:term", { layout = "scrolling" })
 wm.rule { app = "com.spotify.client", workspace = "special:music" }
 ```
 
-With `on_empty`, a special workspace starts its program the first time you show it, which makes a scratchpad out of one key:
+## Start a program on first show
+
+With `on_empty`, a special workspace starts its program the first time you show it. One key makes a scratchpad:
 
 ```lua
 wm.workspace("special:term", { layout = "scrolling", on_empty = "/Applications/Ghostty.app/Contents/MacOS/ghostty" })
 wm.workspace("special:notes", { on_empty = { cmd = "open -a Notes", app = "Notes", float = true, center = true } })
 ```
 
-The command runs only when the workspace has no window. The window that it opens goes to that workspace, so the scratchpad shows
-what you started even when you switched away before it opened. See [Window and workspace rules](/docs/rules).
+- The command runs only when the workspace has no window.
+- The window it opens goes to that workspace, even if you switched away before it opened.
+- See [Window and workspace rules](/docs/rules).
 
-A special workspace takes the work area with 5% free on each side (`special.size`, 0.9 by default). It hides when you run
-the command again, when you switch to a workspace, when its last window goes away, and when a window of the normal
-workspace on the same monitor gets the focus. While it is shown, the windows of the normal workspace are parked. macOS
-brings every window of the active app forward, so wm cannot keep the special windows above them.
+## Size and hiding
+
+A special workspace takes the work area with 5% free on each side (`special.size`, 0.9 by default).
+
+It hides when:
+
+- you run the command again;
+- you switch to a workspace;
+- its last window goes away;
+- a window of the normal workspace on the same monitor gets the focus.
+
+While it is shown, the windows of the normal workspace are parked. macOS brings every window of the active app forward, so wm
+cannot keep the special windows above them.
 
 ```lua
 wm.config { special = {
