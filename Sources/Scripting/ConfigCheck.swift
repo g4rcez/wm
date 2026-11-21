@@ -39,3 +39,17 @@ public func checkConfig(at url: URL) -> Result<ConfigSummary, ConfigError> {
         return .failure(ConfigError(message: "\(error)"))
     }
 }
+
+/// The binds that a config defines, without a daemon: `wm cheatsheet tui` uses it when wm does not run.
+public func loadBindRecords(at url: URL) -> Result<[BindRecord], ConfigError> {
+    guard FileManager.default.fileExists(atPath: url.path) else {
+        return .failure(ConfigError(message: "there is no config file at \(url.path)"))
+    }
+    do {
+        return .success(try LuaHost(bridge: NoopBridge()).load(configURL: url).bindRecords)
+    } catch let error as ConfigError {
+        return .failure(error)
+    } catch {
+        return .failure(ConfigError(message: "\(error)"))
+    }
+}

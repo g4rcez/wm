@@ -255,15 +255,8 @@ public struct PrefixLabelSettings: Sendable, Equatable {
     /// Moves the label from `position`, in points: positive x goes right, positive y goes down.
     public var offsetX: CGFloat = 0
     public var offsetY: CGFloat = 0
-    public var fontSize: CGFloat = 11
-    /// The name of a font (`Menlo`, `SF Pro Rounded`...). `nil`: the system font, which has weights.
-    public var fontName: String?
     /// Lists the keys that can be pressed next (inside a binding mode, or after a prefix chord), like a which-key plugin.
     public var showKeys = true
-    /// Fill of the mode name chip.
-    public var accent = Color(red: 0.537, green: 0.706, blue: 0.980)
-    public var background = Color(red: 0.118, green: 0.118, blue: 0.180, alpha: 0.8)
-    public var foreground = Color(red: 0.84, green: 0.87, blue: 0.96)
     public init() {}
 }
 
@@ -305,8 +298,6 @@ public struct OverviewSettings: Sendable, Equatable {
     public var zoom: Double = 0.5
     /// Points between two workspaces.
     public var gap: Double = 48
-    /// The dim layer over the screen, behind the workspaces.
-    public var backdrop = Color(red: 0.06, green: 0.06, blue: 0.08, alpha: 0.86)
     public init() {}
 }
 
@@ -416,8 +407,6 @@ public struct SwitcherSettings: Sendable, Equatable {
     public var thumbnails = true
     /// Seconds before the overlay appears, so a quick Alt+Tab does not flash it.
     public var delay: Double = 0.12
-    public var background = Color(red: 0, green: 0, blue: 0, alpha: 0.55)
-    public var selected = Color(red: 0.537, green: 0.706, blue: 0.980)
     /// Largest scale of the miniature relative to the screen, 0.3...1.
     public var maxScale: Double = 0.85
     public init() {}
@@ -524,6 +513,7 @@ public struct Settings: Sendable, Equatable {
     public var hints = HintSettings()
     public var select = SelectSettings()
     public var master = MasterSettings()
+    public var appearance = AppearanceSettings()
     /// Commands a `wm://` URL may run besides the always-allowed ones. `exec` and `reload` are denied by default.
     public var urlAllow: [String] = []
     public init() {}

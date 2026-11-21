@@ -16,7 +16,7 @@ struct Fields {
             throw ConfigError(message: "\(owner): \(name) must be a table with named keys")
         }
         self.values = values
-        if let unknown = values.keys.filter({ !allowed.contains($0) }).sorted().first {
+        if let unknown = values.keys.filter({ !allowed.contains($0) && !removedKeys.keys.contains((path + [$0]).joined(separator: ".")) }).sorted().first {
             throw ConfigError(message: "\(owner): unknown key '\(dotted(unknown))'")
         }
     }
@@ -42,9 +42,11 @@ struct Fields {
         return number
     }
 
-    func integer(_ key: String, min: Int) throws -> Int? {
+    func integer(_ key: String, min: Int, max: Int? = nil) throws -> Int? {
         guard let number = try number(key) else { return nil }
-        guard number == number.rounded(), number >= Double(min), number < 1e9 else { throw wrong(key, "a whole number, at least \(min)") }
+        guard number == number.rounded(), number >= Double(min), number <= Double(max ?? 999_999_999) else {
+            throw wrong(key, max.map { "a whole number between \(min) and \($0)" } ?? "a whole number, at least \(min)")
+        }
         return Int(number)
     }
 
@@ -213,8 +215,62 @@ let topLevelConfigKeys = [
     "layout", "workspaces", "gaps", "animations", "border", "focus_follows_mouse", "mouse_follows_focus",
     "start_at_login", "wrap_focus", "mouse", "trackpad", "workspace_back_and_forth", "tiling", "scrolling", "switcher", "prefix", "url",
     "tab_indicator", "binds", "zen", "special", "overview", "hints", "select", "keyboards", "floating", "master",
-    "commands", "menubar", "swallow", "urgent",
+    "commands", "menubar", "swallow", "urgent", "appearance",
 ]
+
+private let appearanceKeys = [
+    "style", "density", "theme", "material", "accent", "background", "foreground", "secondary", "selection", "border", "border_width",
+    "radius", "shadow", "font", "font_size", "mono_font", "animation",
+]
+
+/// Keys that styled one overlay and are gone: `appearance` is the one place for the look of all of them. They still load, so an old
+/// config keeps working: each one is read as its `appearance` key, and an explicit `appearance` wins over it.
+private let removedKeys: [String: String] = [
+    "switcher.background": "appearance.background", "switcher.selected": "appearance.accent",
+    "overview.backdrop": "appearance.background", "prefix.label.background": "appearance.background",
+    "prefix.label.foreground": "appearance.foreground", "prefix.label.accent": "appearance.accent",
+    "prefix.label.font_size": "appearance.font_size", "prefix.label.font": "appearance.font",
+]
+
+/// The keys of `appearance`: one look for every overlay.
+private func parseAppearance(_ fields: Fields, into settings: inout AppearanceSettings) throws {
+    if let value = try fields.choice("style", AppearanceStyle.self) { settings.style = value }
+    if let value = try fields.choice("density", Density.self) { settings.density = value }
+    if let value = try fields.choice("theme", ThemeMode.self) { settings.theme = value }
+    if let value = try fields.choice("material", OverlayMaterial.self) { settings.material = value }
+    if let value = try color(fields, "accent") { settings.accent = value }
+    if let value = try color(fields, "background") { settings.background = value }
+    if let value = try color(fields, "foreground") { settings.foreground = value }
+    if let value = try color(fields, "secondary") { settings.secondary = value }
+    if let value = try color(fields, "selection") { settings.selection = value }
+    if let value = try color(fields, "border") { settings.border = value }
+    let width = AppearanceSettings.borderWidthRange
+    if let value = try fields.number("border_width", min: width.lowerBound, max: width.upperBound) { settings.borderWidth = value }
+    let radius = AppearanceSettings.radiusRange
+    if let value = try fields.number("radius", min: radius.lowerBound, max: radius.upperBound) { settings.radius = value }
+    if let value = try fields.bool("shadow") { settings.shadow = value }
+    if let value = try fields.string("font") { settings.font = value.isEmpty ? nil : value }
+    let size = AppearanceSettings.fontSizeRange
+    if let value = try fields.number("font_size", min: size.lowerBound, max: size.upperBound) { settings.fontSize = value }
+    if let value = try fields.string("mono_font") { settings.monoFont = value.isEmpty ? nil : value }
+    let animation = AppearanceSettings.animationRange
+    if let value = try fields.number("animation", min: animation.lowerBound, max: animation.upperBound) { settings.animation = value }
+}
+
+/// Reads the removed keys of `value` as the `appearance` keys that replaced them.
+private func applyRemovedKeys(_ value: LuaValue, owner: String, to settings: inout AppearanceSettings) throws {
+    for (dotted, replacement) in removedKeys.sorted(by: { $0.key < $1.key }) {
+        var node: LuaValue? = value
+        for part in dotted.split(separator: ".") {
+            guard case .table(let values)? = node else { node = nil; break }
+            node = values[String(part)]
+        }
+        guard let node else { continue }
+        let key = String(replacement.dropFirst("appearance.".count))
+        let fields = try Fields(.table([key: node]), owner: owner, path: ["appearance"], allowed: appearanceKeys)
+        try parseAppearance(fields, into: &settings)
+    }
+}
 
 /// Applies the keys that are present; keys that are absent keep their value, so two `wm.config` calls merge.
 func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
@@ -357,11 +413,14 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
         }
     }
 
-    if let switcher = try top.table("switcher", allowed: ["thumbnails", "delay", "background", "selected", "max_scale"]) {
+    try applyRemovedKeys(value, owner: owner, to: &settings.appearance)
+    if let appearance = try top.table("appearance", allowed: appearanceKeys) {
+        try parseAppearance(appearance, into: &settings.appearance)
+    }
+
+    if let switcher = try top.table("switcher", allowed: ["thumbnails", "delay", "max_scale"]) {
         if let flag = try switcher.bool("thumbnails") { settings.switcher.thumbnails = flag }
         if let delay = try switcher.number("delay", min: 0) { settings.switcher.delay = delay }
-        if let background = try color(switcher, "background") { settings.switcher.background = background }
-        if let selected = try color(switcher, "selected") { settings.switcher.selected = selected }
         if let scale = try switcher.number("max_scale", min: 0.3, max: 1) { settings.switcher.maxScale = scale }
     }
 
@@ -369,19 +428,14 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
         // `timeout` is accepted and ignored so that old configs still load: a sequence waits until a key or Escape.
         _ = try prefix.number("timeout", min: 0.1)
         if let flag = try prefix.bool("menubar") { settings.prefix.menuBar = flag }
-        if let label = try prefix.table("label", allowed: ["enabled", "position", "offset", "font_size", "background", "foreground", "show_keys", "accent", "font"]) {
+        if let label = try prefix.table("label", allowed: ["enabled", "position", "offset", "show_keys"]) {
             if let flag = try label.bool("enabled") { settings.prefix.label.enabled = flag }
             if let value = try label.choice("position", LabelPosition.self, aliases: LabelPosition.aliases) { settings.prefix.label.position = value }
             if let offset = try label.table("offset", allowed: ["x", "y"]) {
                 if let x = try offset.number("x") { settings.prefix.label.offsetX = CGFloat(x) }
                 if let y = try offset.number("y") { settings.prefix.label.offsetY = CGFloat(y) }
             }
-            if let size = try label.number("font_size", min: 8, max: 96) { settings.prefix.label.fontSize = CGFloat(size) }
-            if let background = try color(label, "background") { settings.prefix.label.background = background }
-            if let foreground = try color(label, "foreground") { settings.prefix.label.foreground = foreground }
             if let flag = try label.bool("show_keys") { settings.prefix.label.showKeys = flag }
-            if let name = try label.string("font") { settings.prefix.label.fontName = name.isEmpty ? nil : name }
-            if let accent = try color(label, "accent") { settings.prefix.label.accent = accent }
         }
     }
 
@@ -436,12 +490,11 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
         }
     }
 
-    if let overview = try top.table("overview", allowed: ["zoom", "gap", "backdrop"]) {
+    if let overview = try top.table("overview", allowed: ["zoom", "gap"]) {
         if let zoom = try overview.number("zoom", min: OverviewSettings.zoomRange.lowerBound, max: OverviewSettings.zoomRange.upperBound) {
             settings.overview.zoom = zoom
         }
         if let gap = try overview.number("gap", min: 0, max: OverviewSettings.maxGap) { settings.overview.gap = gap }
-        if let backdrop = try color(overview, "backdrop") { settings.overview.backdrop = backdrop }
     }
 
     if let hints = try top.table("hints", allowed: ["background", "text", "focus", "area", "letters", "scroll_step", "scroll_dash_factor"]) {
