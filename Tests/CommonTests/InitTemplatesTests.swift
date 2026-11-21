@@ -14,7 +14,10 @@ struct InitTemplatesTests {
     }
 
     @Test func theTemplatesAreNamedAsTheUsageSays() {
-        #expect(InitTemplate.allCases.map(\.rawValue) == ["osx", "windows", "i3", "hyprland", "niri"])
+        #expect(InitTemplate.allCases.map(\.rawValue) == ["omarchy", "osx", "windows", "i3", "hyprland", "niri"])
+        #expect(InitTemplate.allCases.first == .omarchy)
+        #expect(InitTemplate.omarchy.defaultMod == "cmd")
+        #expect(InitTemplate.omarchy.mods == ["alt", "cmd", "ctrl"])
         #expect(InitTemplate.osx.defaultMod == "ctrl")
         #expect(InitTemplate.niri.defaultMod == "alt")
     }
@@ -44,10 +47,10 @@ struct InitTemplatesTests {
             Issue.record("expected candidates")
             return
         }
-        #expect(Set(list.map(\.word)) == ["osx", "windows", "i3", "hyprland", "niri"])
+        #expect(Set(list.map(\.word)) == ["omarchy", "osx", "windows", "i3", "hyprland", "niri"])
     }
 
     @Test func theHelpShowsTheUsage() {
-        #expect(renderHelp(topic: "init")?.contains("wm init <osx|windows|i3|hyprland|niri> [--mod=<alt|cmd|ctrl|hyper>] [--force]") == true)
+        #expect(renderHelp(topic: "init")?.contains("wm init [template] [--mod=<alt|cmd|ctrl|hyper>] [--force]") == true)
     }
 }

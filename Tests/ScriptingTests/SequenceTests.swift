@@ -196,9 +196,6 @@ struct PrefixConfigTests {
               enabled = false,
               position = "top-right",
               offset = { x = 10, y = -20 },
-              font_size = 32,
-              background = "#00000080",
-              foreground = "#ff0000",
             },
           },
         }
@@ -210,9 +207,6 @@ struct PrefixConfigTests {
         #expect(prefix.label.position == .topRight)
         #expect(prefix.label.offsetX == 10)
         #expect(prefix.label.offsetY == -20)
-        #expect(prefix.label.fontSize == 32)
-        #expect(prefix.label.background == Color(red: 0, green: 0, blue: 0, alpha: 128.0 / 255))
-        #expect(prefix.label.foreground == Color(red: 1, green: 0, blue: 0))
     }
 
     @Test func missingKeysKeepTheirValue() throws {
@@ -234,11 +228,8 @@ struct PrefixConfigTests {
         ("wm.config { prefix = { timeout = 'soon' } }", "'prefix.timeout' must be a number"),
         ("wm.config { prefix = { menubar = 1 } }", "'prefix.menubar' must be true or false"),
         ("wm.config { prefix = { label = { enabled = 'yes' } } }", "'prefix.label.enabled' must be true or false"),
-        ("wm.config { prefix = { label = { font_size = 7 } } }", "'prefix.label.font_size' must be between 8 and 96"),
-        ("wm.config { prefix = { label = { font_size = 97 } } }", "'prefix.label.font_size' must be between 8 and 96"),
         ("wm.config { prefix = { label = { offset = { z = 1 } } } }", "unknown key 'prefix.label.offset.z'"),
         ("wm.config { prefix = { label = { offset = { x = 'a' } } } }", "'prefix.label.offset.x' must be a number"),
-        ("wm.config { prefix = { label = { background = 'red' } } }", "'prefix.label.background' must be a color"),
         ("wm.config { prefix = 3 }", "'prefix' must be a table"),
     ])
     func errorsNameTheKey(script: String, expected: String) throws {

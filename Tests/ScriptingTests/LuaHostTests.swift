@@ -71,7 +71,7 @@ wm.config {
   scrolling = { presets = { 0.33, 0.5, 0.66 }, default_width = 0.5, center = "always",
                 always_center_single_column = true, default_column_display = "tabbed", preset_heights = { 0.25, 0.5 },
                 vertical = { side = "left", width = 0.3, row_height = 0.4 } },
-  switcher = { thumbnails = false, delay = 0, background = "#00000080", selected = "#ff0000", max_scale = 0.5 },
+  switcher = { thumbnails = false, delay = 0, max_scale = 0.5 },
   url = { allow = { "exec" } },
 }
 
@@ -156,8 +156,6 @@ struct LuaHostTests {
         #expect(settings.scrolling.vertical.rowHeight == 0.4)
         #expect(settings.switcher.thumbnails == false)
         #expect(settings.switcher.delay == 0)
-        #expect(settings.switcher.background == Color(red: 0, green: 0, blue: 0, alpha: 128.0 / 255))
-        #expect(settings.switcher.selected == Color(red: 1, green: 0, blue: 0))
         #expect(settings.switcher.maxScale == 0.5)
         #expect(settings.urlAllow == ["exec"])
     }
@@ -883,13 +881,12 @@ struct LuaHostTests {
         #expect(bottom.settings.prefix.label.position == .bottomCenter)
     }
 
-    @Test func theLabelListsKeysByDefaultAndTakesAnAccentColor() throws {
+    @Test func theLabelListsKeysByDefault() throws {
         let defaults = try host.load(configURL: dir.write("init.lua", ""))
         #expect(defaults.settings.prefix.label.showKeys)
         #expect(defaults.settings.prefix.label.position == .bottomCenter)
-        let config = try host.load(configURL: dir.write("init.lua", "wm.config { prefix = { label = { show_keys = false, accent = '#ff0000' } } }"))
+        let config = try host.load(configURL: dir.write("init.lua", "wm.config { prefix = { label = { show_keys = false } } }"))
         #expect(!config.settings.prefix.label.showKeys)
-        #expect(config.settings.prefix.label.accent == Color(red: 1, green: 0, blue: 0))
     }
 
     @Test func aBindCanBeHiddenFromTheKeyList() throws {
@@ -901,17 +898,8 @@ struct LuaHostTests {
         #expect(config.bindRecords.first { $0.mode == "m" }?.options == BindOptions(description: "Right", hidden: true))
     }
 
-    @Test func theLabelFontCanBeNamed() throws {
-        let config = try host.load(configURL: dir.write("init.lua", "wm.config { prefix = { label = { font = 'Menlo' } } }"))
-        #expect(config.settings.prefix.label.fontName == "Menlo")
-        let empty = try host.load(configURL: dir.write("init.lua", "wm.config { prefix = { label = { font = '' } } }"))
-        #expect(empty.settings.prefix.label.fontName == nil)
-    }
-
     @Test(arguments: [
         ("wm.config { prefix = { label = { show_keys = 'yes' } } }", "'prefix.label.show_keys' must be true or false"),
-        ("wm.config { prefix = { label = { font = 5 } } }", "'prefix.label.font' must be a string"),
-        ("wm.config { prefix = { label = { accent = 'blue' } } }", "'prefix.label.accent' must be a color"),
         ("wm.bind('alt-a', 'x', { hidden = 'yes' })", "'hidden' must be true or false"),
     ])
     func labelOptionErrorsNameTheProblem(script: String, expected: String) throws {
@@ -1115,15 +1103,14 @@ struct LuaHostTests {
         #expect(rule.workspaceRules["3"] != nil)
     }
 
-    @Test func theOverviewHasAZoomAGapAndABackdrop() throws {
+    @Test func theOverviewHasAZoomAndAGap() throws {
         let plain = try host.load(configURL: dir.write("init.lua", "wm.config { layout = \"tiling\" }"))
         #expect(plain.settings.overview == OverviewSettings())
         #expect(plain.settings.overview.zoom == 0.5)
         #expect(plain.settings.overview.gap == 48)
-        let set = try host.load(configURL: dir.write("init.lua", "wm.config { overview = { zoom = 0.4, gap = 20, backdrop = \"#00000080\" } }"))
+        let set = try host.load(configURL: dir.write("init.lua", "wm.config { overview = { zoom = 0.4, gap = 20 } }"))
         #expect(set.settings.overview.zoom == 0.4)
         #expect(set.settings.overview.gap == 20)
-        #expect(set.settings.overview.backdrop == Color(red: 0, green: 0, blue: 0, alpha: 128.0 / 255))
     }
 
     @Test func theLabelsOfTheHintsHaveColorsThatTheConfigChanges() throws {
@@ -1521,7 +1508,6 @@ struct LuaHostTests {
         ("wm.config { gaps = { smart = 1 } }", "'gaps.smart' must be true or false"),
         ("wm.config { overview = { zoom = 0.9 } }", "'overview.zoom'"),
         ("wm.config { overview = { gap = -1 } }", "'overview.gap'"),
-        ("wm.config { overview = { backdrop = \"dark\" } }", "'overview.backdrop' must be a color"),
         ("wm.config { keyboards = { default = 'yes' } }", "'keyboards.default' must be true or false"),
         ("wm.config { keyboards = true }", "'keyboards' must be a table"),
         ("wm.config { floating = { remember_position = 'yes' } }", "'floating.remember_position' must be true or false"),
@@ -1546,7 +1532,6 @@ struct LuaHostTests {
         ("wm.config { switcher = { foo = 1 } }", "unknown key 'switcher.foo'"),
         ("wm.config { switcher = { thumbnails = 'yes' } }", "'switcher.thumbnails' must be true or false"),
         ("wm.config { switcher = { delay = -1 } }", "'switcher.delay' must be at least 0"),
-        ("wm.config { switcher = { selected = 'blue' } }", "'switcher.selected' must be a color"),
         ("wm.config { switcher = { max_scale = 2 } }", "'switcher.max_scale' must be between 0.3 and 1"),
         ("wm.bind('alt-foo', 'x')", "mode 'main': invalid chord 'alt-foo'"),
         ("wm.mode('windows', { ['alt-foo'] = 'x' })", "mode 'windows': invalid chord 'alt-foo'"),

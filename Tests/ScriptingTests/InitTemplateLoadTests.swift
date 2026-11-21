@@ -17,7 +17,33 @@ struct InitTemplateLoadTests {
 
     @Test(arguments: InitTemplate.allCases, ["alt", "cmd", "ctrl", "hyper"])
     func everyTemplateLoads(template: InitTemplate, mod: String) throws {
+        guard template.mods.contains(mod) else { return }
         _ = try load(template, mod: mod)
+    }
+
+    @Test(arguments: ["alt", "cmd", "ctrl"])
+    func omarchyKeepsEveryBindWhateverTheMod(mod: String) throws {
+        let config = try load(.omarchy, mod: mod)
+        let before = config.binds["main"]?.count ?? 0
+        // Super+Alt and Super+Ctrl binds must not fall on the same keys as the Super ones.
+        #expect(before >= 100)
+    }
+
+    @Test func omarchyFollowsTheHotkeysOfTheManual() throws {
+        let config = try load(.omarchy, mod: "cmd")
+        #expect(config.binds["main"]?[try parseChord("cmd-space")] == .command("palette"))
+        #expect(config.binds["main"]?[try parseChord("cmd-w")] == .command("window close"))
+        #expect(config.binds["main"]?[try parseChord("cmd-3")] == .command("workspace 3"))
+        #expect(config.binds["main"]?[try parseChord("cmd-shift-3")] == .command("window send workspace 3"))
+        #expect(config.binds["main"]?[try parseChord("cmd-alt-shift-3")] == .command("window send workspace 3 --stay"))
+        #expect(config.binds["main"]?[try parseChord("cmd-shift-left")] == .command("swap left"))
+        #expect(config.binds["main"]?[try parseChord("alt-tab")] == .command("switcher"))
+    }
+
+    @Test func omarchyUsesCmdForItsAltBindsWhenModIsAlt() throws {
+        let config = try load(.omarchy, mod: "alt")
+        #expect(config.binds["main"]?[try parseChord("alt-cmd-f")] == .command("window maximize"))
+        #expect(config.binds["main"]?[try parseChord("alt-tab")] == .command("workspace next"))
     }
 
     @Test func osxBindsTheSpacesKeys() throws {
