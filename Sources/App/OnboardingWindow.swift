@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import Common
+import Scripting
 
 /// The setup window. It shows the permissions, offers a starter config when there is none, and has the Start button that
 /// lets wm manage windows. The status refreshes each second, because the user grants the permissions in System Settings.
@@ -172,7 +173,7 @@ final class OnboardingWindow: NSObject, NSWindowDelegate {
         guard InitTemplate.allCases.indices.contains(index) else { return }
         let template = InitTemplate.allCases[index]
         do {
-            _ = try writeInitConfig(initConfig(template, mod: modPopup.titleOfSelectedItem ?? template.defaultMod), to: configURL, force: false)
+            _ = try writeInitFiles(initFiles(template, mod: modPopup.titleOfSelectedItem ?? template.defaultMod), to: configURL, force: false)
         } catch {
             configStatus.stringValue = "Cannot write \(configURL.path): \(error.localizedDescription)"
             return
