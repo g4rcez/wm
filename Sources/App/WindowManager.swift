@@ -77,14 +77,16 @@ private struct RebootRestore {
 /// All window state and the layout pipeline. Everything here runs on the main actor.
 @MainActor
 final class WindowManager {
-    var settings = Settings()
+    var settings = Settings() { didSet { workspaceSettingsCache.removeAll() } }
+    /// `settings(forWorkspace:)` for the workspaces that have a `wm.workspace` override. It clears when the settings or the rules change.
+    private var workspaceSettingsCache: [String: Settings] = [:]
     /// The frames drawn on the picker grid. They are tiling templates and live beside the config ones.
     var customTemplates = CustomTemplates.load(from: StateStore.templatesURL)
     var rules: [WindowRule] = []
     /// Layout per workspace from `wm.workspace`; other workspaces use `settings.layout`.
     private(set) var workspaceLayouts: [String: LayoutKind] = [:]
     /// What `wm.workspace` set per workspace: monitor binding, default, and the settings it changes.
-    private(set) var workspaceRules: [String: WorkspaceRule] = [:]
+    private(set) var workspaceRules: [String: WorkspaceRule] = [:] { didSet { workspaceSettingsCache.removeAll() } }
 
     private(set) var windows: [WindowID: ManagedWindow] = [:]
     private(set) var workspaces: [String: Workspace] = [:]
@@ -244,9 +246,11 @@ final class WindowManager {
     /// The settings of a workspace: the global ones with the changes of its `wm.workspace` rule.
     func settings(forWorkspace name: String) -> Settings {
         guard let overrides = workspaceRules[name]?.overrides else { return settings }
+        if let cached = workspaceSettingsCache[name] { return cached }
         var copy = settings
         // The values were checked when the config loaded.
         try? applyWorkspaceOverrides(overrides, to: &copy)
+        workspaceSettingsCache[name] = copy
         return copy
     }
 
