@@ -22,7 +22,7 @@ wm reads `init.lua` and `shortcuts.toml` from `~/.config/wm/`. The Lua functions
 | `animations` | `{ enabled = true, fps = 120, rate = 16 }` | `fps`: 30 to 240, capped by the display. `rate`: spring stiffness. Sub-tables `windows`, `workspaces`, `special` (below). |
 | `border` | `{ enabled = true, width = 2, radius = 10, active = "#89b4fa", inactive = "#00000000" }` | `active` can be `{ "#89b4fa", "#cba6f7" }` for a gradient (`angle = 45`). |
 | `focus_follows_mouse` | `false` | Or `{ enabled = true, only_fully_visible = true }`. |
-| `mouse_follows_focus` | `false` | |
+| `mouse_follows_focus` | `false` | Moves the cursor to the center of a window that a command focuses. Switching workspaces never moves it. |
 | `start_at_login` | `true` | Only when running as wm.app. |
 | `mouse` | `{ move_modifier = "alt", resize_modifier = "alt" }` | Both are off by default. |
 | `wrap_focus` | `false` | `focus`, `move` and `swap` wrap at the edge, as with `--wrap`. |

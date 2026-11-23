@@ -389,7 +389,7 @@
 ---@field animations? wm.Animations
 ---@field border? wm.Border
 ---@field focus_follows_mouse? boolean|wm.FocusFollowsMouse Default false. A table can limit it to windows that are fully on screen.
----@field mouse_follows_focus? boolean Default false.
+---@field mouse_follows_focus? boolean Moves the cursor to the center of a window that a command focuses. Switching workspaces never moves it. Default false.
 ---@field start_at_login? boolean Only when running as wm.app. Default false.
 ---@field trackpad? wm.TrackpadConfig Swipes with 3 or 4 fingers.
 ---@field mouse? wm.MouseConfig Move and resize windows with a modifier and the mouse.

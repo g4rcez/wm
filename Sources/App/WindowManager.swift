@@ -1403,7 +1403,8 @@ final class WindowManager {
         if focusWindow {
             let target = workspace(name)
             if let id = windowToFocus(in: target) {
-                focus(id)
+                // Showing a workspace must not move the cursor, whatever mouse_follows_focus says.
+                focus(id, warpMouse: false)
                 return
             }
             focused = nil
