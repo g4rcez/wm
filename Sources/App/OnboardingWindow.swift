@@ -24,6 +24,7 @@ final class OnboardingWindow: NSObject, NSWindowDelegate {
     private let accessibilityGrant = NSButton()
     private let screenGrant = NSButton()
     private var stack: NSStackView?
+    private let dragPanel = PermissionDragPanel()
 
     init(configURL: URL, onStart: @escaping () -> Void) {
         self.configURL = configURL
@@ -46,6 +47,7 @@ final class OnboardingWindow: NSObject, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        dragPanel.close()
         timer?.invalidate()
         timer = nil
     }
@@ -153,21 +155,23 @@ final class OnboardingWindow: NSObject, NSWindowDelegate {
 
     @objc private func grantAccessibility() {
         _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
-        openSettingsUnless("Privacy_Accessibility") { AXIsProcessTrusted() }
+        openSettingsUnless("Privacy_Accessibility", permission: "Accessibility") { AXIsProcessTrusted() }
     }
 
     @objc private func grantScreenRecording() {
         _ = CGRequestScreenCaptureAccess()
-        openSettingsUnless("Privacy_ScreenCapture") { CGPreflightScreenCaptureAccess() }
+        openSettingsUnless("Privacy_ScreenCapture", permission: "Screen Recording") { CGPreflightScreenCaptureAccess() }
     }
 
     /// macOS shows its permission prompt once for each app signature. After that, or when the prompt hides behind the
-    /// window, the button would do nothing, so a pane of System Settings opens when the permission is still missing.
-    private func openSettingsUnless(_ pane: String, granted: @escaping @MainActor () -> Bool) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+    /// window, the button would do nothing. So a pane of System Settings opens when the permission is still missing, with a
+    /// panel to drag the wm icon into its list.
+    private func openSettingsUnless(_ pane: String, permission: String, granted: @escaping @MainActor () -> Bool) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
             MainActor.assumeIsolated {
                 guard !granted(), let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") else { return }
                 NSWorkspace.shared.open(url)
+                self?.dragPanel.show(permission: permission, granted: granted)
             }
         }
     }
