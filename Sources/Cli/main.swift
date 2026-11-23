@@ -108,9 +108,9 @@ func appBundle() -> URL? {
 
 if arguments.first == "cheatsheet" {
     let words = Array(arguments.dropFirst())
-    let usage = "usage: wm cheatsheet [tui|gui]"
-    guard words.count <= 1, words.first.map({ ["tui", "gui"].contains($0) }) ?? true else {
-        die("expected tui or gui", hint: usage, code: 2)
+    let usage = "usage: wm cheatsheet [tui|gui|cli]"
+    guard words.count <= 1, words.first.map({ ["tui", "gui", "cli"].contains($0) }) ?? true else {
+        die("expected tui, gui or cli", hint: usage, code: 2)
     }
     // Without a word: a terminal gets the sheet in the terminal; a bind, a script or a launcher (no terminal) gets the panel.
     let onTerminal = isatty(STDIN_FILENO) == 1 && isatty(STDOUT_FILENO) == 1
@@ -134,6 +134,11 @@ if arguments.first == "cheatsheet" {
             }
         }
         let sheet = buildCheatsheet(binds)
+        if words.first == "cli" {
+            // The keys as plain text, one bind per line, for grep, less, more and cat.
+            write(renderPlainCheatsheet(sheet), to: .standardOutput)
+            exit(0)
+        }
         if onTerminal, ProcessInfo.processInfo.environment["TERM"] != "dumb", !sheet.pages.isEmpty {
             runCheatsheetScreen(sheet, mode: mode, color: outputStyle.enabled)
         } else {

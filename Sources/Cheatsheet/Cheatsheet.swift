@@ -327,3 +327,29 @@ public func packColumns(_ sections: [CheatSection], count: Int) -> [[CheatSectio
     }
     return columns
 }
+
+/// The sheet as plain text, one bind per line: `alt+shift+H  # Swap left  (focus swap left)`. No colors, no columns, no
+/// control codes, so `grep`, `less`, `more` and `cat` get the whole bind on a line. A chord of several steps is `hyper+W > H`.
+public func renderPlainCheatsheet(_ sheet: Cheatsheet) -> String {
+    let names = Dictionary(uniqueKeysWithValues: legendNames)
+    func keys(_ row: CheatRow) -> String {
+        row.steps.map { step in
+            // `alt+L+H+K+J` is one row for four binds: the modifiers, then the keys that differ, as `alt+L/H/K/J`.
+            let modifiers = step.filter(\.isModifier).map { names[$0.text] ?? $0.text }
+            return (modifiers + [step.filter { !$0.isModifier }.map(\.text).joined(separator: "/")]).joined(separator: "+")
+        }.joined(separator: " > ")
+    }
+    var lines: [String] = []
+    for page in sheet.pages {
+        for section in page.sections {
+            if !lines.isEmpty { lines.append("") }
+            lines.append("## \(page.mode) / \(section.title)")
+            let width = section.rows.map { keys($0).count }.max() ?? 0
+            for row in section.rows {
+                let note = row.note.isEmpty ? "" : " (\(row.note))"
+                lines.append(keys(row).padding(toLength: width, withPad: " ", startingAt: 0) + "  # " + row.title + note + "  [" + row.command + "]")
+            }
+        }
+    }
+    return lines.joined(separator: "\n") + (lines.isEmpty ? "" : "\n")
+}
