@@ -87,7 +87,7 @@ if arguments == ["version"] || arguments == ["--version"] {
 if let first = arguments.first, !commandNames.contains(first) {
     die("unknown command '\(first)'", hint: unknownCommandHint(first) ?? "run `wm help` to see the commands", code: 2)
 }
-let localCommands = [["daemon", "start"], ["daemon", "stop"], ["subscribe"], ["logs"], ["pick"], ["init"], ["config", "check"], ["doctor"], ["cheatsheet"]]
+let localCommands = [["daemon", "start"], ["daemon", "stop"], ["subscribe"], ["logs"], ["pick"], ["init"], ["config", "check"], ["doctor"], ["cheatsheet"], ["skills"]]
 if windowId != nil || windowSelector != nil, localCommands.contains(where: { Array(arguments.prefix($0.count)) == $0 }) {
     die("--window does not apply to '\(arguments.prefix(2).filter { !$0.hasPrefix("--") }.joined(separator: " "))'", code: 2)
 }
@@ -141,6 +141,12 @@ if arguments.first == "cheatsheet" {
         }
         exit(0)
     }
+}
+
+if arguments.first == "skills" {
+    guard arguments.count == 1 else { die("skills takes no argument", hint: "usage: wm skills", code: 2) }
+    write(renderSkill(), to: .standardOutput)
+    exit(0)
 }
 
 if arguments.first == "completion" {

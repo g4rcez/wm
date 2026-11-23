@@ -168,6 +168,7 @@ See [Sticky windows and zen mode](https://wm.garcez.dev/docs/sticky-zen) and [Wi
   completion, hover help and warnings for the whole API. See [Lua API](https://wm.garcez.dev/docs/lua-api). It also sets up
   [Taplo](https://taplo.tamasfe.dev/) for `shortcuts.toml`.
 - **Shell completion** for zsh and bash: `eval "$(wm completion zsh)"`.
+- **AI agents:** `wm skills` prints a skill that teaches an agent to use wm. See [Command line](https://wm.garcez.dev/docs/cli).
 
 ## Install
 

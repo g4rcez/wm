@@ -374,6 +374,10 @@ public let commandSections: [CommandSection] = [
             "completion", "<zsh|bash>", "", "Print the shell completion script.",
             details: "It completes the commands, their arguments and options, and (when the daemon runs) window ids, workspaces and modes.\nLoad it when the shell starts. The script itself works without the daemon.",
             example: "eval \"$(wm completion zsh)\""),
+        CommandSpec(
+            "skills", "", "", "Print a skill that teaches an AI agent to use wm.",
+            details: "Prints a SKILL.md: the rules for an agent, how to choose a window, and every command with its usage. The command list is built from\nthe same table as `wm help`, so it is always the list of this version. Save it where your agent reads skills. It works without the daemon.",
+            example: "wm skills > ~/.claude/skills/wm/SKILL.md"),
         CommandSpec("version", "", "", "Print the version."),
     ]),
 ]

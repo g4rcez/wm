@@ -36,6 +36,7 @@ EDITOR           lsp [--write] [--force]
 CONFIG           init [template] [--mod=<alt|cmd|ctrl|hyper>] [--lua] [--force]
                  config check [path]
 SHELL            completion <zsh|bash>
+AGENTS           skills
 ```
 
 `wm doctor` checks:
@@ -54,6 +55,12 @@ It prints a hint for each check that is not ok. It exits with 1 when a check fai
 - In `config check`, `wm.exec` and `wm.dispatch` do nothing and `wm.query` finds nothing. A config that needs a query result while it loads fails there.
 
 Neither command needs the daemon.
+
+`wm skills` prints a skill (a `SKILL.md`) that teaches an AI agent to use wm: rules for an agent, how to choose a window, and every command with its usage. The command list is built from the same table as `wm help`, so it matches this version. It needs no daemon. Save it where your agent reads skills:
+
+```sh
+mkdir -p ~/.claude/skills/wm && wm skills > ~/.claude/skills/wm/SKILL.md
+```
 
 Options for every command:
 
