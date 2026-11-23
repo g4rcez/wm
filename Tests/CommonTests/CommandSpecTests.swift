@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Common
 
@@ -9,6 +10,32 @@ struct CommandSpecTests {
             let found = commandSpecs.contains { Array(words.prefix($0.words.count)) == $0.words }
             #expect(found, "\(old) -> \(replacement)")
         }
+    }
+
+    /// Weak on purpose: it checks the last word of each command path in the table of cli.md, so a multi-word command can hide behind a
+    /// common last word. It still catches the usual drift: a command that has no row at all.
+    @Test func everyCommandIsInTheCliDoc() throws {
+        // Tests/CommonTests/CommandSpecTests.swift -> the repository root.
+        var root = URL(fileURLWithPath: #filePath)
+        for _ in 0..<3 { root.deleteLastPathComponent() }
+        let doc = try String(contentsOf: root.appendingPathComponent("docs/src/content/docs/cli.md"), encoding: .utf8)
+        let fence = "```"
+        let parts = doc.components(separatedBy: fence)
+        try #require(parts.count >= 3, "cli.md has no fenced command table")
+        let table = parts[1]
+        func isWordCharacter(_ character: Character) -> Bool { character.isLetter || character.isNumber || character == "-" }
+        func contains(word: String) -> Bool {
+            var rest = table[...]
+            while let range = rest.range(of: word) {
+                let before = range.lowerBound == table.startIndex ? nil : table[table.index(before: range.lowerBound)]
+                let after = range.upperBound == table.endIndex ? nil : table[range.upperBound]
+                if !(before.map(isWordCharacter) ?? false), !(after.map(isWordCharacter) ?? false) { return true }
+                rest = rest[range.upperBound...]
+            }
+            return false
+        }
+        let missing = commandSpecs.filter { !contains(word: $0.words.last ?? "") }.map(\.path)
+        #expect(missing.isEmpty, "cli.md has no row for: \(missing)")
     }
 
     @Test func noOldNameIsAlsoANewName() {
