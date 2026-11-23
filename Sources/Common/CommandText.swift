@@ -6,12 +6,26 @@ public let urlBlockedCommands: Set<String> = ["exec", "daemon", "subscribe", "ke
 /// The first command of a URL request that the URL may not run, or `nil`. `batch` runs other commands, so each of its commands
 /// counts too: `wm://batch?args=exec ...` must not get around the list.
 public func urlBlockedCommand(in words: [String], allowed: [String]) -> String? {
-    guard let command = words.first else { return nil }
+    // A global flag before the command (`--verbose exec ...`) is removed before the command runs, so it must not hide it here.
+    guard let command = words.first(where: { !$0.hasPrefix("-") }) else { return nil }
     if command == "batch" {
         let inner = splitBatch(words.dropFirst().joined(separator: " ")).map(splitCommand)
         return inner.lazy.compactMap { urlBlockedCommand(in: $0, allowed: allowed) }.first
     }
     return urlBlockedCommands.contains(command) && !allowed.contains(command) ? command : nil
+}
+
+/// The command words without the `--verbose` flag, and whether the flag was there. Before the command word it is always the flag;
+/// after `exec` it belongs to the shell command and stays; after any other command it is the flag too.
+public func stripVerbose(_ args: [String]) -> (args: [String], verbose: Bool) {
+    var rest = args[...]
+    while rest.first == "--verbose" { rest = rest.dropFirst() }
+    var verbose = rest.count != args.count
+    if rest.first != "exec", rest.contains("--verbose") {
+        rest = ArraySlice(rest.filter { $0 != "--verbose" })
+        verbose = true
+    }
+    return (Array(rest), verbose)
 }
 
 /// Splits a command string into words. Single or double quotes group words. The rest of an `exec` command

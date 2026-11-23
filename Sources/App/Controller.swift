@@ -148,9 +148,7 @@ final class AppController: HostBridge, @unchecked Sendable {
     /// (`mode`, `daemon`, ...) just ignore it; `workspace`, `list`, `exec` and `switcher` use it. `--verbose` adds one
     /// line with the state after a command that worked.
     func run(_ request: ClientRequest) -> ServerAnswer {
-        var args = request.args
-        let verbose = args.contains("--verbose")
-        args.removeAll { $0 == "--verbose" }
+        let (args, verbose) = stripVerbose(request.args)
         if let id = request.windowId, onMain({ manager.windows[id] == nil }) {
             return fail("no window with id \(id)", 1, hint: "see `wm list windows` for ids")
         }

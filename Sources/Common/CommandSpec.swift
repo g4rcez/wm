@@ -282,7 +282,7 @@ public let commandSections: [CommandSection] = [
             example: "wm pointer monitor"),
         CommandSpec(
             "exec", "[options] <command>", "", "Run a shell command (--window sets $WM_WINDOW_ID).",
-            details: "Options make a rule for the window that the command opens: --float, --tile, --center, --maximize, --no-focus,\n--workspace <w>, --monitor <m>, --width <f>, --size <w>,<h>, --layout <kind>. End them with `--`. The window is found by\nprocess, so the program itself works as it is. For `open -a`, or an app that hands the work to a copy that already runs, add\n--app <bundle id or name>: the first new window of that app takes the options. The options wait 15 seconds for the window, or\n--timeout <seconds> (1 to 600). --app and --timeout need an option for the window too.",
+            details: "Options make a rule for the window that the command opens: --float, --tile, --center, --maximize, --no-focus,\n--workspace <w>, --monitor <m>, --width <f>, --size <w>,<h>, --layout <kind>. End them with `--`. The window is found by\nprocess, so the program itself works as it is. For `open -a`, or an app that hands the work to a copy that already runs, add\n--app <bundle id or name>: the first new window of that app takes the options. The options wait 15 seconds for the window, or\n--timeout <seconds> (1 to 600). --app and --timeout need an option for the window too. A `--verbose` after `exec` belongs to the shell command.",
             example: "wm exec --float --center --size 0.5,0.5 -- /Applications/Foo.app/Contents/MacOS/foo"),
         CommandSpec(
             "batch", "<commands>", "", "Run commands in order; stops at the first error.",

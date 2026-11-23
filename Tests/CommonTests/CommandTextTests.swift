@@ -56,6 +56,35 @@ struct CommandTextTests {
         #expect(urlBlockedCommand(in: ["batch", "key send cmd-q"], allowed: []) == "key")
     }
 
+    @Test func aLeadingGlobalFlagDoesNotHideABlockedCommand() {
+        #expect(urlBlockedCommand(in: ["--verbose", "exec", "open -a Calculator"], allowed: []) == "exec")
+        #expect(urlBlockedCommand(in: ["--verbose", "key", "press", "cmd-space"], allowed: []) == "key")
+        #expect(urlBlockedCommand(in: ["--verbose", "daemon", "stop"], allowed: []) == "daemon")
+        #expect(urlBlockedCommand(in: ["-v", "exec", "x"], allowed: []) == "exec")
+        #expect(urlBlockedCommand(in: ["--verbose", "--verbose", "exec", "x"], allowed: []) == "exec")
+        #expect(urlBlockedCommand(in: ["batch", "--verbose exec 'touch x'"], allowed: []) == "exec")
+        #expect(urlBlockedCommand(in: ["--verbose", "exec", "x"], allowed: ["exec"]) == nil)
+        #expect(urlBlockedCommand(in: ["--verbose", "workspace", "2"], allowed: []) == nil)
+        #expect(urlBlockedCommand(in: ["--verbose"], allowed: []) == nil)
+    }
+
+    @Test func aUrlThatStartsWithAFlagIsStillBlocked() throws {
+        let url = try #require(URL(string: "wm://--verbose/exec?args=open%20-a%20Calculator"))
+        let request = try #require(commandRequest(fromURL: url))
+        #expect(urlBlockedCommand(in: request.args, allowed: []) == "exec")
+    }
+
+    @Test func verboseBeforeTheCommandOrAfterANormalCommandIsTheFlag() {
+        #expect(stripVerbose(["focus", "left", "--verbose"]) == (["focus", "left"], true))
+        #expect(stripVerbose(["--verbose", "focus", "left"]) == (["focus", "left"], true))
+        #expect(stripVerbose(["list"]) == (["list"], false))
+    }
+
+    @Test func verboseAfterExecBelongsToTheShellCommand() {
+        #expect(stripVerbose(["exec", "make", "--verbose"]) == (["exec", "make", "--verbose"], false))
+        #expect(stripVerbose(["--verbose", "exec", "make", "--verbose"]) == (["exec", "make", "--verbose"], true))
+    }
+
     @Test func batchSplitsAtSemicolonsOutsideQuotes() {
         #expect(splitBatch("workspace 2; layout set tiling") == ["workspace 2", "layout set tiling"])
         #expect(splitBatch("exec 'echo a; echo b'; focus left") == ["exec 'echo a; echo b'", "focus left"])
