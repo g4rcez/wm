@@ -62,9 +62,12 @@ install:
 		exit 1; }
 	@echo "Signing with $(IDENTITY)"
 	NO_START=1 CODESIGN_IDENTITY="$(IDENTITY)" ./build-app.sh $(CONFIG)
+	@# The new app is copied and checked next to the old one; the old one goes only when the new one is good.
+	rm -rf "$(APP_DIR)/wm.app.new"
+	ditto .build/wm.app "$(APP_DIR)/wm.app.new"
+	codesign --verify --deep --strict "$(APP_DIR)/wm.app.new" || { rm -rf "$(APP_DIR)/wm.app.new"; exit 1; }
 	rm -rf "$(APP_DIR)/wm.app"
-	ditto .build/wm.app "$(APP_DIR)/wm.app"
-	codesign --verify --deep --strict "$(APP_DIR)/wm.app"
+	mv "$(APP_DIR)/wm.app.new" "$(APP_DIR)/wm.app"
 	@codesign -dr - "$(APP_DIR)/wm.app" 2>&1 | grep 'designated =>' || true
 	mkdir -p "$(BIN_DIR)"
 	ln -sf "$(APP_DIR)/wm.app/Contents/MacOS/wm" "$(BIN_DIR)/wm"
