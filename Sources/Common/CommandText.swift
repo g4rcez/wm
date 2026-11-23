@@ -144,5 +144,7 @@ public func commandRequest(fromURL url: URL) -> ClientRequest? {
     guard let value = items.first(where: { $0.name == "window" })?.value else { return ClientRequest(args: words) }
     if let id = UInt32(value) { return ClientRequest(args: words, windowId: id) }
     guard isWindowSelector(value) else { return nil }
+    // A URL can come from any web page, and the regex of `title:` runs on the main thread with no time limit.
+    guard !value.hasPrefix("title:") else { return nil }
     return ClientRequest(args: words, windowSelector: value)
 }

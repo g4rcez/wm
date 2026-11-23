@@ -1928,7 +1928,11 @@ final class WindowManager {
             }.map(\.key)
         } else if selector.hasPrefix("title:") {
             let pattern = String(selector.dropFirst(6))
-            matches = windows.filter { $0.value.info.title.range(of: pattern, options: .regularExpression) != nil }.map(\.key)
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+            matches = windows.filter {
+                let title = $0.value.info.title
+                return regex.firstMatch(in: title, range: NSRange(title.startIndex..., in: title)) != nil
+            }.map(\.key)
         } else if selector.hasPrefix("pid:"), let pid = Int32(selector.dropFirst(4)) {
             matches = windows.filter { $0.value.info.pid == pid }.map(\.key)
         } else {

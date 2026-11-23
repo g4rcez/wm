@@ -85,6 +85,13 @@ struct CommandTextTests {
         #expect(stripVerbose(["--verbose", "exec", "make", "--verbose"]) == (["exec", "make", "--verbose"], true))
     }
 
+    @Test func aUrlCannotUseARegexTitleSelector() throws {
+        // The pattern runs on the main thread and ICU has no time limit; a URL can come from any web page.
+        #expect(commandRequest(fromURL: try #require(URL(string: "wm://focus/left?window=title:.*"))) == nil)
+        #expect(commandRequest(fromURL: try #require(URL(string: "wm://focus/left?window=app:Safari")))?.windowSelector == "app:Safari")
+        #expect(commandRequest(fromURL: try #require(URL(string: "wm://focus/left?window=42")))?.windowId == 42)
+    }
+
     @Test func batchSplitsAtSemicolonsOutsideQuotes() {
         #expect(splitBatch("workspace 2; layout set tiling") == ["workspace 2", "layout set tiling"])
         #expect(splitBatch("exec 'echo a; echo b'; focus left") == ["exec 'echo a; echo b'", "focus left"])
