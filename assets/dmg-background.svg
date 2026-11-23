@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="660" height="400" viewBox="0 0 660 400">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fbf7ee"/><stop offset="1" stop-color="#ece5d4"/></linearGradient>
+  </defs>
+  <rect width="660" height="400" fill="url(#bg)"/>
+  <g font-family="Helvetica Neue, Helvetica, Arial, sans-serif" text-anchor="middle">
+    <text x="330" y="80" font-size="28" font-weight="600" fill="#1e1e2e">Install wm</text>
+    <text x="330" y="108" font-size="15" fill="#4c4f69">Drag wm into Applications</text>
+    <text x="330" y="360" font-size="13" fill="#4c4f69">Then open wm: the setup window walks you through Accessibility and Screen Recording.</text>
+  </g>
+  <g fill="none" stroke="#1e1e2e" stroke-opacity="0.75" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M268 190 H388" stroke-dasharray="1 10"/>
+    <path d="M378 175 L396 190 L378 205"/>
+  </g>
+</svg>
