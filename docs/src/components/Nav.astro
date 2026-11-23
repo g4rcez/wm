@@ -1,8 +1,7 @@
 ---
 const path = Astro.url.pathname;
 const links = [
-  { href: "/docs/overview", label: "Docs", match: "/docs" },
-  { href: "/docs/examples", label: "Examples", match: "/docs/examples", hideOnPhone: true },
+  { href: "/docs/getting-started", label: "Docs", match: "/docs" },
 ];
 ---
 
@@ -16,7 +15,7 @@ const links = [
       {
         links.map((l) => (
           <li class:list={[{ "phone-hide": l.hideOnPhone }]}>
-            <a href={l.href} aria-current={path.startsWith(l.match) && (l.match !== "/docs" || !path.startsWith("/docs/examples")) ? "page" : undefined}>
+            <a href={l.href} aria-current={path.startsWith(l.match) ? "page" : undefined}>
               {l.label}
             </a>
           </li>
@@ -26,7 +25,7 @@ const links = [
         <a class="gh" href="https://github.com/g4rcez/wm" rel="noopener">GitHub</a>
       </li>
     </ul>
-    <a class="btn btn-primary cta" href="/docs/install">Install</a>
+    <a class="btn btn-primary cta" href="/docs/getting-started">Install</a>
   </nav>
 </header>
 

@@ -2,7 +2,7 @@
 title: "Development"
 description: "Build, test and work on wm itself."
 group: Guides
-order: 4
+order: 2
 ---
 ```sh
 timeout 300 swift test      # unit tests: layout engines, geometry, Lua host, IPC, command parsing

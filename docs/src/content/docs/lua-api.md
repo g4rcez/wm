@@ -47,7 +47,7 @@ order: 2
   ```
 
   `options` make a one-shot rule for the window that the command opens: `float`, `workspace`, `layout`, `size`, `center`,
-  `maximize`, `width`, `monitor`, `focus` and `run`, as in [`wm.rule`](/docs/rules). Two more keys say how to find the window:
+  `maximize`, `width`, `monitor`, `focus` and `run`, as in [`wm.rule`](/docs/config). Two more keys say how to find the window:
   - `timeout`: seconds to wait, 1 to 600, default 15.
   - `app`: a bundle id or name.
 
@@ -70,9 +70,9 @@ order: 2
   wm.dispatch("exec --float --center --size 0.5,0.5 -- /Applications/kitty.app/Contents/MacOS/kitty -e htop")
   ```
 - `wm.shortcuts()` binds the `[[shortcut]]` entries of `shortcuts.toml`, the file that the Shortcuts window writes. See
-  [shortcuts.toml](/docs/config#shortcutstoml). A `wm.bind` for the same keys after the call replaces the shortcut.
+  [shortcuts.toml](/docs/config). A `wm.bind` for the same keys after the call replaces the shortcut.
 - `wm.press(key)` types a key now (`"play"`, `"cmd-shift-4"`). `wm.remap(chord, key)` makes a chord type another key. See
-  [The hyper key, remaps and typing keys](/docs/keys#the-hyper-key-remaps-and-typing-keys).
+  [The hyper key, remaps and typing keys](/docs/config).
 - Where each function works:
   - Only while the config file loads (not inside a bind or an event handler): `wm.config`, `wm.bind`, `wm.remap`, `wm.shortcuts`, `wm.mode`, `wm.gesture`, `wm.rule`, `wm.workspace` and `wm.profile`.
   - Everywhere: `wm.dispatch`, `wm.exec`, `wm.press`, `wm.query`, `wm.log` and `wm.on`.
@@ -123,7 +123,7 @@ TOML server of the "Even Better TOML" extension) at `types/shortcuts.schema.json
 - a missing `keys`;
 - a shortcut that has both `action` and `remap` (or neither).
 
-If a `.taplo.toml` is already there, the command prints the rule to add instead of replacing the file, unless you use `--force`. `--force` replaces both `.luarc.json` and `.taplo.toml`. See [shortcuts.toml](/docs/config#shortcutstoml).
+If a `.taplo.toml` is already there, the command prints the rule to add instead of replacing the file, unless you use `--force`. `--force` replaces both `.luarc.json` and `.taplo.toml`. See [shortcuts.toml](/docs/config).
 
 `wm.shortcuts()` has a stub too, so LuaLS completes it and shows its help.
 

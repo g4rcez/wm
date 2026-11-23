@@ -16,21 +16,21 @@ const features = [
     title: "Scrolling and tiling",
     text: "Scrolling puts windows in columns on a strip that moves sideways, as niri and PaperWM do. Tiling splits the screen in a tree, as Hyprland's dwindle layout does. You choose the layout per workspace and change it while wm runs.",
     code: "wm layout set scrolling",
-    href: "/docs/scrolling",
+    href: "/docs/layouts",
     span: 7,
   },
   {
     title: "Emulated workspaces",
     text: "wm hides the windows of other workspaces, so it needs no macOS desktops. Name them as you like, and show them on any monitor.",
     code: "wm workspace web",
-    href: "/docs/overview",
+    href: "/docs/getting-started",
     span: 5,
   },
   {
     title: "Binding modes",
     text: "A mode is a separate set of keys. A panel lists the keys that you can press.",
     code: "wm mode resize",
-    href: "/docs/key-panel",
+    href: "/docs/config",
     span: 4,
   },
   {
@@ -44,35 +44,35 @@ const features = [
     title: "Switcher and overview",
     text: "A switcher with a picture of each window, and an overview of the workspaces.",
     code: 'wm.bind("alt-tab", "switcher")',
-    href: "/docs/switcher",
+    href: "/docs/features",
     span: 4,
   },
   {
     title: "Command palette",
     text: "One panel to find windows, apps, browser tabs, wm commands and menu items.",
     code: 'wm.bind("alt-p", "palette")',
-    href: "/docs/palette",
+    href: "/docs/features",
     span: 5,
   },
   {
     title: "Hints, scroll and select mode",
     text: "Click and scroll from the keyboard, as in Homerow.",
     code: 'wm.bind("cmd-shift-space", "hints")',
-    href: "/docs/hints",
+    href: "/docs/features",
     span: 7,
   },
   {
     title: "Window rules",
     text: "Match new windows by app or title. Decide where they go and how they look.",
     code: 'wm.rule { app = "com.spotify.client", workspace = "9" }',
-    href: "/docs/rules",
+    href: "/docs/config",
     span: 6,
   },
   {
     title: "Special workspaces",
     text: "A scratchpad. One key shows it, the same key hides it.",
     code: "wm workspace special term",
-    href: "/docs/special-workspaces",
+    href: "/docs/layouts",
     span: 6,
   },
 ];
@@ -191,7 +191,7 @@ const steps = [
   <div class="hero">
     <HeroMosaic />
     <div class="container">
-      <a class="badge" href="/docs/first-five-minutes">
+      <a class="badge" href="/docs/getting-started">
         <span class="dot"></span>
         Swift, Lua, no SIP changes
         <span aria-hidden="true">→</span>
@@ -205,7 +205,7 @@ const steps = [
         Lua and URLs.
       </p>
       <div class="actions">
-        <a class="btn btn-primary" href="/docs/install">Get started</a>
+        <a class="btn btn-primary" href="/docs/getting-started">Get started</a>
         <a class="btn" href="https://github.com/g4rcez/wm" rel="noopener">View on GitHub</a>
       </div>
       <div class="install">
@@ -223,7 +223,7 @@ const steps = [
       <h2>Press the keys. It moves.</h2>
       <p>
         This is a model of wm, not a screen recording. Click the desktop and use the binds from{" "}
-        <a href="/docs/first-five-minutes">First five minutes</a>: the same commands that wm runs, as you see below the screen.
+        <a href="/docs/getting-started">First five minutes</a>: the same commands that wm runs, as you see below the screen.
       </p>
     </header>
     <Demo />
@@ -303,8 +303,8 @@ const steps = [
       <CopyCommand command={install} />
     </div>
     <div class="actions">
-      <a class="btn btn-primary" href="/docs/install">Read the install guide</a>
-      <a class="btn" href="/docs/overview">How wm thinks</a>
+      <a class="btn btn-primary" href="/docs/getting-started">Read the install guide</a>
+      <a class="btn" href="/docs/getting-started">How wm thinks</a>
     </div>
   </section>
 </Base>

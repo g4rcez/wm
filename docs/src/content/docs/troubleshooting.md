@@ -2,51 +2,25 @@
 title: "Troubleshooting and limits"
 description: "Fixes for common problems, and what wm cannot do."
 group: Guides
-order: 3
+order: 1
 ---
 ## Troubleshooting
 
-Run `wm doctor` first. It checks the config, the daemon, the Accessibility and Screen Recording permissions and the login item.
-It says what to do for each one that is not ok. `wm config check` loads the config alone and shows the line of an error.
+Run `wm doctor` first. It checks the config, `shortcuts.toml`, the daemon and the permissions, and says what to do for each check that is not ok. `wm config check` loads the config alone and shows the line of an error.
 
-- **Nothing happens when I press a key.** Check that wm has Accessibility permission and that `wm daemon status` says it
-  runs. Without a config, wm has no key binds.
-- **My config has `workspaces = "native"` and no key works.** wm no longer has native macOS desktops. That value is an
-  error, and the config does not load. Delete the line, or set `workspaces = "emulated"`.
-- **I rebuilt and macOS asks for permissions again.** The build was signed ad hoc. See [Signing](/docs/install#signing).
-- **The menu bar icon is missing.** Switch on `wm` in System Settings > Menu Bar. `wm daemon status` says
-  `menu bar: hidden by macOS` when the icon is not on screen.
-- **The switcher shows icons and not pictures.** Grant Screen Recording, or set `switcher = { thumbnails = false }`.
-- **`wm select` finds no text in a terminal.** Grant Screen Recording. wm reads those windows from a picture of the display.
-- **A window hides behind others, or stays out of the layout.** Some windows (dialogs, palettes) float by design. Use
-  `wm window float` to toggle one, or add a rule.
-- **A shortcut that I made in the Shortcuts window does nothing.** `wm doctor` says why in its `shortcuts` line:
-  - `init.lua` does not call `wm.shortcuts()`.
-  - `init.lua` binds the same keys later (it wins).
-  - `shortcuts.toml` has an error, with its line.
-- **My config has an error.** The old config stays active. The message is in the menu bar, in the output of
-  `wm daemon reload` and in `wm logs`.
+- **Nothing happens when I press a key.** Check that wm has Accessibility permission and that `wm daemon status` says it runs. Without a config, wm has no key binds (`wm init`).
+- **I rebuilt and macOS asks for permissions again.** The build was signed ad hoc. See [Signing](/docs/getting-started#signing).
+- **The menu bar icon is missing.** Switch on `wm` in System Settings > Menu Bar. `wm daemon status` says `menu bar: hidden by macOS` when the icon is not on screen.
+- **The switcher shows icons and not pictures, or `wm select` finds no text in a terminal.** Grant Screen Recording.
+- **A window floats or stays out of the layout.** Dialogs and palettes float by design. Use `wm window float` to toggle one, or add a rule.
+- **A shortcut from the Shortcuts window does nothing.** `wm doctor` says why in its `shortcuts` line: `init.lua` does not call `wm.shortcuts()`, `init.lua` binds the same keys later (it wins), or `shortcuts.toml` has an error.
+- **My config has an error.** The old config stays active. The message is in the menu bar, in the output of `wm daemon reload` and in `wm logs`.
 - **wm and another window manager fight.** Quit the other one. Quitting wm puts every hidden window back on screen.
 
 ## Limits
 
-- Animations move real windows through the Accessibility API, one call per frame. Slow apps (Electron) can stutter. A
-  window with an AX call still running skips frames.
-- wm cannot blur, fade or shadow other apps' windows. That is why `animations` has no `fade` style.
-- `focus urgent` finds apps that ask for attention from the badge on their Dock icon: a badge that appears or grows while you are
-  in another app.
-  - It works per app, not per window.
-  - It works only for apps that show a badge (Mail, Slack, Messages, Telegram).
-  - A Dock bounce without a badge cannot be seen. macOS has no public way to read it.
-  - wm reads the Dock every 2 seconds, so an app is urgent up to 2 seconds late.
-  - `urgent = { enabled = false }` stops the reading.
-- The border and the tab indicator are separate overlay windows above normal windows.
+- Animations move real windows through the Accessibility API, one call per frame, so slow apps (Electron) can stutter. wm cannot blur, fade or shadow other apps' windows.
+- `focus urgent` reads the Dock badge, so it works per app, only for apps that show a badge (Mail, Slack, Messages), and up to 2 seconds late. A Dock bounce without a badge cannot be seen. `urgent = { enabled = false }` stops the reading.
 - A window with a minimum size larger than its tile overlaps its neighbours.
-- Gestures with `mods` see only a modifier and a scroll direction, not the finger count.
-- Gestures with `fingers` read the trackpad through the private MultitouchSupport framework.
-  - A macOS update can change it.
-  - When it cannot be loaded, the gestures stay off. wm says so in the log (in a notification when the config has `trackpad = { enabled = true }`).
-  - macOS keeps its own gestures with three and with four fingers (Mission Control, Spaces, Exposé). Turn off the ones that you
-    use in wm in System Settings > Trackpad > More Gestures, or both act on the same swipe.
-- When a display goes away (lid closed, display asleep, unplugged), its workspace keeps its windows, and they stay hidden.
-  The display shows that workspace again when it comes back. Until then, `wm workspace N` shows it on another monitor.
+- Gestures with `mods` see a modifier and a scroll direction, not the finger count. Gestures with `fingers` use the private MultitouchSupport framework; if it cannot be loaded they stay off, and the log says so. Turn off macOS's own three- and four-finger gestures that you use in wm (System Settings > Trackpad > More Gestures), or both act on the same swipe.
+- When a display goes away, its workspace keeps its windows hidden until the display comes back. Until then `wm workspace N` shows it on another monitor.
