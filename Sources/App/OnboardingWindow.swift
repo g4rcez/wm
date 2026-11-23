@@ -153,10 +153,23 @@ final class OnboardingWindow: NSObject, NSWindowDelegate {
 
     @objc private func grantAccessibility() {
         _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
+        openSettingsUnless("Privacy_Accessibility") { AXIsProcessTrusted() }
     }
 
     @objc private func grantScreenRecording() {
         _ = CGRequestScreenCaptureAccess()
+        openSettingsUnless("Privacy_ScreenCapture") { CGPreflightScreenCaptureAccess() }
+    }
+
+    /// macOS shows its permission prompt once for each app signature. After that, or when the prompt hides behind the
+    /// window, the button would do nothing, so a pane of System Settings opens when the permission is still missing.
+    private func openSettingsUnless(_ pane: String, granted: @escaping @MainActor () -> Bool) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            MainActor.assumeIsolated {
+                guard !granted(), let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") else { return }
+                NSWorkspace.shared.open(url)
+            }
+        }
     }
 
     @objc private func presetChanged() {

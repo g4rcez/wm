@@ -9,6 +9,7 @@ order: 1
 Run `wm doctor` first. It checks the config, `shortcuts.toml`, the daemon and the permissions, and says what to do for each check that is not ok. `wm config check` loads the config alone and shows the line of an error.
 
 - **Nothing happens when I press a key.** Check that wm has Accessibility permission and that `wm daemon status` says it runs. Without a config, wm has no key binds (`wm init`).
+- **The setup window asks for no permission.** macOS shows its prompt once for each app signature. The Grant button opens the matching pane of System Settings > Privacy & Security when the permission is still missing after a moment. Switch `wm` on there (use `+` to add `wm.app` when it is not in the list), or run `wm doctor`.
 - **I rebuilt and macOS asks for permissions again.** The build was signed ad hoc. See [Signing](/docs/getting-started#signing).
 - **The menu bar icon is missing.** Switch on `wm` in System Settings > Menu Bar. `wm daemon status` says `menu bar: hidden by macOS` when the icon is not on screen.
 - **The switcher shows icons and not pictures, or `wm select` finds no text in a terminal.** Grant Screen Recording.
