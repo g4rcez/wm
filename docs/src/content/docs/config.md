@@ -283,6 +283,10 @@ wm.config { appearance = {
 
 ![The native style in dark mode](/appearance/appearance-native-dark.png)
 
+![The hud style](/appearance/appearance-hud.png)
+
+The pictures are illustrations drawn from the values of each look, not screenshots, so the real blur and fonts differ a little.
+
 Every key is optional. A key that is absent comes from the preset of `style`.
 
 | Key | What it does |
@@ -302,17 +306,107 @@ Every key is optional. A key that is absent comes from the preset of `style`.
 | `font_size` | The body size in points, 8 to 40 (default 13). |
 | `animation` | Seconds of the fades, 0 to 2. `0` turns them off. Default 0.12. |
 
-A reload applies the new look the next time an overlay opens. A whole look, to paste into `wm.config { appearance = { ... } }`:
+A reload applies the new look the next time an overlay opens.
 
-```lua
--- Catppuccin Mocha
-theme = "dark", material = "none", radius = 14,
-accent = "#cba6f7", background = "#1e1e2e", foreground = "#cdd6f4", secondary = "#a6adc8",
-selection = "#45475a", border = "#313244",
+### Themes to copy
 
-```
+Each one is the whole look. Paste one into your config, then change what you like. They all pass `wm config check`.
+
+#### Catppuccin Mocha
+
+Solid dark with one accent. Every overlay uses the same colors, corners and fonts.
 
 ![The Catppuccin Mocha theme](/appearance/appearance-catppuccin.png)
+
+```lua
+wm.config { appearance = {
+  theme = "dark", material = "none", radius = 14,
+  accent = "#cba6f7", background = "#1e1e2e", foreground = "#cdd6f4", secondary = "#a6adc8",
+  selection = "#45475a", border = "#313244",
+} }
+```
+
+#### Paper
+
+Always light, flat and square, whatever macOS uses.
+
+![The Paper theme](/appearance/appearance-paper.png)
+
+```lua
+wm.config { appearance = {
+  theme = "light", material = "none", radius = 4,
+  accent = "#d20f39", background = "#fafafa", foreground = "#222222", secondary = "#6c6f85",
+  selection = "#e6e9ef", border = "#d0d4dc",
+} }
+```
+
+#### Spotlight
+
+The native blur and colors, rounder corners, a rounded font, no fades.
+
+![The Spotlight theme](/appearance/appearance-spotlight.png)
+
+```lua
+wm.config { appearance = {
+  radius = 16, font = "SF Pro Rounded", animation = 0,
+} }
+```
+
+#### Tokyo Night
+
+Deep navy with a soft blue accent.
+
+![The Tokyo Night theme](/appearance/appearance-tokyonight.png)
+
+```lua
+wm.config { appearance = {
+  theme = "dark", material = "none", radius = 14,
+  accent = "#7aa2f7", background = "#1a1b26", foreground = "#c0caf5", secondary = "#7982a9",
+  selection = "#283457", border = "#292e42",
+} }
+```
+
+#### Rosé Pine
+
+Dark plum with a dusty rose accent.
+
+![The Rosé Pine theme](/appearance/appearance-rosepine.png)
+
+```lua
+wm.config { appearance = {
+  theme = "dark", material = "none", radius = 14,
+  accent = "#ebbcba", background = "#191724", foreground = "#e0def4", secondary = "#908caa",
+  selection = "#403d52", border = "#26233a",
+} }
+```
+
+#### Nord
+
+Cool slate with an icy teal accent and tighter corners.
+
+![The Nord theme](/appearance/appearance-nord.png)
+
+```lua
+wm.config { appearance = {
+  theme = "dark", material = "none", radius = 10,
+  accent = "#88c0d0", background = "#2e3440", foreground = "#eceff4", secondary = "#9aa5b8",
+  selection = "#434c5e", border = "#3b4252",
+} }
+```
+
+#### Gruvbox Dark
+
+Warm charcoal with a golden accent.
+
+![The Gruvbox Dark theme](/appearance/appearance-gruvbox.png)
+
+```lua
+wm.config { appearance = {
+  theme = "dark", material = "none", radius = 8,
+  accent = "#fabd2f", background = "#282828", foreground = "#ebdbb2", secondary = "#a89984",
+  selection = "#504945", border = "#3c3836",
+} }
+```
 
 ## Display profiles
 
