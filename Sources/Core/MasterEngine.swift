@@ -223,7 +223,10 @@ public struct MasterEngine: LayoutEngine {
             return true
 
         case .masterCount(let value, let relative):
-            let wanted = min(max(relative ? count + value : value, 1), 99)
+            // A huge +n or -n must clamp, not trap: `count + value` overflows `Int`.
+            let (sum, overflow) = count.addingReportingOverflow(value)
+            let target = relative ? (overflow ? (value > 0 ? 99 : 1) : sum) : value
+            let wanted = min(max(target, 1), 99)
             guard wanted != count else { return false }
             count = wanted
             return true

@@ -243,6 +243,19 @@ struct MasterEngineTests {
         #expect(!same)
     }
 
+    @Test func aHugeRelativeMasterCountIsClampedAndNeverOverflows() {
+        var engine = engine(3)
+        // Int.max would trap in `count + value`.
+        let up = engine.perform(.masterCount(Int.max, relative: true), focused: 1, in: context)
+        #expect(up)
+        let sameTop = engine.perform(.masterCount(Int.max, relative: true), focused: 1, in: context)
+        #expect(!sameTop)
+        let down = engine.perform(.masterCount(Int.min, relative: true), focused: 1, in: context)
+        #expect(down)
+        let sameBottom = engine.perform(.masterCount(Int.min, relative: true), focused: 1, in: context)
+        #expect(!sameBottom)
+    }
+
     @Test func theRatioCommandSetsOrChangesTheShare() {
         var engine = engine(2)
         let exact = engine.perform(.masterRatio(0.75, relative: false), focused: 1, in: context)
