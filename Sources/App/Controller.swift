@@ -230,13 +230,11 @@ final class AppController: HostBridge, @unchecked Sendable {
             }
             return onMain { switcher.overview(mode: mode ?? "toggle").map { fail($0) } ?? ok() }
         case "hints", "scroll":
-            let flags = Set(args.dropFirst().filter { $0.hasPrefix("--") })
-            let words = args.dropFirst().filter { !$0.hasPrefix("--") }
+            let parsed = parseToggleArguments(Array(args.dropFirst()))
+            let flags = parsed.flags
             if let bad = unknownOption(flags, allowed: args[0] == "hints" ? ["--wait"] : [], usage: args[0]) { return bad }
-            let mode = words.first
-            guard words.count <= 1, mode == nil || ["open", "close", "toggle"].contains(mode) else {
-                return fail("\(args[0]) takes open, close or toggle", 2, usage: args[0])
-            }
+            guard parsed.isValid else { return fail("\(args[0]) takes open, close or toggle", 2, usage: args[0]) }
+            let mode = parsed.mode?.rawValue
             return onMain {
                 // One mode at a time: each takes every key.
                 if mode != "close" { selector.close(); jump.close() }
@@ -251,13 +249,11 @@ final class AppController: HostBridge, @unchecked Sendable {
                 return error.map { fail($0) } ?? ok()
             }
         case "jump":
-            let flags = Set(args.dropFirst().filter { $0.hasPrefix("--") })
-            let words = args.dropFirst().filter { !$0.hasPrefix("--") }
+            let parsed = parseToggleArguments(Array(args.dropFirst()))
+            let flags = parsed.flags
             if let bad = unknownOption(flags, allowed: ["--swap", "--close"], usage: "jump") { return bad }
-            let mode = words.first
-            guard words.count <= 1, mode == nil || ["open", "close", "toggle"].contains(mode) else {
-                return fail("jump takes open, close or toggle", 2, usage: "jump")
-            }
+            guard parsed.isValid else { return fail("jump takes open, close or toggle", 2, usage: "jump") }
+            let mode = parsed.mode?.rawValue
             guard flags.count < 2 else { return fail("jump takes --swap or --close, not both", 2, usage: "jump") }
             let action: JumpAction = flags.contains("--swap") ? .swap : flags.contains("--close") ? .close : .focus
             return onMain {
