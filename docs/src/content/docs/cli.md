@@ -131,7 +131,7 @@ wm subscribe | jq -c 'select(.event == "window_focus") | .app'
 
 ## Logs
 
-The daemon writes its log to `$XDG_STATE_HOME/wm/wm.log` (`~/.local/state/wm/wm.log` by default), one JSON record per line, and to its stderr as before.
+The daemon writes its log to `$XDG_STATE_HOME/wm/wm.log` (`~/.local/state/wm/wm.log` by default), one JSON record per line, and to its stderr as before. `WM_LOG_LEVEL` (`debug`, `info`, `warn` or `error`) sets the lowest level that goes to the file; the default is `debug`, so nothing is dropped, and stderr always gets everything.
 
 - At 5 MB the file becomes `wm.log.1`, so the log takes about 10 MB at most.
 - `wm logs` reads the file, so it works when the daemon is stopped or has crashed.

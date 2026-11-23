@@ -6,6 +6,17 @@ public enum LogLevel: String, Sendable, CaseIterable {
 
     /// The OpenTelemetry `SeverityText`.
     public var severityText: String { rawValue.uppercased() }
+
+    /// Whether this level is less severe than `other` (debug < info < warn < error).
+    public func isBelow(_ other: LogLevel) -> Bool {
+        (Self.allCases.firstIndex(of: self) ?? 0) < (Self.allCases.firstIndex(of: other) ?? 0)
+    }
+
+    /// The lowest level that the file gets: `WM_LOG_LEVEL` (`debug`, `info`, `warn` or `error`, any case). Anything else, or nothing,
+    /// is `debug`: every record is written.
+    public static func lowest(environment: [String: String] = ProcessInfo.processInfo.environment) -> LogLevel {
+        environment["WM_LOG_LEVEL"].flatMap { LogLevel(rawValue: $0.lowercased()) } ?? .debug
+    }
 }
 
 /// One line of the log. The file holds each record as one JSON object per line; `wm logs -o json` prints that line as it is.
@@ -160,9 +171,13 @@ public struct LogFollower {
 
 /// What the daemon writes: to stderr (as before) and to the log file.
 public enum Log {
+    /// Read once: `WM_LOG_LEVEL` does not change while the process runs.
+    private static let lowestLevel = LogLevel.lowest()
+
     /// `prefix` is what stderr shows before the message.
     public static func write(_ level: LogLevel, _ message: String, source: String? = nil, prefix: String = "wm") {
         FileHandle.standardError.write(Data("\(prefix): \(message)\n".utf8))
+        guard !level.isBelow(lowestLevel) else { return }
         LogFile.append(LogRecord(level: level, message: message, source: source))
     }
 }

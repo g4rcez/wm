@@ -430,6 +430,7 @@ private let environmentRows: [(String, String)] = [
     ("XDG_CONFIG_HOME", "The folder that holds wm/init.lua."),
     ("XDG_STATE_HOME", "The folder of the log and of the saved state."),
     ("NO_COLOR", "No colors in the help and in errors. CLICOLOR_FORCE=1 forces them."),
+    ("WM_LOG_LEVEL", "Lowest level in the log file: debug (default), info, warn or error."),
 ]
 
 /// The text of `wm help` (no topic), or of `wm help <command>`. `nil` when the topic is not a command. `style` adds colors;

@@ -66,6 +66,57 @@ struct LogTests {
         #expect(LogFile.tail(10, from: url).records.map(\.message) == ["old", "new"])
     }
 
+    @Test func theLogFileIsPrivateToTheUser() throws {
+        let url = try tempLog()
+        LogFile.append(LogRecord(time: "t1", level: .info, message: "a"), to: url)
+        let mode = try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? Int
+        #expect(mode == 0o600)
+    }
+
+    @Test func aDeletedLogIsCreatedAgainByTheNextRecord() throws {
+        let url = try tempLog()
+        LogFile.append(LogRecord(time: "t1", level: .info, message: "first"), to: url)
+        try FileManager.default.removeItem(at: url)
+        LogFile.append(LogRecord(time: "t2", level: .info, message: "second"), to: url)
+        #expect(LogFile.tail(10, from: url).records.map(\.message) == ["second"])
+    }
+
+    @Test func aLogThatWasMovedAwayIsStartedAgain() throws {
+        let url = try tempLog()
+        LogFile.append(LogRecord(time: "t1", level: .info, message: "first"), to: url)
+        try FileManager.default.moveItem(at: url, to: url.appendingPathExtension("moved"))
+        LogFile.append(LogRecord(time: "t2", level: .info, message: "second"), to: url)
+        #expect(LogFile.tail(10, from: url).records.map(\.message) == ["second"])
+        #expect(LogFile.tail(10, from: url.appendingPathExtension("moved")).records.map(\.message) == ["first"])
+    }
+
+    @Test func switchingToAnotherLogFileWritesThere() throws {
+        let one = try tempLog(), two = try tempLog()
+        LogFile.append(LogRecord(time: "t1", level: .info, message: "one"), to: one)
+        LogFile.append(LogRecord(time: "t2", level: .info, message: "two"), to: two)
+        LogFile.append(LogRecord(time: "t3", level: .info, message: "one again"), to: one)
+        #expect(LogFile.tail(10, from: one).records.map(\.message) == ["one", "one again"])
+        #expect(LogFile.tail(10, from: two).records.map(\.message) == ["two"])
+    }
+
+    // MARK: The lowest level
+
+    @Test func theLowestLevelComesFromTheEnvironmentAndDefaultsToDebug() {
+        #expect(LogLevel.lowest(environment: [:]) == .debug)
+        #expect(LogLevel.lowest(environment: ["WM_LOG_LEVEL": ""]) == .debug)
+        #expect(LogLevel.lowest(environment: ["WM_LOG_LEVEL": "nonsense"]) == .debug)
+        #expect(LogLevel.lowest(environment: ["WM_LOG_LEVEL": "info"]) == .info)
+        #expect(LogLevel.lowest(environment: ["WM_LOG_LEVEL": "WARN"]) == .warn)
+        #expect(LogLevel.lowest(environment: ["WM_LOG_LEVEL": "Error"]) == .error)
+    }
+
+    @Test func aLevelIsBelowAnotherInTheOrderOfSeverity() {
+        #expect(LogLevel.debug.isBelow(.info))
+        #expect(LogLevel.warn.isBelow(.error))
+        #expect(!LogLevel.error.isBelow(.warn))
+        #expect(!LogLevel.info.isBelow(.info))
+    }
+
     @Test func linesThatAreNotRecordsAreSkipped() throws {
         let url = try tempLog()
         LogFile.append(record, to: url)
