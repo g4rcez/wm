@@ -137,7 +137,10 @@ public struct MasterEngine: LayoutEngine {
             let rightSide = CGRect(x: area.maxX - side, y: area.minY, width: side, height: area.height)
             let right = rows(rightSide, (s + 1) / 2), left = rows(leftSide, s / 2)
             // The stack goes to the right first, then to the left, one window each.
-            let stack = (0..<s).map { $0 % 2 == 0 ? right[$0 / 2] : left[$0 / 2] }
+            var stack: [CGRect] = []
+            for index in 0..<s {
+                stack.append(index % 2 == 0 ? right[index / 2] : left[index / 2])
+            }
             return rows(master, m) + stack
         }
     }
