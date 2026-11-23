@@ -21,12 +21,12 @@ It has three layouts. **Scrolling** puts windows in columns on a strip that move
 stack, as dwm does. You choose the layout per workspace and change it while wm runs.
 
 - Site: <https://wm.garcez.dev>
-- Documentation: <https://wm.garcez.dev/docs/overview>
+- Documentation: <https://wm.garcez.dev/docs/getting-started>
 - Repository: <https://github.com/g4rcez/wm>
 - License: [MIT](LICENSE)
 
 wm has no default key bindings. Until you bind keys in `init.lua`, it only reacts to the `wm` command and to the
-[built-in trackpad swipes](https://wm.garcez.dev/docs/gestures).
+[built-in trackpad swipes](https://wm.garcez.dev/docs/config).
 
 ## Table of contents
 
@@ -57,14 +57,14 @@ wm has no default key bindings. Until you bind keys in `init.lua`, it only react
 
 ### Layouts
 
-| Feature | What it does | Docs |
-|---|---|---|
-| Scrolling | Columns on a strip. A new window opens beside the focused one and never resizes the others. A column holds a stack or tabs. A second, vertical strip can sit at one side. The strip can also run vertically. | [Scrolling](https://wm.garcez.dev/docs/scrolling) |
-| Tiling | A binary tree. A new window splits the focused one. It has preselect, split ratio, flip, pseudo-tiling, and smart split under the pointer. | [Tiling](https://wm.garcez.dev/docs/tiling) |
-| Master-stack | A master area and a stack, with `left`, `right`, `top`, `bottom` and `center` orientations. | [Master-stack](https://wm.garcez.dev/docs/master-stack) |
-| Monocle | One window fills the workspace. `focus next` and `focus prev` walk through the others, which wait out of sight. | [Monocle](https://wm.garcez.dev/docs/monocle) |
-| Tile templates | Ready-made arrangements (`2`, `3`, `2+1`, `2/3`, `center`, and more) with a picker. You can write your own. | [Tile templates](https://wm.garcez.dev/docs/templates) |
-| Rotate, maximize, floating | Rotate a layout, maximize, floating windows, snap to a part of the screen, native fullscreen and window marks. | [Rotate, maximize and floating](https://wm.garcez.dev/docs/floating) |
+| Feature | What it does |
+|---|---|
+| Scrolling | Columns on a strip. A new window opens beside the focused one and never resizes the others. A column holds a stack or tabs. A second, vertical strip can sit at one side. The strip can also run vertically. |
+| Tiling | A binary tree. A new window splits the focused one. It has preselect, split ratio, flip, pseudo-tiling, and smart split under the pointer. |
+| Master-stack | A master area and a stack, with `left`, `right`, `top`, `bottom` and `center` orientations. |
+| Monocle | One window fills the workspace. `focus next` and `focus prev` walk through the others, which wait out of sight. |
+| Tile templates | Ready-made arrangements (`2`, `3`, `2+1`, `2/3`, `center`, and more) with a picker. You can write your own. |
+| Rotate, maximize, floating | Rotate a layout, maximize, floating windows, snap to a part of the screen, native fullscreen and window marks. |
 
 ### Workspaces and monitors
 
@@ -72,26 +72,26 @@ wm has no default key bindings. Until you bind keys in `init.lua`, it only react
   have any number of workspaces with any name.
 - **Several monitors.** A workspace shows on one monitor at a time. Name a monitor by role (`main`, `secondary`), by number or
   by part of its name.
-- **Per-workspace settings:** layout, gaps, border and monitor. See [Window and workspace rules](https://wm.garcez.dev/docs/rules).
+- **Per-workspace settings:** layout, gaps, border and monitor. See [Configuration](https://wm.garcez.dev/docs/config).
 - **Special workspaces** (scratchpads, like Hyprland). One key shows one over the others and the same key hides it.
-  See [Special workspaces](https://wm.garcez.dev/docs/special-workspaces).
-- Gaps, animated moves and resizes, and a focus border. See the [Config reference](https://wm.garcez.dev/docs/config).
+  See [Layouts](https://wm.garcez.dev/docs/layouts).
+- Gaps, animated moves and resizes, and a focus border. See the [Configuration](https://wm.garcez.dev/docs/config).
 
 ### Keys, modes and the key panel
 
 - **Chords and sequences:** `alt-h`, `cmd+ctrl-2`, and sequences such as `alt-space>h`. A sequence can stay active for
-  several commands (`wm.commands = { mode = "persistent" }`). See [Keys, chords and the hyper key](https://wm.garcez.dev/docs/keys).
+  several commands (`wm.commands = { mode = "persistent" }`). See [Configuration](https://wm.garcez.dev/docs/config).
 - **Binding modes:** a separate set of keys, for example a resize mode. Modes can end after one key (`once`) and go back to the
   mode before them (`mode back`).
 - **Key panel** (like which-key.nvim). It lists the keys that you can press in a mode or after a prefix.
-  See [Key panel and bind options](https://wm.garcez.dev/docs/key-panel).
+  See [Configuration](https://wm.garcez.dev/docs/config).
 - **Bind options:** `description`, `repeating`, `release`, `long_press` and `universal`.
 - **Shortcuts window:** the menu bar item **Shortcuts…** adds, edits and deletes binds (type the keys or record them), and
   saves them in `shortcuts.toml`.
   `init.lua` loads the file with `wm.shortcuts()`, so you can use the window, Lua, or both. `wm doctor` reports errors in
-  the file and binds that `init.lua` replaces. See [shortcuts.toml](https://wm.garcez.dev/docs/config#shortcutstoml).
+  the file and binds that `init.lua` replaces. See [Configuration](https://wm.garcez.dev/docs/config).
 - **Hyper key and remaps:** CapsLock becomes `hyper` (Esc when tapped alone), `wm.remap` types other keys, and `wm.press`
-  sends keys and media keys. wm can also [replace a Karabiner-Elements setup](https://wm.garcez.dev/docs/karabiner) built
+  sends keys and media keys. wm can also [replace a Karabiner-Elements setup](https://wm.garcez.dev/docs/config) built
   around a hyper key.
 - **Per-keyboard settings:** turn the CapsLock mapping on or off for each keyboard (`wm query keyboards`).
 
@@ -100,31 +100,31 @@ wm has no default key bindings. Until you bind keys in `init.lua`, it only react
 - **Trackpad swipes with 3 or 4 fingers** work with no config: workspaces, overview, and scrolling the strip. Swipes with
   modifier keys (`wm.gesture`) are also available. Two-finger swipes and pinches on a window's title bar (snap, move,
   maximize, minimize, close, as in Swish) are opt-in with `trackpad = { title_bar = true }`. See
-  [Gestures](https://wm.garcez.dev/docs/gestures).
+  [Configuration](https://wm.garcez.dev/docs/config).
 - **Mouse:** drag the edges of tiles to resize, drag a tile to swap, and hold a modifier to move or resize any window. See
-  [Mouse](https://wm.garcez.dev/docs/mouse).
+  [Features](https://wm.garcez.dev/docs/features).
 
 ### Rules and window memory
 
 - **Window rules** match new windows by app or title and decide the workspace, monitor, size, floating and focus. wm also ships
-  [default floating rules](https://wm.garcez.dev/docs/rules) for browser popups, Finder, System Settings and similar windows.
+  [default floating rules](https://wm.garcez.dev/docs/config) for browser popups, Finder, System Settings and similar windows.
 - **Window memory:** `window remember` gives the next window of an app the same workspace, monitor, size and place.
   Floating windows also remember where they closed. `wm memory list`, `forget` and `clear` manage the entries from the command line.
-  See [Window memory](https://wm.garcez.dev/docs/window-memory).
+  See [Features](https://wm.garcez.dev/docs/features).
 
 ### Finding and switching windows
 
 - **Switcher and overview:** an Alt+Tab switcher with a picture of each window, and an overview that shows every workspace as a
-  small copy of its screen. You can drag a card to another workspace. See [Switcher and overview](https://wm.garcez.dev/docs/switcher).
+  small copy of its screen. You can drag a card to another workspace. See [Features](https://wm.garcez.dev/docs/features).
 - **Command palette:** one panel for windows, apps, browser tabs, tmux windows, wm commands (`>`) and menu items (`/`). It also
-  works as a Cmd+Tab switcher. See [Command palette](https://wm.garcez.dev/docs/palette).
+  works as a Cmd+Tab switcher. See [Features](https://wm.garcez.dev/docs/features).
 - **Cheatsheet:** `wm cheatsheet [tui|gui]` lists the keys of your config in sections, with a filter, in the terminal or in a panel.
-  See [Cheatsheet](https://wm.garcez.dev/docs/cheatsheet).
+  See [Features](https://wm.garcez.dev/docs/features).
 - **Appearance:** the overlays (palette, cheatsheet, switcher, overview, template picker, key label) look like macOS by default and follow
   light and dark. One `wm.config { appearance = { ... } }` sets the style, theme, density, blur, accent, colors, corners and fonts of all of them.
-  See [Appearance](https://wm.garcez.dev/docs/appearance).
-- **Run or raise:** one key focuses an app, or starts it when it has no window. See [Run or raise](https://wm.garcez.dev/docs/run-or-raise).
-- **Menu Anywhere:** the menus of the focused app as a pop-up at the mouse pointer. See [Menu Anywhere](https://wm.garcez.dev/docs/menu-anywhere).
+  See [Configuration](https://wm.garcez.dev/docs/config).
+- **Run or raise:** one key focuses an app, or starts it when it has no window. See [Features](https://wm.garcez.dev/docs/features).
+- **Menu Anywhere:** the menus of the focused app as a pop-up at the mouse pointer. See [Features](https://wm.garcez.dev/docs/features).
 
 ### Keyboard clicking, scrolling and text selection
 
@@ -132,11 +132,11 @@ wm has no default key bindings. Until you bind keys in `init.lua`, it only react
   Homerow does.
 - **Scroll mode:** number the scroll areas and scroll them with `h` `j` `k` `l`.
 - **Jump:** a giant number on every visible window; type it to focus the window (`--swap` and `--close` do other things).
-  See [Jump to a window](https://wm.garcez.dev/docs/jump).
+  See [Features](https://wm.garcez.dev/docs/features).
 - **Select mode:** search the text on the screen, select it with vim keys or labels, then copy it (`y`, `Cmd-C` or `Return`) or
   right-click it. Every key of the select step can change with `wm.config { select = { keys = { ... } } }`.
 
-See [Hints, scroll and select mode](https://wm.garcez.dev/docs/hints).
+See [Features](https://wm.garcez.dev/docs/features).
 
 ### Window tools
 
@@ -144,20 +144,20 @@ See [Hints, scroll and select mode](https://wm.garcez.dev/docs/hints).
 - **Zen mode:** show only the focused window, centered.
 - **Window swallowing:** a program that you start in a terminal takes the place of the terminal window, and the terminal comes back when it closes.
 
-See [Sticky windows and zen mode](https://wm.garcez.dev/docs/sticky-zen) and [Window swallowing](https://wm.garcez.dev/docs/swallowing).
+See [Layouts](https://wm.garcez.dev/docs/layouts) and [Features](https://wm.garcez.dev/docs/features).
 
 ### Scripting and automation
 
 - **One command set with three entry points:** the `wm` CLI, Lua (`wm.dispatch`) and `wm://` URLs.
-  See [Command line](https://wm.garcez.dev/docs/cli), [Lua API](https://wm.garcez.dev/docs/lua-api) and
-  [URL scheme](https://wm.garcez.dev/docs/url-scheme).
+  See [Command line](https://wm.garcez.dev/docs/cli) (it also covers `wm://` URLs) and
+  [Lua API](https://wm.garcez.dev/docs/lua-api).
 - **Events:** `wm.on("window_open", ...)` in Lua, or `wm subscribe` for JSON lines in a shell script or a status bar.
 - **Queries:** `wm list windows --json`, `wm query`, `wm pick`, and `--window app:<name>` selectors.
 - **Batches and temporary changes:** `wm batch`, `wm set`, `wm exec` with window options, and `wm notify`.
 
 ### Reliability
 
-- **Saved state:** layouts survive a restart of the daemon and a reboot. See [Saved state](https://wm.garcez.dev/docs/saved-state).
+- **Saved state:** layouts survive a restart of the daemon and a reboot. See [Features](https://wm.garcez.dev/docs/features).
 - **Safe reload:** wm reloads `init.lua` when you save it. If the file has an error, the old config stays active and the error
   shows in a notification, in the menu bar and in `wm logs`.
 - **Logs:** `wm logs` reads a JSON log that works when the daemon is stopped.
@@ -205,7 +205,7 @@ pictures) and **Automation** (browser tabs in the palette) are optional. The men
 "Allow in the Menu Bar" > `wm`.
 
 Sign with a stable certificate. An ad-hoc signature changes with every build, and macOS asks for the permissions again each
-time. The [Install page](https://wm.garcez.dev/docs/install) explains permissions, signing, the `PATH` link, shell
+time. The [Getting started](https://wm.garcez.dev/docs/getting-started) page explains permissions, signing, the `PATH` link, shell
 completion and start at login (`start_at_login = true`).
 
 ```sh
@@ -247,21 +247,18 @@ wm.bind("alt-shift-c", "daemon reload")
 ```
 
 Save the file and wm reloads it. Run `wm help` to see every command. More recipes (modes, prefix keys, rules, events) are
-on the [Examples page](https://wm.garcez.dev/docs/examples). A full configuration in use is in the author's
+on the [Configuration](https://wm.garcez.dev/docs/config) page. A full configuration in use is in the author's
 [dotfiles](https://github.com/g4rcez/dotfiles/blob/master/config/wm/init.lua).
 
 ## Documentation
 
-Everything is on <https://wm.garcez.dev/docs/overview>. The source of the pages is in [`docs/src/content/docs`](docs/src/content/docs).
+Everything is on <https://wm.garcez.dev/docs/getting-started>. The source of the pages is in [`docs/src/content/docs`](docs/src/content/docs).
 
-| Group | Pages |
-|---|---|
-| Start | [Overview](https://wm.garcez.dev/docs/overview), [Install](https://wm.garcez.dev/docs/install), [First five minutes](https://wm.garcez.dev/docs/first-five-minutes) |
-| Configure | [Config reference](https://wm.garcez.dev/docs/config), [Keys, chords and the hyper key](https://wm.garcez.dev/docs/keys), [Key panel and bind options](https://wm.garcez.dev/docs/key-panel), [Appearance](https://wm.garcez.dev/docs/appearance), [Hotkeys of the starter templates](https://wm.garcez.dev/docs/hotkeys), [Gestures](https://wm.garcez.dev/docs/gestures), [Window and workspace rules](https://wm.garcez.dev/docs/rules) |
-| Layouts | [Tiling](https://wm.garcez.dev/docs/tiling), [Scrolling](https://wm.garcez.dev/docs/scrolling), [Master-stack](https://wm.garcez.dev/docs/master-stack), [Monocle](https://wm.garcez.dev/docs/monocle), [Tile templates](https://wm.garcez.dev/docs/templates), [Rotate, maximize and floating](https://wm.garcez.dev/docs/floating) |
-| Features | [Switcher and overview](https://wm.garcez.dev/docs/switcher), [Sticky windows and zen mode](https://wm.garcez.dev/docs/sticky-zen), [Run or raise](https://wm.garcez.dev/docs/run-or-raise), [Window memory](https://wm.garcez.dev/docs/window-memory), [Menu bar icon](https://wm.garcez.dev/docs/menubar), [Command palette](https://wm.garcez.dev/docs/palette), [Cheatsheet](https://wm.garcez.dev/docs/cheatsheet), [Menu Anywhere](https://wm.garcez.dev/docs/menu-anywhere), [Hints, scroll and select mode](https://wm.garcez.dev/docs/hints), [Jump to a window](https://wm.garcez.dev/docs/jump), [Mouse](https://wm.garcez.dev/docs/mouse), [Special workspaces](https://wm.garcez.dev/docs/special-workspaces), [Window swallowing](https://wm.garcez.dev/docs/swallowing) |
-| Reference | [Command line](https://wm.garcez.dev/docs/cli), [Lua API](https://wm.garcez.dev/docs/lua-api), [URL scheme](https://wm.garcez.dev/docs/url-scheme), [Saved state](https://wm.garcez.dev/docs/saved-state) |
-| Guides | [Examples](https://wm.garcez.dev/docs/examples), [Replace Karabiner-Elements](https://wm.garcez.dev/docs/karabiner), [Troubleshooting and limits](https://wm.garcez.dev/docs/troubleshooting), [Development](https://wm.garcez.dev/docs/development) |
+- [Getting started](https://wm.garcez.dev/docs/getting-started): what wm is, install, the first five minutes.
+- [Configuration](https://wm.garcez.dev/docs/config): config files, key binds, rules, gestures, appearance, examples.
+- [Layouts](https://wm.garcez.dev/docs/layouts): scrolling, tiling, master, monocle, floating, templates, special workspaces.
+- [Features](https://wm.garcez.dev/docs/features): switcher, palette, hints, jump, window memory, menu bar and more.
+- [Command line](https://wm.garcez.dev/docs/cli), [Lua API](https://wm.garcez.dev/docs/lua-api), [Troubleshooting](https://wm.garcez.dev/docs/troubleshooting), [Development](https://wm.garcez.dev/docs/development).
 
 ## Command line cheat sheet
 
@@ -292,7 +289,7 @@ Errors go to stderr. Exit code 2 means a wrong use of the command, and 1 means i
 - Gestures with fingers use the private MultitouchSupport framework, and a macOS update can change it.
 - A window with a minimum size larger than its tile overlaps its neighbours.
 
-See [Troubleshooting and limits](https://wm.garcez.dev/docs/troubleshooting) for fixes and the full list.
+See [Troubleshooting](https://wm.garcez.dev/docs/troubleshooting) for fixes and the full list.
 
 ## Development
 
@@ -314,7 +311,7 @@ timeout 300 swift test      # unit tests: layout engines, geometry, Lua host, IP
 
 The documentation site is an [Astro](https://astro.build) project in [`docs`](docs): `cd docs && pnpm install && pnpm dev`.
 The app icon is `assets/icon-windows.svg`, and `assets/make-icns.sh` makes `bundle/wm.icns` from it. See the
-[Development page](https://wm.garcez.dev/docs/development).
+[Development](https://wm.garcez.dev/docs/development).
 
 ## Credits
 
