@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Releases wm: bumps Version.swift, commits, tags and pushes. The release workflow tests the tag and creates the GitHub release;
-# the tap (g4rcez/homebrew-tap) follows that release by itself.
+# Releases wm: bumps Version.swift, commits, tags and pushes, then bumps Formula/wm.rb in the Homebrew tap
+# (g4rcez/homebrew-tap) with your own git access. The release workflow tests the tag and creates the GitHub release.
 #
 #   scripts/release.sh patch|minor|major|X.Y.Z [--dry-run]
 set -euo pipefail
@@ -49,3 +49,21 @@ git tag -a "$tag" -m "wm $next"
 git push origin main "$tag"
 
 echo "pushed $tag: follow the release at https://github.com/g4rcez/wm/actions"
+
+# The tap: the archive of the tag is what the formula builds. GitHub makes it a moment after the push.
+url="https://github.com/g4rcez/wm/archive/refs/tags/$tag.tar.gz"
+sha=""
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  sha="$(curl -fsSL "$url" | shasum -a 256 | cut -d' ' -f1)" && [ "$sha" != "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" ] && break
+  sha=""; sleep 3
+done
+[ -n "$sha" ] || { echo "error: cannot read $url; bump the tap by hand" >&2; exit 1; }
+
+tap="$(mktemp -d)"
+trap 'rm -rf "$tap"' EXIT
+git clone --quiet git@github.com:g4rcez/homebrew-tap.git "$tap"
+sed -i '' -e "s#^  url \".*\"#  url \"$url\"#" -e "s#^  sha256 \".*\"#  sha256 \"$sha\"#" "$tap/Formula/wm.rb"
+git -C "$tap" add Formula/wm.rb
+git -C "$tap" commit --quiet -m "wm $next"
+git -C "$tap" push --quiet origin HEAD:main
+echo "tap: Formula/wm.rb is at $next; run: brew upgrade g4rcez/tap/wm"
