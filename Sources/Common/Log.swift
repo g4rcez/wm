@@ -112,25 +112,51 @@ public enum LogFile {
 
     static func rotatedURL(of url: URL) -> URL { url.appendingPathExtension("1") }
 
+    /// The file that is open for writing, kept between records: a record is one `write`, not a stat, an open, a seek and a close.
+    /// It belongs to `lock`. `inode` tells whether the path still names this file (it can be deleted, moved or replaced).
+    private nonisolated(unsafe) static var open: (url: URL, handle: FileHandle, inode: UInt64)?
+
+    private static func closeOpenFile() {
+        try? open?.handle.close()
+        open = nil
+    }
+
+    private static func inode(atPath path: String) -> UInt64? {
+        var info = stat()
+        return stat(path, &info) == 0 ? UInt64(info.st_ino) : nil
+    }
+
+    /// A handle that writes at the end of the file at `url`, opened again when the path names another file or the file is full.
+    private static func writableHandle(for url: URL, maxBytes: Int) throws -> FileHandle {
+        let files = FileManager.default
+        if let current = open {
+            if current.url == url, inode(atPath: url.path) == current.inode, let offset = try? current.handle.offset(), Int(offset) < maxBytes {
+                return current.handle
+            }
+            closeOpenFile()
+        }
+        try files.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let size = try? files.attributesOfItem(atPath: url.path)[.size] as? Int, size >= maxBytes {
+            try? files.removeItem(at: rotatedURL(of: url))
+            try files.moveItem(at: url, to: rotatedURL(of: url))
+        }
+        if !files.fileExists(atPath: url.path) {
+            files.createFile(atPath: url.path, contents: nil, attributes: [.posixPermissions: 0o600])
+        }
+        let handle = try FileHandle(forWritingTo: url)
+        try handle.seekToEnd()
+        open = (url, handle, inode(atPath: url.path) ?? 0)
+        return handle
+    }
+
     public static func append(_ record: LogRecord, to url: URL = defaultLogURL(), maxBytes: Int = maxBytes) {
         lock.lock()
         defer { lock.unlock() }
-        let files = FileManager.default
         do {
-            try files.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            if let size = try? files.attributesOfItem(atPath: url.path)[.size] as? Int, size >= maxBytes {
-                try? files.removeItem(at: rotatedURL(of: url))
-                try files.moveItem(at: url, to: rotatedURL(of: url))
-            }
-            if !files.fileExists(atPath: url.path) {
-                files.createFile(atPath: url.path, contents: nil, attributes: [.posixPermissions: 0o600])
-            }
-            let handle = try FileHandle(forWritingTo: url)
-            defer { try? handle.close() }
-            try handle.seekToEnd()
-            try handle.write(contentsOf: Data((record.jsonLine + "\n").utf8))
+            try writableHandle(for: url, maxBytes: maxBytes).write(contentsOf: Data((record.jsonLine + "\n").utf8))
         } catch {
             // The message went to stderr as well. A log that cannot be written must not stop the daemon.
+            closeOpenFile()
         }
     }
 
