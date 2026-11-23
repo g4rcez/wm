@@ -14,7 +14,7 @@ order: 5
 | `identifier` | A regular expression, matched anywhere in the `AXIdentifier` of the window. It tells apart windows with the same title, such as a settings window and a document. Many apps set none. |
 | `float` | Open the window floating. |
 | `workspace`, `layout` | Where it opens, and the layout of that workspace if it is empty. |
-| `size`, `center` | For floating windows: `{ width, height }` as fractions of the screen (or points above 1), and centering. |
+| `size`, `center` | For floating windows: `{ width, height }` as fractions of the screen (or points above 1), and centering. A `size` wins over the [place that floating windows remember](/docs/window-memory#floating-windows-remember-their-place). |
 | `maximize` | Open maximized. |
 | `width` | Column width in the scrolling layout, as a fraction of the screen. |
 | `monitor` | Open on the workspace that this monitor shows: a role, its number (1 is the leftmost) or part of its name. `workspace` wins when both are set. |

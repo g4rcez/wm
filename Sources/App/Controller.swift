@@ -35,14 +35,19 @@ final class AppController: HostBridge, @unchecked Sendable {
     }()
     @MainActor private lazy var trackpad = TrackpadInput(
         deliver: { [unowned self] events in input.handleFinger(events) }, pinch: { [unowned self] pinch in input.handlePinch(pinch) })
-    @MainActor private lazy var hints = HintController { [unowned self] in manager.settings.hints }
-    @MainActor private lazy var scroller = ScrollController { [unowned self] in manager.settings.hints }
+    @MainActor private lazy var hints = HintController(colors: { [unowned self] in manager.settings.hints }, look: { [unowned self] in labelLook })
+    @MainActor private lazy var scroller = ScrollController(colors: { [unowned self] in manager.settings.hints }, look: { [unowned self] in labelLook })
     @MainActor private lazy var jump = JumpController(
         colors: { [unowned self] in manager.settings.hints }, windows: { [unowned self] in manager.jumpWindows() },
         choose: { [unowned self] id, action in manager.jumpChoose(id, action) })
     @MainActor private lazy var selector = SelectController(
-        colors: { [unowned self] in manager.settings.hints }, keys: { [unowned self] in manager.settings.select }, display: { [unowned self] in manager.focusedMonitor.map { ($0.id, $0.frame) } },
+        colors: { [unowned self] in manager.settings.hints }, keys: { [unowned self] in manager.settings.select },
+        look: { [unowned self] in labelLook }, display: { [unowned self] in manager.focusedMonitor.map { ($0.id, $0.frame) } },
         notify: { [unowned self] text in onNotify(text, 2) })
+    /// The keys of the hint, scroll and select modes look like the which-key label, at its place.
+    @MainActor private var labelLook: LabelLook {
+        LabelLook(settings: manager.settings.prefix.label, style: manager.settings.appearance.resolved())
+    }
     private let menuReader = MenuReader()
     @MainActor private lazy var menuPopup = MenuPopup()
     private lazy var host = LuaHost(bridge: self)

@@ -177,6 +177,11 @@ final class WindowManager {
     private var floatMemory = FloatMemoryStore.load()
     /// The windows that were open when the daemon started are not moved by the memory.
     private var didFirstScan = false
+    /// Floating windows that just opened at a place that wm chose (`systemUptime` until which it holds). Many apps put their new
+    /// window somewhere themselves right after it appears; until then a frame that is not the chosen one is the app's, so it is
+    /// put back instead of being taken as the window's new place.
+    var openingHold: [WindowID: TimeInterval] = [:]
+    private static let openingHoldSeconds: TimeInterval = 1.5
     /// New windows that `detect` left alone, so that the log says it once for each of them.
     private var skippedWindows: Set<WindowID> = []
 
@@ -379,7 +384,13 @@ final class WindowManager {
                 // A floating window in fullscreen keeps the frame it will go back to, not the one that fills the screen.
                 if managed.floating, !managed.isOutOfLayout, !parked, managed.workspaceVisible(self),
                    workspace(managed.workspace).fullscreen != info.id {
-                    windows[info.id]?.floatFrame = info.frame
+                    if let until = openingHold[info.id], ProcessInfo.processInfo.systemUptime < until {
+                        // The app moved the window that just opened: it goes back to the place that wm chose.
+                        if let chosen = managed.floatFrame, !sameFrame(info.frame, chosen) { applier.forget(info.id) }
+                    } else {
+                        openingHold[info.id] = nil
+                        windows[info.id]?.floatFrame = info.frame
+                    }
                 }
                 // Last, because it can change what `managed` says (floating, workspace).
                 if titleChanged { reevaluateDynamicRules(info.id) }
@@ -435,8 +446,9 @@ final class WindowManager {
         // where the window goes, so it does not swallow.
         let host = didFirstScan && remembered == nil && rule?.workspace == nil && rule?.monitor == nil ? swallowHost(for: info) : nil
         // A window that a rule floats opens where the last one of its app closed. Windows that were open when the daemon started
-        // are not moved, and a window that `window remember` knows keeps what was remembered.
-        let last = didFirstScan && remembered == nil && settings.floating.rememberPosition && rule?.float == true
+        // are not moved, a window that `window remember` knows keeps what was remembered, and a rule that gives a `size` says
+        // where the window goes each time.
+        let last = didFirstScan && remembered == nil && settings.floating.rememberPosition && rule?.float == true && rule?.size == nil
             ? floatMemory.last(app: info.bundleID, title: info.title) : nil
         let home = monitor(containing: CGPoint(x: info.frame.midX, y: info.frame.midY)) ?? focusedMonitor
         let ruleMonitor = rule?.monitor.flatMap(monitor(matching:))
@@ -469,7 +481,13 @@ final class WindowManager {
                 for: info.id, among: others, after: opening.history.first(where: others.contains),
                 settings: settings(forWorkspace: workspaceName), context: context)
         }
-        windows[info.id] = ManagedWindow(info: info, workspace: workspaceName, floating: floating, minimized: info.isMinimized, floatFrame: floatFrame ?? (floating ? info.frame : nil))
+        var placed = floatFrame ?? (floating ? info.frame : nil)
+        // A floating window that opens bigger than its screen gets the size of the screen, in the middle of it.
+        if didFirstScan, floating, let frame = placed, let area = monitor?.workArea, let fitted = fittedFrame(frame, in: area) {
+            placed = fitted
+        }
+        windows[info.id] = ManagedWindow(info: info, workspace: workspaceName, floating: floating, minimized: info.isMinimized, floatFrame: placed)
+        if didFirstScan, floating, !info.isMinimized, let placed, !sameFrame(placed, info.frame) { holdOpeningPlace(of: info.id) }
         // The dynamic rules that apply now are part of how the window opens; the window goes back to how it would be without them
         // when it stops matching.
         let dynamic = dynamicRuleIndices(for: info)
@@ -516,6 +534,20 @@ final class WindowManager {
             for name in remembered.marks { setMark(name, on: info.id) }
             // The window that comes back gets the focus, and its workspace is shown.
             focus(info.id)
+        }
+    }
+
+    /// Keeps the place that wm chose for a floating window that just opened, and looks again a few times while it holds: an app
+    /// that moves its own window sends no notification that would make wm look.
+    private func holdOpeningPlace(of id: WindowID) {
+        openingHold[id] = ProcessInfo.processInfo.systemUptime + Self.openingHoldSeconds
+        for delay in [0.25, 0.7, 1.3] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self, self.openingHold[id] != nil else { return }
+                    self.scheduleRefresh()
+                }
+            }
         }
     }
 
@@ -1136,6 +1168,7 @@ final class WindowManager {
         swallowedAt[id] = nil
         dynamicTracker.forget(id)
         dynamicSaved[id] = nil
+        openingHold[id] = nil
         rememberFloatPlace(of: managed)
         lastShownFrame[id] = nil
         let workspace = workspace(managed.workspace)
@@ -1397,13 +1430,17 @@ final class WindowManager {
     }
 
     /// Where a floating window goes at the next layout pass.
-    func setFloatFrame(_ id: WindowID, _ frame: CGRect) { windows[id]?.floatFrame = frame }
+    func setFloatFrame(_ id: WindowID, _ frame: CGRect) {
+        openingHold[id] = nil
+        windows[id]?.floatFrame = frame
+    }
 
     /// The frame that `window maximize` puts back for a floating window (`nil`: none).
     func setFloatRestore(_ id: WindowID, _ frame: CGRect?) { windows[id]?.floatRestore = frame }
 
     func setFloating(_ id: WindowID, _ floating: Bool) {
         guard var managed = windows[id], managed.floating != floating else { return }
+        openingHold[id] = nil
         let workspace = workspace(managed.workspace)
         managed.floating = floating
         if floating {

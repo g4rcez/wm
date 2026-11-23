@@ -209,7 +209,7 @@
 ---@class (exact) wm.PrefixLabel
 ---@field enabled? boolean Show the panel for a prefix and for a binding mode. Default true.
 ---@field show_keys? boolean List the keys that can be pressed next (inside a mode, or after a prefix). Default true.
----@field position? wm.LabelPosition Default "bottom-center". "top" and "bottom" are the centered positions.
+---@field position? wm.LabelPosition Default "bottom-center". "top" and "bottom" are the centered positions. The keys of the hints, scroll and select modes show at this place too.
 ---@field offset? wm.PrefixOffset Moves the label from `position`.
 
 --- How the overlays look. One look for all of them: the palette, the cheatsheet, the switcher, the overview, the template picker
@@ -329,7 +329,7 @@
 ---@alias wm.KeyboardsConfig table<string, boolean>
 
 ---@class (exact) wm.FloatingConfig
----@field remember_position? boolean A window that a rule floats (the default floating rules too) opens where the last floating window of its app was when it closed, with that size. Default true.
+---@field remember_position? boolean A window that a rule floats (the default floating rules too) opens where the last floating window of its app was when it closed, with that size. A rule with a `size` places its window itself. Default true.
 
 ---@class (exact) wm.OverviewConfig
 ---@field zoom? number A workspace is drawn as its screen times this, 0.2 to 0.75. Default 0.5.
@@ -354,6 +354,7 @@
 ---@field right_click? wm.SelectKey Right-click on the first word of the selection. Default "shift-enter".
 ---@field extend? wm.SelectKey Start or stop to extend the selection. Default "v".
 ---@field search? wm.SelectKey Back to the search. Default {"slash", "backspace"}.
+---@field expand? wm.SelectKey Grow the selection by words: a selection that cuts a word first takes the whole word, then each press adds the next word (the previous one when the cursor is before the start). Default "space".
 ---@field left? wm.SelectKey One character left. Default {"h", "left"}.
 ---@field right? wm.SelectKey One character right. Default {"l", "right"}.
 ---@field down? wm.SelectKey The line below. Default {"j", "down"}.

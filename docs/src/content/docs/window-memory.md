@@ -68,9 +68,12 @@ Finder, Preview. Move or resize a Finder window once, close it, and the next Fin
   - Any other window of the app gets the place of the last one that closed (a Finder window of another folder).
   - The place is a fraction of the work area of the monitor, so it fits a monitor of another size.
   - The window also opens on that monitor, when it is connected.
+  - Apps that put their new window somewhere themselves (Finder, Preview, browsers) are moved back to the place for a moment
+    after it opens, so the remembered place wins over the app's.
 - **What it does not touch:**
   - windows open when the daemon started;
   - a window that `window remember` knows (that wins);
+  - a window whose rule gives a `size`: the rule places it every time (`center` alone does not stop the memory);
   - a tiled window (a window that you floated by hand does not open floating next time);
   - dialogs, which wm floats by themselves.
 - **Off:** `wm.config { floating = { remember_position = false } }`.

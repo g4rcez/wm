@@ -39,6 +39,11 @@ Add `--tile` to join the layout without either.
 - `window float` moves the window to the middle of its screen.
   - It keeps its size. A window that fills (about) the whole work area gets 60% of it, so you can see it float.
   - Windows that open floating (rules, dialogs) keep their own place.
+  - A floating window that opens bigger than the work area of its monitor, either way, is shrunk to fit and goes to the middle.
+    A window that fits is not moved. Windows that were open when the daemon started are not touched.
+  - A floating window that opens at a place that wm chose (a [remembered place](/docs/window-memory), a rule `size` or `center`,
+    the floating layout, the fit above) stays there. Many apps move their new window themselves right after it appears; for
+    1.5 seconds wm puts it back. Dragging it with the mouse modifier or moving it with a command ends that at once.
 - `window float on` and `window float off` float or tile the window. They never toggle, so a bind can be repeated safely.
 - `window center` floats the window (a tiled one first) and puts it in the middle of its monitor, with the same size.
 - Some tiling and scrolling commands work on a floating window too:

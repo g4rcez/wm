@@ -342,7 +342,7 @@ public struct HintSettings: Sendable, Equatable {
 
 /// What a key does in the select step of `wm select`. The raw value is the name in `wm.config { select = { keys = { ... } } }`.
 public enum SelectAction: String, Sendable, CaseIterable {
-    case copy, rightClick = "right_click", extend, search
+    case copy, rightClick = "right_click", extend, search, expand
     case left, right, down, up
     case nextWord = "next_word", previousWord = "previous_word", wordEnd = "word_end"
     case lineStart = "line_start", lineEnd = "line_end"
@@ -352,7 +352,7 @@ public enum SelectAction: String, Sendable, CaseIterable {
 /// Escape always closes the mode: it cannot be changed.
 public struct SelectSettings: Sendable, Equatable {
     public static let defaultKeys: [SelectAction: [String]] = [
-        .copy: ["y", "cmd-c", "enter"], .rightClick: ["shift-enter"], .extend: ["v"], .search: ["slash", "backspace"],
+        .copy: ["y", "cmd-c", "enter"], .rightClick: ["shift-enter"], .extend: ["v"], .search: ["slash", "backspace"], .expand: ["space"],
         .left: ["h", "left"], .right: ["l", "right"], .down: ["j", "down"], .up: ["k", "up"],
         .nextWord: ["w"], .previousWord: ["b"], .wordEnd: ["e"],
         .lineStart: ["0", "cmd-left"], .lineEnd: ["4", "shift-4", "cmd-right"],
