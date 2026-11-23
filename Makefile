@@ -12,12 +12,13 @@ IDENTITY = $(or $(CODESIGN_IDENTITY),$(shell security find-identity -v -p codesi
 TIMEOUT := $(shell command -v timeout || command -v gtimeout)
 
 .DEFAULT_GOAL := help
-.PHONY: help deps build test install identities
+.PHONY: help deps build test version-check install identities
 
 help:
 	@echo "make deps         check the Swift toolchain; install the tools for the icon (librsvg, imagemagick) if they are missing"
 	@echo "make build        compile only (CONFIG=release|debug, default release); it does not touch the app that runs"
 	@echo "make test         run the unit tests"
+	@echo "make version-check  check that Version.swift is the version of the latest git tag"
 	@echo "make install      build, sign with the certificate, copy to $(APP_DIR)/wm.app, link wm in $(BIN_DIR), start it"
 	@echo "make identities   list the code-signing certificates that you can give to CODESIGN_IDENTITY"
 	@echo ""
@@ -46,6 +47,13 @@ test:
 
 identities:
 	@security find-identity -v -p codesigning
+
+# After bumping Version.swift and tagging: both must say the same.
+version-check:
+	@declared="$$(sed -n 's/.*wmVersion = "\(.*\)".*/\1/p' Sources/Common/Version.swift)"; \
+	tag="$$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')"; \
+	[ "$$declared" = "$$tag" ] || { echo "error: Version.swift says $$declared, the latest tag is $$tag"; exit 1; }; \
+	echo "version $$declared: ok"
 
 install:
 	@test -n "$(IDENTITY)" || { \
