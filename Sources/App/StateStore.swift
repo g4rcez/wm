@@ -65,12 +65,12 @@ enum StateStore {
         do {
             let state = try JSONDecoder().decode(SavedState.self, from: data)
             guard state.version == SavedState.currentVersion else {
-                Log.write(.warn, "ignoring \(url.path): version \(state.version)", source: "state", prefix: "wmd")
+                Log.write(.warn, "ignoring \(url.path): version \(state.version)\(keptAs(url))", source: "state", prefix: "wmd")
                 return nil
             }
             return state
         } catch {
-            Log.write(.warn, "ignoring \(url.path): \(error)", source: "state", prefix: "wmd")
+            Log.write(.warn, "ignoring \(url.path): \(error)\(keptAs(url))", source: "state", prefix: "wmd")
             return nil
         }
     }

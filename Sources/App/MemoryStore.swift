@@ -2,6 +2,11 @@ import Common
 import Core
 import Foundation
 
+/// Sets an unreadable file aside as `.bak` before the next save replaces it, and says so for the log line: ", kept as <path>".
+func keptAs(_ url: URL) -> String {
+    setAsideUnreadableFile(at: url).map { ", kept as \($0.path)" } ?? ""
+}
+
 /// The file of `wm window remember`: `memory.json` next to `state.json`. It holds no window ids, so a reboot or a reset of the
 /// state does not lose it.
 enum MemoryStore {
@@ -13,12 +18,12 @@ enum MemoryStore {
         do {
             let memory = try JSONDecoder().decode(WindowMemory.self, from: data)
             guard memory.version == WindowMemory.currentVersion else {
-                Log.write(.warn, "ignoring \(url.path): version \(memory.version)", source: "memory", prefix: "wmd")
+                Log.write(.warn, "ignoring \(url.path): version \(memory.version)\(keptAs(url))", source: "memory", prefix: "wmd")
                 return WindowMemory()
             }
             return memory
         } catch {
-            Log.write(.warn, "ignoring \(url.path): \(error)", source: "memory", prefix: "wmd")
+            Log.write(.warn, "ignoring \(url.path): \(error)\(keptAs(url))", source: "memory", prefix: "wmd")
             return WindowMemory()
         }
     }
@@ -37,7 +42,7 @@ enum FloatMemoryStore {
     static func load(from url: URL = url) -> FloatMemory {
         guard let data = try? Data(contentsOf: url) else { return FloatMemory() }
         guard let memory = try? JSONDecoder().decode(FloatMemory.self, from: data), memory.version == FloatMemory.currentVersion else {
-            Log.write(.warn, "ignoring \(url.path)", source: "memory", prefix: "wmd")
+            Log.write(.warn, "ignoring \(url.path)\(keptAs(url))", source: "memory", prefix: "wmd")
             return FloatMemory()
         }
         return memory
