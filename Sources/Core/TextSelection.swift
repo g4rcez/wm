@@ -48,6 +48,25 @@ public struct TextSelection: Sendable, Equatable {
         if !extend { anchor = head }
     }
 
+    /// Grows the selection by words, toward the cursor: a selection that cuts a word first takes the whole words at both ends;
+    /// after that each call adds the next word (the previous one when the cursor is before the anchor). It starts to extend.
+    public mutating func expand(in page: TextPage) {
+        guard !page.words.isEmpty else { return }
+        func last(_ word: Int) -> Int { page.words[word].text.count - 1 }
+        let backward = head < anchor
+        var low = min(anchor, head), high = max(anchor, head)
+        if low.offset > 0 || high.offset < last(high.word) {
+            low.offset = 0
+            high.offset = last(high.word)
+        } else if backward, low.word > 0 {
+            low = TextPosition(word: low.word - 1, offset: 0)
+        } else if !backward, high.word + 1 < page.words.count {
+            high = TextPosition(word: high.word + 1, offset: last(high.word + 1))
+        }
+        (anchor, head) = backward ? (high, low) : (low, high)
+        extend = true
+    }
+
     public func text(in page: TextPage) -> String { page.text(from: anchor, to: head) }
 
     public func rects(in page: TextPage) -> [CGRect] { page.rects(from: anchor, to: head) }

@@ -119,4 +119,33 @@ struct TextSelectionTests {
         selection.move(.down, in: page)
         #expect(selection.clickPoint(in: page) == CGPoint(x: 60, y: 10))
     }
+
+    @Test func expandTakesTheWholeWordThenGrowsWordByWord() {
+        var selection = selection("pe")
+        selection.expand(in: page)
+        #expect(selection.text(in: page) == "Open")
+        #expect(selection.extend)
+        selection.expand(in: page)
+        #expect(selection.text(in: page) == "Open File")
+        selection.expand(in: page)
+        #expect(selection.text(in: page) == "Open File")
+    }
+
+    @Test func expandOfAWholeWordAddsTheNextOne() {
+        var selection = selection("as")
+        selection.expand(in: page)
+        #expect(selection.text(in: page) == "As\nOpen")
+    }
+
+    @Test func expandGrowsTowardTheCursorWhenItIsBeforeTheAnchor() {
+        var selection = selection("le")
+        selection.toggleExtend()
+        selection.move(.left, in: page)
+        selection.move(.left, in: page)
+        selection.expand(in: page)
+        #expect(selection.text(in: page) == "File")
+        #expect(selection.head == TextPosition(word: 3, offset: 0))
+        selection.expand(in: page)
+        #expect(selection.text(in: page) == "Open File")
+    }
 }

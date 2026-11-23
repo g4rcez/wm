@@ -19,7 +19,7 @@ final class SelectController {
     }
 
     private let reader = ElementReader()
-    private let overlay = HintOverlay()
+    private let overlay: HintOverlay
     private let colors: () -> HintSettings
     private let keys: () -> SelectSettings
     private let pictures = ThumbnailService()
@@ -42,7 +42,9 @@ final class SelectController {
     private var cannotSee = false
 
     init(
-        colors: @escaping () -> HintSettings, keys: @escaping () -> SelectSettings, display: @escaping () -> (id: UInt32, frame: CGRect)?, notify: @escaping (String) -> Void) {
+        colors: @escaping () -> HintSettings, keys: @escaping () -> SelectSettings, look: @escaping () -> LabelLook,
+        display: @escaping () -> (id: UInt32, frame: CGRect)?, notify: @escaping (String) -> Void) {
+        overlay = HintOverlay(look: look)
         self.colors = colors
         self.keys = keys
         self.display = display
@@ -218,6 +220,9 @@ final class SelectController {
         case .extend:
             selection?.toggleExtend()
             render()
+        case .expand:
+            selection?.expand(in: page)
+            render()
         case .left: move(.left)
         case .right: move(.right)
         case .down: move(.down)
@@ -234,7 +239,7 @@ final class SelectController {
     private func shown(_ action: SelectAction) -> String {
         guard var text = keys().keys[action]?.first else { return "" }
         for (name, symbol) in [("ctrl-", "⌃"), ("alt-", "⌥"), ("shift-", "⇧"), ("cmd-", "⌘")] { text = text.replacingOccurrences(of: name, with: symbol) }
-        for (name, symbol) in [("enter", "⏎"), ("slash", "/"), ("backspace", "⌫")] where text.hasSuffix(name) {
+        for (name, symbol) in [("enter", "⏎"), ("slash", "/"), ("backspace", "⌫"), ("space", "␣")] where text.hasSuffix(name) {
             text = String(text.dropLast(name.count)) + symbol
         }
         return text
@@ -280,25 +285,30 @@ final class SelectController {
         case .closed:
             return
         case .loading:
-            content.note = "Reading the screen…" + (query.isEmpty ? "" : " · \(query)")
+            content.note = LabelContent(text: "Reading the screen…" + (query.isEmpty ? "" : " · \(query)"))
         case .search:
             // Without a text every word is a match: only the focused one is shown then.
             if !query.isEmpty { content.matches = matches.map(\.frame) }
             if matches.indices.contains(focused) { content.badges = [HintBadge(frame: matches[focused].frame, label: "", focused: true)] }
-            let blind = cannotSee ? " · Screen Recording is off: some windows are not read" : ""
-            content.note = page.words.isEmpty ? "No text here · Esc" + blind
-                : query.isEmpty ? "Type to search · ⏎ select" + blind
-                : matches.isEmpty ? "\(query) · not found"
-                : "\(query) · \(focused + 1) of \(matches.count) · ⏎ select"
+            let found = query.isEmpty ? "" : matches.isEmpty ? " \(query) · not found" : " \(query) · \(focused + 1)/\(matches.count)"
+            var entries = page.words.isEmpty ? [LabelEntry(key: "esc", text: "no text here")]
+                : [LabelEntry(key: "abc", text: "search"), LabelEntry(key: "⏎", text: "select"), LabelEntry(key: "⇥", text: "next"),
+                   LabelEntry(key: "esc", text: "close")]
+            if cannotSee { entries.append(LabelEntry(key: "!", text: "Screen Recording is off: some windows are not read")) }
+            content.note = LabelContent(badge: "select" + found, entries: entries)
         case .select:
             content.selection = selection?.rects(in: page) ?? []
             content.badges = matches.compactMap { match in
                 guard let label = labels[match.id] else { return nil }
                 return HintBadge(frame: match.frame, label: label, typed: typed.count, dimmed: !typed.isEmpty && !label.hasPrefix(typed))
             }
-            let hint = [(SelectAction.copy, "copy"), (.rightClick, "right click"), (.extend, "extend"), (.search, "search")]
-                .compactMap { action, name in shown(action).isEmpty ? nil : "\(shown(action)) \(name)" }
-            content.note = (selection?.extend == true ? "VISUAL · " : "") + hint.joined(separator: " · ")
+            let moves = [SelectAction.left, .down, .up, .right].map(shown).filter { !$0.isEmpty }.joined(separator: " ")
+            let words = [SelectAction.nextWord, .previousWord, .wordEnd].map(shown).filter { !$0.isEmpty }.joined(separator: " ")
+            var entries = [(moves, "move"), (words, "word")].filter { !$0.0.isEmpty }.map { LabelEntry(key: $0.0, text: $0.1) }
+            entries += [(SelectAction.copy, "copy"), (.rightClick, "right click"), (.extend, "extend"), (.expand, "grow"), (.search, "search")]
+                .compactMap { action, name in shown(action).isEmpty ? nil : LabelEntry(key: shown(action), text: name) }
+            entries.append(LabelEntry(key: "esc", text: "close"))
+            content.note = LabelContent(badge: selection?.extend == true ? "visual" : "select", entries: entries)
         }
         overlay.show(content)
     }
