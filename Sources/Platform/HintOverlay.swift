@@ -56,14 +56,15 @@ public struct HintContent: Sendable, Equatable {
     /// The select mode: the places of the search text, and the lines of the selection.
     public var matches: [CGRect] = []
     public var selection: [CGRect] = []
-    /// A line of text in a pill, on the display that holds `noteAnchor` (the center of the window).
-    public var note: String?
+    /// The keys of the mode, drawn as the which-key label is (the name of the mode, then a chip for each key), on the display
+    /// that holds `noteAnchor` (the center of the window).
+    public var note: LabelContent?
     public var noteAnchor: CGPoint = .zero
     public var colors = HintSettings()
 
     public init(
-        badges: [HintBadge] = [], areas: [AreaBadge] = [], windowLabels: [WindowLabel] = [], note: String? = nil, noteAnchor: CGPoint = .zero,
-        colors: HintSettings = HintSettings()
+        badges: [HintBadge] = [], areas: [AreaBadge] = [], windowLabels: [WindowLabel] = [], note: LabelContent? = nil,
+        noteAnchor: CGPoint = .zero, colors: HintSettings = HintSettings()
     ) {
         self.colors = colors
         self.windowLabels = windowLabels
@@ -74,13 +75,27 @@ public struct HintContent: Sendable, Equatable {
     }
 }
 
+/// How the keys of a mode look: the place of the which-key label (`prefix.label`) and the appearance.
+public struct LabelLook: Sendable, Equatable {
+    public var settings: PrefixLabelSettings
+    public var style: ResolvedStyle
+
+    public init(settings: PrefixLabelSettings = PrefixLabelSettings(), style: ResolvedStyle = AppearanceSettings().resolved()) {
+        self.settings = settings
+        self.style = style
+    }
+}
+
 /// Labels on top of everything, one click-through panel on each display. All coordinates are screen coordinates, origin at the top
 /// left. The keys go to the event tap, never to these panels.
 @MainActor
 public final class HintOverlay {
     private var panels: [UInt32: (panel: HintPanel, view: HintView)] = [:]
+    /// The keys of the mode: the same label as the which-key one.
+    private let label = PrefixLabel()
+    private let look: () -> LabelLook
 
-    public init() {}
+    public init(look: @escaping () -> LabelLook = { LabelLook() }) { self.look = look }
 
     public var isShown: Bool { !panels.isEmpty }
 
@@ -98,11 +113,20 @@ public final class HintOverlay {
             entry.view.needsDisplay = true
             entry.panel.orderFrontRegardless()
         }
+        // It is shown even when the which-key label is off: without it the keys of the mode are not known.
+        if let note = content.note,
+           let display = displays.first(where: { $0.frame.contains(content.noteAnchor) }) ?? displays.first(where: \.isMain) ?? displays.first {
+            let look = look()
+            label.show(note, settings: look.settings, style: look.style, on: display.workArea)
+        } else {
+            label.hide()
+        }
     }
 
     public func hide() {
         for entry in panels.values { entry.panel.orderOut(nil) }
         panels = [:]
+        label.hide()
     }
 
     private func makePanel() -> (panel: HintPanel, view: HintView) {
@@ -139,7 +163,6 @@ private final class HintView: NSView {
     override var isFlipped: Bool { true }
 
     private static let font = NSFont.monospacedSystemFont(ofSize: 11, weight: .bold)
-    private static let noteFont = NSFont.systemFont(ofSize: 12, weight: .medium)
     private var amber: NSColor { Self.nsColor(content.colors.background) }
     private var green: NSColor { Self.nsColor(content.colors.focus) }
     private var blue: NSColor { Self.nsColor(content.colors.area) }
@@ -158,7 +181,6 @@ private final class HintView: NSView {
         fill(content.selection, green.withAlphaComponent(0.45))
         // The focused one goes last, so nothing covers it.
         for badge in content.badges.sorted(by: { !$0.focused && $1.focused }) where badge.frame.intersects(display) { draw(badge) }
-        if let note = content.note { drawNote(note) }
     }
 
     private func fill(_ rects: [CGRect], _ color: NSColor) {
@@ -234,20 +256,6 @@ private final class HintView: NSView {
         path.lineWidth = 0.5
         path.stroke()
         text.draw(at: CGPoint(x: box.minX + 4, y: box.minY + 2))
-    }
-
-    /// The pill is on the display that holds the anchor, near the bottom, above the Dock.
-    private func drawNote(_ note: String) {
-        guard display.contains(content.noteAnchor) else { return }
-        let text = NSAttributedString(string: note, attributes: [.font: Self.noteFont, .foregroundColor: NSColor.white])
-        let size = text.size()
-        let width = size.width + 24
-        let box = CGRect(
-            x: min(max(content.noteAnchor.x - display.minX - width / 2, 8), bounds.width - width - 8),
-            y: bounds.height - size.height - 12 - 90, width: width, height: size.height + 12)
-        NSColor(white: 0.1, alpha: 0.92).setFill()
-        NSBezierPath(roundedRect: box, xRadius: box.height / 2, yRadius: box.height / 2).fill()
-        text.draw(at: CGPoint(x: box.minX + 12, y: box.minY + 6))
     }
 
     private func pill(_ string: String, at origin: CGPoint, fill: NSColor, text color: NSColor, font: NSFont) {

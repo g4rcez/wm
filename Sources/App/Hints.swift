@@ -23,14 +23,18 @@ final class HintController {
     /// `wait`: highlight, and wait for Return.
     private var wait = false
     private let reader = ElementReader()
-    private let overlay = HintOverlay()
+    private let overlay: HintOverlay
     private let colors: () -> HintSettings
     private var phase = Phase.closed
     private var search = ElementSearch(elements: [])
     private var generation = 0
 
-    /// `colors` gives the colors of the config that is loaded now, so a reload changes them.
-    init(colors: @escaping () -> HintSettings) { self.colors = colors }
+    /// `colors` gives the colors of the config that is loaded now, so a reload changes them; `look` the place and the style of
+    /// the key label.
+    init(colors: @escaping () -> HintSettings, look: @escaping () -> LabelLook) {
+        self.colors = colors
+        overlay = HintOverlay(look: look)
+    }
 
     var isOpen: Bool {
         if case .closed = phase { return false }
@@ -183,10 +187,20 @@ final class HintController {
         if let element = search.matches.first(where: { $0.id == highlighted }), search.label(of: element.id) == nil {
             badges.append(HintBadge(frame: element.frame, label: "", focused: true))
         }
-        let keys = wait ? " · ⏎ click · ⇧⏎ right click" : ""
-        let note = search.elements.isEmpty ? "Nothing to click here · Esc"
-            : search.searching ? (search.query.isEmpty ? "Type a label or a title" : "/\(search.query) · \(search.matches.count) found") + keys
-            : "Type a label · / to search"
+        let note: LabelContent
+        if search.elements.isEmpty {
+            note = LabelContent(badge: "hints", entries: [LabelEntry(key: "esc", text: "nothing to click here")])
+        } else if search.searching {
+            var entries = [LabelEntry(key: "ab", text: search.query.isEmpty ? "label or title" : "label")]
+            if wait { entries += [LabelEntry(key: "⏎", text: "click"), LabelEntry(key: "⇧⏎", text: "right click")] }
+            entries += [LabelEntry(key: "⌫", text: "back"), LabelEntry(key: "esc", text: "close")]
+            let found = search.query.isEmpty ? "" : " /\(search.query) · \(search.matches.count)"
+            note = LabelContent(badge: "hints" + found, entries: entries)
+        } else {
+            note = LabelContent(badge: "hints", entries: [
+                LabelEntry(key: "ab", text: "click"), LabelEntry(key: "/", text: "search"), LabelEntry(key: "esc", text: "close"),
+            ])
+        }
         overlay.show(HintContent(badges: badges, note: note, noteAnchor: CGEvent(source: nil)?.location ?? .zero, colors: colors()))
     }
 

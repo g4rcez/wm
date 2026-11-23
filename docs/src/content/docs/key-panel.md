@@ -25,6 +25,9 @@ It has a chip with the mode name and one chip per key, with the key's `descripti
   - A long list gets more columns instead of growing taller than 70% of the screen. The columns have the same height.
 - `show_keys = false` leaves only the mode chip.
 - `wm notify` uses the same pill, with text only, even when `enabled = false`.
+- The [hints, scroll and select modes](/docs/hints) show their keys in the same panel, at the same `position` and `offset`, even
+  when `enabled = false` or `show_keys = false`. The mode chip is `hints`, `scroll`, `select` or `visual`, with the search text
+  and the count of matches after it.
 
 The panel looks like every other overlay: native by default, with a system blur and the text and accent colors of macOS in light
 or dark. `appearance` sets the blur, corners, fonts, colors and density for all of them (see [Appearance](/docs/appearance)).

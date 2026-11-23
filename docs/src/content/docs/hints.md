@@ -12,6 +12,8 @@ wm.bind("cmd-shift-j", "scroll")
 wm.bind("cmd-shift-y", "select")
 ```
 
+Each mode lists its keys in the [key panel](/docs/key-panel): the same chips, place and style as the keys of a binding mode.
+
 ## Hints
 
 `hints` works like the flash plugin of Neovim. It puts a label of **two letters** on every clickable element of:
@@ -146,6 +148,7 @@ Without a text, `Return` selects the first word and every word gets a label.
 | `j` `k`, `Down` `Up` | the line below, above |
 | `0`, `$`, `Cmd-Left`, `Cmd-Right` | start, end of the line |
 | `v` | extend: the next moves keep the start of the selection |
+| `Space` | grow by words: a selection that cuts a word takes the whole word, then each press adds the next word |
 | `y`, `Cmd-C`, `Return` | copy the selection |
 | `Shift-Return` | right-click on the first word of the selection |
 | `/`, `Backspace` | back to the search |
@@ -155,7 +158,7 @@ Where the text comes from:
 
 - The text comes from the Accessibility tree.
 - A window that gives fewer than 8 words (a terminal that draws its own text, a canvas) is read from a picture of the display. wm uses the text recognition of macOS, which needs the Screen Recording permission.
-- Without that permission, those windows have no text, and the pill at the bottom says so.
+- Without that permission, those windows have no text, and the key panel says so.
 - Recognized text can have a wrong letter.
 - A picture inside a window that gives its text is not read.
 - Password fields are not read.
@@ -182,6 +185,7 @@ wm.config {
         right_click = "shift-enter",
         extend = "v",
         search = { "slash", "backspace" },
+        expand = "space",
         left = { "h", "left" }, right = { "l", "right" }, down = { "j", "down" }, up = { "k", "up" },
         next_word = "w", previous_word = "b", word_end = "e",
         line_start = { "0", "cmd-left" }, line_end = { "4", "shift-4", "cmd-right" },
