@@ -118,7 +118,7 @@ wm has no default key bindings. Until you bind keys in `init.lua`, it only react
   small copy of its screen. You can drag a card to another workspace. See [Features](https://wm.garcez.dev/docs/features).
 - **Command palette:** one panel for windows, apps, browser tabs, tmux windows, wm commands (`>`) and menu items (`/`). It also
   works as a Cmd+Tab switcher. See [Features](https://wm.garcez.dev/docs/features).
-- **Cheatsheet:** `wm cheatsheet [tui|gui]` lists the keys of your config in sections, with a filter, in the terminal or in a panel.
+- **Cheatsheet:** `wm cheatsheet [tui|gui]` lists the keys of your config in sections, with a filter, in the terminal or in a panel. `wm cheatsheet cli` prints the same keys as plain text, one per line, to use with `grep`, `less`, `more` or `cat`.
   See [Features](https://wm.garcez.dev/docs/features).
 - **Appearance:** the overlays (palette, cheatsheet, switcher, overview, template picker, key label) look like macOS by default and follow
   light and dark. One `wm.config { appearance = { ... } }` sets the style, theme, density, blur, accent, colors, corners and fonts of all of them.

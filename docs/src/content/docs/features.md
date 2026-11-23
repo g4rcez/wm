@@ -164,9 +164,10 @@ wm.bind("hyper-k", "cheatsheet")
 ```
 
 ```
-wm cheatsheet [tui|gui]   # tui: in the terminal; gui: the panel (run it again to close it)
+wm cheatsheet [tui|gui|cli]   # tui: in the terminal; gui: the panel (run it again to close it); cli: the keys as plain text, one per line
 ```
 
+- `wm cheatsheet cli` prints every bind on one line (`alt+shift+H  # Swap left  [focus swap left]`; a chord is `hyper+W > H`), in plain text with no colors, columns or paging, so `wm cheatsheet cli | grep workspace`, `less` and `more` work. Like `tui`, it reads the config file when wm does not run.
 - Typing filters the rows. `release` binds, `noop` and binds with `hidden = true` are left out. `main` and every other mode have a page each.
 
 Type to filter. `←` `→` or Tab change the mode, `↑` `↓` scroll, `Escape` clears the filter, then closes (`Cmd-W` or a click elsewhere closes the panel).
