@@ -23,6 +23,27 @@ struct SocketTransportTests {
         #expect(bound == 0)
     }
 
+    @Test func theSocketFileIsPrivateToTheUser() throws {
+        let path = temporarySocketPath()
+        let server = try SocketServer(path: path) { _ in ServerAnswer(exitCode: 0) }
+        defer { server.stop() }
+
+        let mode = try FileManager.default.attributesOfItem(atPath: path)[.posixPermissions] as? Int
+        #expect(mode == 0o600)
+    }
+
+    @Test func listeningDoesNotChangeTheMaskOfTheProcess() throws {
+        // The mask belongs to the whole process: a change, even a short one, locks other threads out of the files they create.
+        let before = umask(0o022)
+        defer { umask(before) }
+        let path = temporarySocketPath()
+        let server = try SocketServer(path: path) { _ in ServerAnswer(exitCode: 0) }
+        defer { server.stop() }
+
+        let after = umask(0o022)
+        #expect(after == 0o022)
+    }
+
     @Test func clientGetsTheServerAnswer() throws {
         let path = temporarySocketPath()
         let server = try SocketServer(path: path) { request in

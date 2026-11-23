@@ -70,8 +70,6 @@ func listenOnSocket(path: String) throws -> Int32 {
     unlink(path)
 
     let descriptor = try makeSocket()
-    let previousMask = umask(0o177)
-    defer { umask(previousMask) }
     var mutableAddress = address
     let bound = withUnsafePointer(to: &mutableAddress) { pointer in
         pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
@@ -82,6 +80,15 @@ func listenOnSocket(path: String) throws -> Int32 {
         let code = errno
         close(descriptor)
         throw SocketError.syscall("bind", code)
+    }
+    // `chmod`, not `umask(0o177)` around `bind`: the mask belongs to the whole process, and other threads that create a file or
+    // a folder in that moment would get a mode that locks them out. Others cannot connect before this runs anyway: connecting needs
+    // write permission on the socket, and the default mode has none for them.
+    guard chmod(path, 0o600) == 0 else {
+        let code = errno
+        close(descriptor)
+        unlink(path)
+        throw SocketError.syscall("chmod", code)
     }
     guard listen(descriptor, 16) == 0 else {
         let code = errno
