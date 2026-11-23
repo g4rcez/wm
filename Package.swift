@@ -9,7 +9,7 @@ let package = Package(
         .executable(name: "wmd", targets: ["App"]),
     ],
     targets: [
-        // Vendored Lua 5.4.7 (MIT). Library sources only: lua.c and luac.c are left out.
+        // Vendored Lua 5.4.9 (MIT). Library sources only: lua.c and luac.c are left out.
         .target(name: "CLua", cSettings: [.define("LUA_USE_MACOSX")]),
         .target(name: "Common"),
         .target(name: "Core"),

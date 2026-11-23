@@ -1,10 +1,17 @@
 # Third-party code
 
-## Lua 5.4.7 (vendored in `Sources/CLua`)
+## Lua 5.4.9 (vendored in `Sources/CLua`)
 
-Copyright (C) 1994-2024 Lua.org, PUC-Rio. MIT License.
-Source: https://www.lua.org/ftp/lua-5.4.7.tar.gz (SHA-256 `9fbf5e28ef86c69858f6d3d34eccc32e911c1a28b4120ff3e84aaa70cfbf1e30`).
+Copyright (C) 1994-2026 Lua.org, PUC-Rio. MIT License.
+Source: https://www.lua.org/ftp/lua-5.4.9.tar.gz (SHA-256 `2335b6c582a52654f94612bf10d2f4672805d05329aa6568b1d8cd9e5c6fb8e6`).
 `lua.c` and `luac.c` (the standalone programs) are not included. Other files are unchanged.
+
+To update it:
+
+1. Find the latest `lua-5.4.N.tar.gz` on https://www.lua.org/ftp/ and its SHA-256 on that page.
+2. Download it into a new empty folder outside the repository, and check that `shasum -a 256` gives the published hash.
+3. Copy every `.c` and `.h` file of its `src/` folder over the file of the same name in `Sources/CLua/`, except `lua.c`, `luac.c` and `lua.hpp`. `lauxlib.h`, `lua.h`, `luaconf.h` and `lualib.h` live in `Sources/CLua/include/`. No file is edited.
+4. Run `swift build` and `swift test`, then change the version, the URL and the hash here, and in `Package.swift`, `README.md` and `docs/src/content/docs/development.md`.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
 documentation files (the "Software"), to deal in the Software without restriction, including without limitation the

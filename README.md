@@ -303,7 +303,7 @@ timeout 300 swift test      # unit tests: layout engines, geometry, Lua host, IP
 
 | Target | Role |
 |---|---|
-| `CLua` | Vendored Lua 5.4.7 |
+| `CLua` | Vendored Lua 5.4.9 |
 | `Common` | IPC (length-prefixed JSON over a unix socket), command table, help, URL parsing and shell completion |
 | `Core` | Pure layout engines, animator, gaps, navigation, the geometry of the overview. No AppKit. |
 | `Scripting` | Lua host, chords, binds, gestures, config validation |
