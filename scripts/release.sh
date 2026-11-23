@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Releases wm: bumps Version.swift, commits, tags and pushes. The release workflow does the rest:
-# it tests the tag, creates the GitHub release and updates the Homebrew tap (g4rcez/homebrew-tap).
+# Releases wm: bumps Version.swift, commits, tags and pushes. The release workflow tests the tag and creates the GitHub release;
+# the tap (g4rcez/homebrew-tap) follows that release by itself.
 #
 #   scripts/release.sh patch|minor|major|X.Y.Z [--dry-run]
 set -euo pipefail

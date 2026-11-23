@@ -1,7 +1,7 @@
 name: Release
 
-# Runs when scripts/release.sh pushes a tag. It tests the tag, creates the GitHub release and
-# updates the Homebrew tap so `brew upgrade wm` gets the new version.
+# Runs when scripts/release.sh pushes a tag. It tests the tag and creates the GitHub release.
+# The Homebrew tap (g4rcez/homebrew-tap) follows the latest release by itself: no token here.
 on:
   push:
     tags: ["v*"]
@@ -25,27 +25,3 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" --title "wm ${GITHUB_REF_NAME#v}" --generate-notes --verify-tag
-
-  tap:
-    needs: release
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Update the Homebrew tap
-        env:
-          # A token with write access to g4rcez/homebrew-tap (contents: write). Add it as the repository secret TAP_TOKEN.
-          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
-        run: |
-          [ -n "$TAP_TOKEN" ] || { echo "error: the secret TAP_TOKEN is not set"; exit 1; }
-          version="${GITHUB_REF_NAME#v}"
-          url="https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${GITHUB_REF_NAME}.tar.gz"
-          sha="$(curl -fsSL "$url" | sha256sum | cut -d' ' -f1)"
-          git clone "https://x-access-token:${TAP_TOKEN}@github.com/g4rcez/homebrew-tap.git" tap
-          cd tap
-          sed -i -e "s#^  url \".*\"#  url \"$url\"#" -e "s#^  sha256 \".*\"#  sha256 \"$sha\"#" Formula/wm.rb
-          git diff --exit-code Formula/wm.rb >/dev/null && { echo "tap already at $version"; exit 0; }
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Formula/wm.rb
-          git commit -m "wm $version"
-          git push origin HEAD:main
