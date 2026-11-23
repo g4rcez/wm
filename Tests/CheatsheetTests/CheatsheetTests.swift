@@ -124,6 +124,15 @@ struct CheatsheetTests {
         #expect(CheatBind.decode(json: Data("nonsense".utf8)).isEmpty)
     }
 
+    @Test func theCliSheetIsOneBindPerLineWithNamedModifiers() {
+        let sheet = buildCheatsheet([bind("alt-shift-h", "focus swap left", description: "Swap left"), bind("hyper-w>h", "focus left")])
+        let text = renderPlainCheatsheet(sheet)
+        #expect(!text.contains("\u{1B}"))
+        #expect(text.contains("alt+shift+H"))
+        #expect(text.contains("hyper+W > H"))
+        #expect(text.contains("# Swap left  [focus swap left]"))
+    }
+
     @Test func plainTextHasNoEscapeCodesAndKeepsTheLinesShort() {
         let sheet = buildCheatsheet((1...9).map { bind("hyper-\($0)", "workspace \($0)") } + [bind("alt-w", "window close", description: "Close the window")])
         let text = renderStatic(sheet, width: 80, palette: CheatPalette(enabled: false))
