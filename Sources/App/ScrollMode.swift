@@ -9,15 +9,19 @@ final class ScrollController {
     private static let extreme = 200_000.0
 
     private let reader = ElementReader()
-    private let overlay = HintOverlay()
+    private let overlay: HintOverlay
     private let colors: () -> HintSettings
     private var areas: ScrollAreas?
     private var keys = ScrollKeys()
     private var loading = false
     private var generation = 0
 
-    /// `colors` gives the colors of the config that is loaded now, so a reload changes them.
-    init(colors: @escaping () -> HintSettings) { self.colors = colors }
+    /// `colors` gives the colors of the config that is loaded now, so a reload changes them; `look` the place and the style of
+    /// the key label.
+    init(colors: @escaping () -> HintSettings, look: @escaping () -> LabelLook) {
+        self.colors = colors
+        overlay = HintOverlay(look: look)
+    }
 
     var isOpen: Bool { loading || areas != nil }
 
@@ -120,7 +124,10 @@ final class ScrollController {
         CGWarpMouseCursorPosition(center)
         overlay.show(HintContent(
             areas: areas.frames.enumerated().map { AreaBadge(frame: $1, number: $0, active: $0 == areas.active) },
-            note: "Scroll · h j k l · ⇧ dash · d u · gg G · Tab area · Esc", noteAnchor: center,
+            note: LabelContent(badge: "scroll", entries: [
+                LabelEntry(key: "h j k l", text: "scroll"), LabelEntry(key: "⇧", text: "dash"), LabelEntry(key: "d u", text: "half page"),
+                LabelEntry(key: "gg G", text: "top, bottom"), LabelEntry(key: "⇥", text: "next area"), LabelEntry(key: "esc", text: "close"),
+            ]), noteAnchor: center,
             colors: colors()))
     }
 }

@@ -65,6 +65,8 @@ extension WindowManager {
         guard let id = WindowList.topmost(at: event.location, among: candidates), let managed = windows[id],
               workspace(managed.workspace).fullscreen != id, let frame = currentFrame(of: id) else { return false }
         focus(id, warpMouse: false)
+        // The user moves the window: where it ends is its place, even if it just opened.
+        openingHold[id] = nil
         modifierDrag = ModifierDrag(
             kind: event.button == .left ? .move : .resize, button: event.button, window: id, floating: managed.floating,
             startPointer: event.location, startFrame: frame,
