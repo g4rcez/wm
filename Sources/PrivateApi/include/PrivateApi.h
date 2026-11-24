@@ -36,6 +36,8 @@ uint64_t wm_space_of_window(uint32_t window_id);
 bool wm_move_windows_to_space(const uint32_t *window_ids, int count, uint64_t space);
 
 bool wm_can_batch_space_swipes(void);
+/// While on, a desktop switch sends a swipe that jumps to the end at a very high velocity, so the Dock plays no slide.
+void wm_set_instant_space_switch(bool on);
 
 bool wm_switch_space_index(int from_index, int to_index, uint32_t display);
 

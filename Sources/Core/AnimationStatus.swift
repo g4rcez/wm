@@ -36,11 +36,19 @@ extension Settings {
         func named(_ name: String, _ status: AnimationStatus) -> AnimationStatus {
             AnimationStatus(name: name, enabled: status.enabled, detail: status.detail)
         }
+        // With native workspaces macOS draws the slide: `style` has no effect, and off only asks the Dock for a switch with no slide.
+        func workspaces(_ status: AnimationStatus) -> AnimationStatus {
+            guard workspaceMode == .native else { return named("workspaces", status) }
+            let on = all.enabled && all.workspaces.enabled
+            return AnimationStatus(
+                name: "workspaces", enabled: on,
+                detail: on ? "macOS draws the slide (workspaces = \"native\")" : "asks the Dock for a switch with no slide (macOS may still draw one)")
+        }
         return [
             AnimationStatus(
                 name: "windows", enabled: all.enabled && all.windows.enabled,
                 detail: "\(spring(all.windows)), \(String(format: "%g", all.fps)) fps"),
-            named("workspaces", slide(all.workspaces)),
+            workspaces(slide(all.workspaces)),
             named("special", slide(all.special)),
             AnimationStatus(
                 name: "overlays", enabled: overlayDuration > 0,

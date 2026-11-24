@@ -45,6 +45,9 @@ public enum NativeSpaces {
         return windows.withUnsafeBufferPointer { wm_move_windows_to_space($0.baseAddress, Int32(windows.count), space) }
     }
 
+    /// `true`: a desktop switch jumps (the swipe has no drag and ends very fast), so the Dock plays little or no slide.
+    public static func setInstantSwitch(_ on: Bool) { wm_set_instant_space_switch(on) }
+
     public static func makeSwitcher() -> SpaceSwitcher {
         SpaceSwitcher(
             currentSpace: { uuid in listings().first { $0.display.uuid == uuid }?.display.current ?? 0 },

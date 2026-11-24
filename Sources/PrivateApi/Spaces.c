@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <CoreGraphics/CoreGraphics.h>
 #include <ColorSync/ColorSync.h>
 #include <dispatch/dispatch.h>
@@ -305,6 +306,18 @@ static const double kVelocity = 600.0;
 static const int kDragFrames = 8;
 static const CFTimeInterval kFrameDelay = 0.012;
 static const double kLegacyVelocity = 50.0;
+/// The velocity of the last event of an instant swipe: so fast that the Dock has no slide left to draw. `WM_SPACE_INSTANT_VELOCITY`
+/// changes it, to find a value that the Dock honors on a given macOS.
+static const double kInstantVelocity = 20000.0;
+
+static bool instant_switch = false;
+void wm_set_instant_space_switch(bool on) { instant_switch = on; }
+
+static double instant_velocity(void) {
+    const char *text = getenv("WM_SPACE_INSTANT_VELOCITY");
+    double value = text ? atof(text) : 0.0;
+    return value > 0.0 ? value : kInstantVelocity;
+}
 static const CFTimeInterval kStepDelay = 0.03;
 
 static int major_version(void) {
@@ -431,7 +444,7 @@ static CGEventRef create_augmented_event(int phase, double raw_sign, double prog
     CGEventSetDoubleValueField(event, kGestureSwipePositionX, kPositionX);
     CGEventSetDoubleValueField(event, kGestureZoomDeltaY, kZoomDeltaY);
     CGEventSetDoubleValueField(event, kSourceUnixProcessIDAlias, (double)mach_absolute_time());
-    if (phase == kPhaseEnded) CGEventSetDoubleValueField(event, kGestureSwipeVelocityX, raw_sign * kVelocity);
+    if (phase == kPhaseEnded) CGEventSetDoubleValueField(event, kGestureSwipeVelocityX, raw_sign * (instant_switch ? instant_velocity() : kVelocity));
     CGEventRef result = augment(event);
     CFRelease(event);
     return result;
@@ -444,7 +457,7 @@ static bool post_legacy_swipe(double sign) {
     CGEventSetIntegerValueField(event, kGestureHIDType, kHIDEventTypeDockSwipe);
     CGEventSetIntegerValueField(event, kGestureSwipeMotion, kGestureMotionHorizontal);
     CGEventSetDoubleValueField(event, kGestureSwipeProgress, sign);
-    CGEventSetDoubleValueField(event, kGestureSwipeVelocityX, sign * kLegacyVelocity);
+    CGEventSetDoubleValueField(event, kGestureSwipeVelocityX, sign * (instant_switch ? instant_velocity() : kLegacyVelocity));
     CGEventSetIntegerValueField(event, kGesturePhase, kPhaseBegan);
     post_dock_event(event);
     CGEventSetIntegerValueField(event, kGesturePhase, kPhaseEnded);
@@ -465,6 +478,12 @@ static bool post_augmented_swipes(double sign, int count) {
     double raw = augmented_sign(sign);
     for (int n = 0; n < count; n++) {
         if (!post_augmented_phase(kPhaseBegan, raw, 0.0)) return false;
+        // An instant switch skips the drag: one step to the end, so the Dock has nothing to follow and nothing to slide.
+        if (instant_switch) {
+            if (!post_augmented_phase(kPhaseChanged, raw, 1.0)) return false;
+            if (!post_augmented_phase(kPhaseEnded, raw, 1.0)) return false;
+            continue;
+        }
         for (int frame = 1; frame <= kDragFrames; frame++) {
             CFRunLoopRunInMode(kCFRunLoopDefaultMode, kFrameDelay, false);
             double eased = 1.0 - (1.0 - (double)frame / kDragFrames) * (1.0 - (double)frame / kDragFrames);

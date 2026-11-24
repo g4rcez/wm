@@ -118,7 +118,7 @@
 
 --- The animation of the windows that a workspace switch (`workspaces`) or a special workspace toggle (`special`) shows.
 ---@class (exact) wm.WorkspaceAnimation
----@field enabled? boolean `false`: the windows jump. Default true.
+---@field enabled? boolean `false`: the windows jump. With `workspaces = "native"` it asks the Dock for a switch with no slide (macOS draws it, so it may stay). Default true.
 ---@field rate? number Spring stiffness of the slide, >= 0.1. Default: the `rate` of `animations`.
 ---@field style? wm.SlideStyle `none`: the windows jump. `slide`: they come in from the right when you go to a later workspace and from the left for an earlier one. `slidevert`: from the bottom. A side with another monitor is not used: the windows jump. Default "none".
 

@@ -57,7 +57,13 @@ private struct RebootRestore {
 
 @MainActor
 final class WindowManager {
-    var settings = Settings() { didSet { workspaceSettingsCache.removeAll() } }
+    var settings = Settings() {
+        didSet {
+            workspaceSettingsCache.removeAll()
+            // With native workspaces macOS plays the slide: no animation for workspaces asks for a swipe that jumps.
+            NativeSpaces.setInstantSwitch(!(settings.animations.enabled && settings.animations.workspaces.enabled))
+        }
+    }
     private var workspaceSettingsCache: [String: Settings] = [:]
     var customTemplates = CustomTemplates.load(from: StateStore.templatesURL)
     var rules: [WindowRule] = []

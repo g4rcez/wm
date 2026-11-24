@@ -744,6 +744,16 @@ struct LuaHostTests {
         #expect(master.settings.animationStatus().allSatisfy { !$0.enabled })
     }
 
+    @Test func nativeWorkspacesFollowTheSwitchNotTheStyle() throws {
+        let config = try host.load(configURL: dir.write("init.lua", "wm.config { workspaces = { mode = 'native' } }"))
+        let status = Dictionary(uniqueKeysWithValues: config.settings.animationStatus().map { ($0.name, $0) })
+        #expect(status["workspaces"]?.enabled == true)
+        let off = try host.load(configURL: dir.write("init.lua", "wm.config { workspaces = { mode = 'native' }, animations = { workspaces = { enabled = false } } }"))
+        let offStatus = Dictionary(uniqueKeysWithValues: off.settings.animationStatus().map { ($0.name, $0) })
+        #expect(offStatus["workspaces"]?.enabled == false)
+        #expect(offStatus["workspaces"]?.detail.contains("Dock") == true)
+    }
+
     @Test func theStatusOfAWorkspaceSlideWithNoStyleIsOff() throws {
         let config = try host.load(configURL: dir.write("init.lua", "wm.config { animations = { special = { style = 'slide' } } }"))
         let status = Dictionary(uniqueKeysWithValues: config.settings.animationStatus().map { ($0.name, $0.enabled) })
