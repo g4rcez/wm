@@ -59,9 +59,11 @@ public struct DwindleEngine: LayoutEngine {
         // A frame keeps the windows as they are, so any number of them is fine.
         if template.isFrame { return nil }
         let count = windows.count
-        // A lone window takes the first cell: it moves and resizes there, and the other cells stay empty.
-        if count == 1 { return nil }
-        return count == template.count ? nil : "tile needs exactly \(template.count) windows in this layout (the workspace has \(count))"
+        // Windows past the last cell float (the caller does that first); fewer windows fill the part of the pattern that
+        // they can tile, and the other cells stay empty.
+        if count >= template.count { return nil }
+        if count == 0 || template.fit(count) != nil { return nil }
+        return "the pattern '\(template.name)' has no tiled part for \(count) windows"
     }
 
     public var windows: [WindowID] { root?.windows ?? [] }
@@ -112,11 +114,21 @@ public struct DwindleEngine: LayoutEngine {
                 return true
             }
             let order = windows
-            if order.count == 1, let cell = template.cells.first {
-                frame = template.area.scaled(by: cell)
+            if order.count < template.count {
+                // Fewer windows than cells: they tile the part of the pattern that fits them, in the order of its cells.
+                guard let fit = template.fit(order.count) else { return false }
+                let unit = fit.cells.map { index -> CGRect in
+                    let cell = template.cells[index]
+                    return CGRect(
+                        x: (cell.minX - fit.bounds.minX) / fit.bounds.width, y: (cell.minY - fit.bounds.minY) / fit.bounds.height,
+                        width: cell.width / fit.bounds.width, height: cell.height / fit.bounds.height)
+                }
+                guard let tree = Node.partition(Array(zip(unit, order)), in: CGRect(x: 0, y: 0, width: 1, height: 1)) else { return false }
+                root = tree
+                frame = template.area.scaled(by: fit.bounds)
                 return true
             }
-            guard templateError(template, focused: focused) == nil,
+            guard order.count == template.count,
                   let tree = Node.partition(Array(zip(template.cells, order)), in: CGRect(x: 0, y: 0, width: 1, height: 1)) else { return false }
             root = tree
             frame = area

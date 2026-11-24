@@ -65,13 +65,14 @@ struct TilingTemplateTests {
         ])
     }
 
-    @Test func aWrongNumberOfWindowsChangesNothing() {
+    // The app floats the windows past the last cell before it applies a pattern, so the engine only takes an exact count.
+    @Test func moreWindowsThanCellsChangeNothingInTheEngine() {
         var engine = engine(4)
         let before = engine.frames(in: context, focused: 1)
         let applied = engine.perform(.applyTemplate(.stackLeft), focused: 1, in: context)
         #expect(!applied)
         #expect(engine.frames(in: context, focused: 1) == before)
-        #expect(engine.templateError(.stackLeft, focused: 1) == "tile needs exactly 3 windows in this layout (the workspace has 4)")
+        #expect(engine.templateError(.stackLeft, focused: 1) == nil)
         #expect(engine.templateError(.four, focused: 1) == nil)
     }
 

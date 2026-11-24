@@ -40,10 +40,27 @@ struct DwindleFrameTemplateTests {
         ])
     }
 
-    @Test func aFrameTakesAnyNumberOfWindowsButAGridNeedsAnExactCount() {
+    @Test func aFrameTakesAnyNumberOfWindowsAndAGridTakesTheFirstOnesThatFit() {
         let three = engine(3)
         #expect(three.templateError(.centered, focused: 1) == nil)
-        #expect(three.templateError(.two, focused: 1) == "tile needs exactly 2 windows in this layout (the workspace has 3)")
+        // The app floats the extra window first; the engine itself has no count error for a grid with more windows.
+        #expect(three.templateError(.two, focused: 1) == nil)
+    }
+
+    @Test func fewerWindowsThanCellsTileTheTopHalfOfAGrid() {
+        var engine = engine(2)
+        #expect(engine.templateError(.four, focused: 1) == nil)
+        let applied = engine.perform(.applyTemplate(.four), focused: 1, in: context)
+        #expect(applied)
+        #expect(engine.frames(in: context, focused: 1) == [
+            1: CGRect(x: 0, y: 0, width: 600, height: 300),
+            2: CGRect(x: 600, y: 0, width: 600, height: 300),
+        ])
+    }
+
+    @Test func aPatternWithNoTiledPartForTheCountGivesAnError() {
+        let engine = engine(2)
+        #expect(engine.templateError(.stackRight, focused: 1) != nil)
     }
 
     @Test func theChainRemovesTheFrameEvenForOneWindow() {

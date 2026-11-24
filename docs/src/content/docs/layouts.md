@@ -120,7 +120,8 @@ One window at a time fills the workspace inside the gaps; the others wait out of
 it opens a picker. `layout tile chain` goes back to single columns.
 
 - Scrolling: the focused window and the ones after it (or before, when too few). It is one block in the strip.
-- Tiling: all tiled windows of the workspace; their number must match the pattern. A single window works too.
+- Tiling: all tiled windows of the workspace. With more windows than cells, the first ones in the layout (and the focused one) take the cells and the others float where they are. With fewer, they tile the part of the pattern that fits them (`4` with two windows: the top half, side by side) and the rest of the screen stays empty. When no part fits (`1+2` with two windows), they float into the first cells, as `workspace float-all <pattern>` does. A floating window in focus makes no difference: the tiled windows of the workspace are used.
+- Scrolling with fewer windows in the strip than the pattern has cells: they float into the first cells.
 
 | Pattern | Windows | Picture |
 |---|---|---|

@@ -202,6 +202,39 @@ public struct SplitTemplate: Sendable, Equatable, Codable {
             area: try values.decodeIfPresent(CGRect.self, forKey: .area) ?? Self.unit)
     }
 
+    /// The cells that `count` windows can fill when the template has more cells than windows: the cells (indices, in reading
+    /// order) that include the first one, whose union is a rectangle that straight cuts divide, and that rectangle as fractions
+    /// of the template. `nil` when no such cells exist, or the template is a frame, or it has `count` cells or fewer.
+    public func fit(_ count: Int) -> (cells: [Int], bounds: CGRect)? {
+        guard !isFrame, count >= 1, count < cells.count, cells.count <= 12 else { return nil }
+        let eps = 1e-6
+        var chosen = [0]
+        func search(from next: Int) -> (cells: [Int], bounds: CGRect)? {
+            if chosen.count == count { return accepted(chosen) }
+            guard next < cells.count else { return nil }
+            for index in next..<cells.count {
+                chosen.append(index)
+                if let found = search(from: index + 1) { return found }
+                chosen.removeLast()
+            }
+            return nil
+        }
+        func accepted(_ indices: [Int]) -> (cells: [Int], bounds: CGRect)? {
+            let picked = indices.map { cells[$0] }
+            let bounds = picked.dropFirst().reduce(picked[0]) { $0.union($1) }
+            let filled = picked.reduce(0.0) { $0 + Double($1.width * $1.height) }
+            guard abs(filled - Double(bounds.width * bounds.height)) < eps else { return nil }
+            let unit = picked.map {
+                CGRect(
+                    x: ($0.minX - bounds.minX) / bounds.width, y: ($0.minY - bounds.minY) / bounds.height,
+                    width: $0.width / bounds.width, height: $0.height / bounds.height)
+            }
+            guard DwindleEngine.canPartition(unit) else { return nil }
+            return (indices, bounds)
+        }
+        return search(from: 1)
+    }
+
     /// The cell next to cell `index` in `direction`: the one that touches the edge on that side and overlaps it the
     /// most; `nil` at the edge of the template.
     public func neighbor(of index: Int, _ direction: Direction) -> Int? {

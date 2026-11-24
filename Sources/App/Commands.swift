@@ -488,14 +488,19 @@ extension WindowManager {
         let tiled = workspace.engine.windows.filter(inLayout.contains)
         let ordered = tiled + inLayout.subtracting(tiled).sorted()
         for id in ordered { setFloating(id, on) }
-        if let template {
-            for (index, id) in ordered.prefix(template.count).enumerated() {
-                guard let frame = cellFrame(template, index, workspace: workspace.name) else { return fail("there is no monitor") }
-                setFloatFrame(id, frame)
-            }
-        }
+        if let template, let failure = snap(ordered, into: template, workspace: workspace.name) { return failure }
         relayout()
         return ok()
+    }
+
+    /// Puts the floating windows `ids` into the cells of `template`, in order; a window past the last cell stays where it is.
+    /// `nil` when it worked.
+    private func snap(_ ids: [WindowID], into template: SplitTemplate, workspace name: String) -> ServerAnswer? {
+        for (index, id) in ids.prefix(template.count).enumerated() {
+            guard let frame = cellFrame(template, index, workspace: name) else { return fail("there is no monitor") }
+            setFloatFrame(id, frame)
+        }
+        return nil
     }
 
     private func cellFrame(_ template: SplitTemplate, _ index: Int, workspace name: String) -> CGRect? {
@@ -845,16 +850,49 @@ extension WindowManager {
 
     private func tile(_ name: String?, target id: WindowID?) -> ServerAnswer {
         guard let name else { return fail("layout tile needs a pattern", 2, usage: "layout tile") }
-        guard let id, let managed = windows[id], !managed.floating else { return fail("there is no tiled window in focus") }
-        let workspace = workspace(managed.workspace)
+        let target = id.flatMap { windows[$0] }
         if name == "chain" {
+            guard let id, let target, !target.floating else { return fail("there is no tiled window in focus") }
+            let workspace = workspace(target.workspace)
             _ = workspace.engine.perform(.releaseTemplate, focused: id, in: layoutContext(forWorkspace: workspace.name))
-        } else {
-            guard let template = templates(of: id).first(where: { $0.name == name }) ?? SplitTemplate.builtIn(named: name) else {
-                return fail("unknown pattern '\(name)'", 2, usage: "layout tile")
+            relayout()
+            return ok()
+        }
+        guard let template = templates(of: id).first(where: { $0.name == name }) ?? SplitTemplate.builtIn(named: name) else {
+            return fail("unknown pattern '\(name)'", 2, usage: "layout tile")
+        }
+        guard let workspace = target.map({ workspace($0.workspace) }) ?? focusedWorkspace else { return fail("there is no workspace") }
+        let context = layoutContext(forWorkspace: workspace.name)
+        let tiled = workspace.engine.windows
+        let anchor = id.flatMap { tiled.contains($0) ? $0 : nil } ?? tiled.first
+        // Only floating windows, or nothing the layout can arrange: the windows go into the cells.
+        guard let anchor else { return floatAll(true, into: template) }
+
+        if workspace.engine is DwindleEngine, !template.isFrame {
+            // Too many windows: the first ones in the layout (and the focused one) take the cells, the others float.
+            var kept = tiled
+            if tiled.count > template.count {
+                kept = Array(tiled.prefix(template.count))
+                if !kept.contains(anchor) { kept[template.count - 1] = anchor }
+                for extra in tiled where !kept.contains(extra) { setFloating(extra, true) }
             }
-            if let error = workspace.engine.templateError(template, focused: id) { return fail(error) }
-            _ = workspace.engine.perform(.applyTemplate(template), focused: id, in: layoutContext(forWorkspace: workspace.name))
+            // Too few: they tile the part of the pattern that fits them, else they float into the first cells.
+            if workspace.engine.templateError(template, focused: anchor) != nil {
+                for window in kept { setFloating(window, true) }
+                if let failure = snap(kept, into: template, workspace: workspace.name) { return failure }
+            } else {
+                _ = workspace.engine.perform(.applyTemplate(template), focused: anchor, in: context)
+            }
+            relayout()
+            return ok()
+        }
+        if let error = workspace.engine.templateError(template, focused: anchor) {
+            // A strip with fewer windows than the pattern has cells: they float into the first cells.
+            guard workspace.engine is ScrollingEngine, error.hasPrefix("need at least") else { return fail(error) }
+            for window in tiled { setFloating(window, true) }
+            if let failure = snap(tiled, into: template, workspace: workspace.name) { return failure }
+        } else {
+            _ = workspace.engine.perform(.applyTemplate(template), focused: anchor, in: context)
         }
         relayout()
         return ok()

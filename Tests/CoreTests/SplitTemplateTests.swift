@@ -138,4 +138,18 @@ struct SplitTemplateTests {
         #expect(try JSONDecoder().decode(SplitTemplate.self, from: Data("\"2+1\"".utf8)) == .stackLeft)
         #expect(throws: DecodingError.self) { try JSONDecoder().decode(SplitTemplate.self, from: Data("\"9\"".utf8)) }
     }
+
+    @Test func fitFindsTheTiledPartForFewerWindows() {
+        let four = SplitTemplate.four.fit(2)
+        #expect(four?.cells == [0, 1])
+        #expect(four?.bounds == CGRect(x: 0, y: 0, width: 1, height: 0.5))
+        let left = SplitTemplate.stackLeft.fit(2)
+        #expect(left?.cells == [0, 1])
+        #expect(left?.bounds == CGRect(x: 0, y: 0, width: 0.5, height: 1))
+        #expect(SplitTemplate.six.fit(3)?.bounds == CGRect(x: 0, y: 0, width: 1, height: 0.5))
+        #expect(SplitTemplate.twoThirds.fit(1)?.cells == [0])
+        #expect(SplitTemplate.stackRight.fit(2) == nil)
+        #expect(SplitTemplate.two.fit(2) == nil)
+        #expect(SplitTemplate.centered.fit(1) == nil)
+    }
 }
