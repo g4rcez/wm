@@ -195,7 +195,7 @@ final class AppController: HostBridge, @unchecked Sendable {
                     accessibility: AXIsProcessTrusted(), keyTap: keyTapRunning, screenRecording: CGPreflightScreenCaptureAccess(),
                     loginItemWanted: manager.settings.startAtLogin, loginItemEnabled: SMAppService.mainApp.status == .enabled,
                     isAppBundle: Bundle.main.bundleURL.pathExtension == "app", onboarded: Onboarding.isDone(),
-                    native: manager.nativeFacts())
+                    native: manager.nativeFacts(), secureInput: SecureInput.state())
                 return (try? JSONEncoder().encode(facts)).map { ok(String(decoding: $0, as: UTF8.self)) } ?? fail("cannot encode the facts")
             }
         case "switcher":

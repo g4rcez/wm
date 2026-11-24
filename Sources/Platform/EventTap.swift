@@ -128,6 +128,12 @@ public final class EventTap: @unchecked Sendable {
         return true
     }
 
+    /// Turns the taps on again, in case macOS switched them off without a word.
+    @MainActor public func reenable() {
+        if let port { CGEvent.tapEnable(tap: port, enable: true) }
+        if let pointerPort, pointerWanted { CGEvent.tapEnable(tap: pointerPort, enable: true) }
+    }
+
     /// Turns the delivery of pointer movement on or off. Safe to call before `start()`.
     @MainActor public func setPointerTracking(_ enabled: Bool) {
         pointerWanted = enabled

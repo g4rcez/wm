@@ -28,12 +28,15 @@ public struct DoctorFacts: Codable, Equatable, Sendable {
     public var isAppBundle: Bool
     public var onboarded: Bool
     public var native: NativeFacts?
+    /// The app that holds Secure Event Input now, or `nil` when it is off.
+    public var secureInput: String?
 
     public init(
         accessibility: Bool, keyTap: Bool, screenRecording: Bool, loginItemWanted: Bool, loginItemEnabled: Bool, isAppBundle: Bool,
-        onboarded: Bool, native: NativeFacts? = nil
+        onboarded: Bool, native: NativeFacts? = nil, secureInput: String? = nil
     ) {
         self.native = native
+        self.secureInput = secureInput
         self.accessibility = accessibility
         self.keyTap = keyTap
         self.screenRecording = screenRecording
@@ -111,6 +114,11 @@ public func daemonChecks(_ facts: DoctorFacts) -> [DoctorCheck] {
         checks.append(DoctorCheck("login item", .warn, "start_at_login is on, but wm is not a login item", hint: "look in System Settings > General > Login Items"))
     } else {
         checks.append(DoctorCheck("login item", .warn, "wm is a login item, but start_at_login is off", hint: "set start_at_login = true, or turn wm off in System Settings > General > Login Items"))
+    }
+    if let holder = facts.secureInput {
+        checks.append(DoctorCheck(
+            "secure input", .warn, "on, held by \(holder): macOS hides the keys from wm, so no bind works",
+            hint: "leave the password field, or turn off Secure Keyboard Entry in \(holder)"))
     }
     if let native = facts.native { checks += nativeChecks(native) }
     return checks

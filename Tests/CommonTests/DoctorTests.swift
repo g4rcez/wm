@@ -16,6 +16,24 @@ struct DoctorTests {
         #expect(doctorExitCode(checks) == 0)
     }
 
+    @Test func secureInputIsAWarningThatNamesTheApp() {
+        var facts = healthy
+        facts.secureInput = "Terminal"
+        let checks = daemonChecks(facts)
+
+        let secure = checks.first { $0.name == "secure input" }
+        #expect(secure?.status == .warn)
+        #expect(secure?.detail.contains("Terminal") == true)
+        #expect(secure?.hint?.contains("Secure Keyboard Entry") == true)
+        #expect(daemonChecks(healthy).contains { $0.name == "secure input" } == false)
+    }
+
+    @Test func factsWithNoSecureInputFieldStillDecode() throws {
+        let json = #"{"accessibility":true,"keyTap":true,"screenRecording":true,"loginItemWanted":false,"loginItemEnabled":false,"isAppBundle":true,"onboarded":true}"#
+        let facts = try JSONDecoder().decode(DoctorFacts.self, from: Data(json.utf8))
+        #expect(facts.secureInput == nil)
+    }
+
     @Test func missingAccessibilityFailsAndSaysWhereToGrantIt() {
         var facts = healthy
         facts.accessibility = false

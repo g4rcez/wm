@@ -7,6 +7,10 @@ import Platform
 final class MenuBar: NSObject, NSMenuDelegate {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let errorItem = NSMenuItem()
+    private let secureItem = NSMenuItem()
+    /// The app that holds Secure Event Input, while it is on: the icon gets a lock.
+    private var secureHolder: String?
+    private var errorMessage: String?
     private let workspaceItem = NSMenuItem()
     private let reload: () -> Void
     private let setup: () -> Void
@@ -36,6 +40,9 @@ final class MenuBar: NSObject, NSMenuDelegate {
         errorItem.isHidden = true
         errorItem.isEnabled = false
         menu.addItem(errorItem)
+        secureItem.isHidden = true
+        secureItem.isEnabled = false
+        menu.addItem(secureItem)
         menu.addItem(.separator())
         let tileMenu = NSMenu()
         tileMenu.delegate = self
@@ -82,6 +89,7 @@ final class MenuBar: NSObject, NSMenuDelegate {
     /// template images, so macOS tints them for light and dark menu bars.
     private func refreshIcon() {
         guard let button = item.button else { return }
+        defer { addLockIfSecure(to: button) }
         if pendingShown {
             button.title = ""
             button.image = WorkspaceIcon.image(for: "...")
@@ -96,6 +104,28 @@ final class MenuBar: NSObject, NSMenuDelegate {
             button.image = nil
             button.title = "▦"
         }
+    }
+
+    /// While Secure Event Input is on the icon gets a lock next to it, and the menu says which app holds it.
+    private func addLockIfSecure(to button: NSStatusBarButton) {
+        guard secureHolder != nil else { return }
+        let hadImage = button.image != nil
+        button.image = WorkspaceIcon.withLock(hadImage ? button.image : nil)
+        if !hadImage { button.title = "" }
+    }
+
+    /// `holder` is the app that holds Secure Event Input, or `nil` when it is off.
+    func setSecureInput(_ holder: String?) {
+        guard holder != secureHolder else { return }
+        secureHolder = holder
+        secureItem.isHidden = holder == nil
+        secureItem.title = holder.map { "🔒 Secure Input is on (\($0)): wm cannot read keys" } ?? ""
+        refreshIcon()
+        updateToolTip()
+    }
+
+    private func updateToolTip() {
+        item.button?.toolTip = errorMessage ?? secureHolder.map { "Secure Input is on (\($0)): macOS hides the keys from wm, so binds are paused" }
     }
 
     /// Shows `label` in the icon (`T:1 2 5`, see `StatusLabel`). `name` and `layout` are for the first line of the menu.
@@ -124,7 +154,8 @@ final class MenuBar: NSObject, NSMenuDelegate {
     func setError(_ message: String?) {
         errorItem.isHidden = message == nil
         errorItem.title = message.map { "⚠ " + String($0.prefix(80)) } ?? ""
-        item.button?.toolTip = message
+        errorMessage = message
+        updateToolTip()
     }
 
     /// The tile submenu is filled each time it opens, so it follows the config and the layout in focus.

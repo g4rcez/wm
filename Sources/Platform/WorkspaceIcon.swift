@@ -47,6 +47,30 @@ public enum WorkspaceIcon {
         return image
     }
 
+    /// `image` with a small lock to its right (Secure Input is on). A template image, as `image` is.
+    @MainActor
+    public static func withLock(_ image: NSImage?) -> NSImage {
+        let configuration = NSImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
+        let lock = NSImage(systemSymbolName: "lock.fill", accessibilityDescription: "Secure Input")?.withSymbolConfiguration(configuration)
+        let lockSize = lock?.size ?? NSSize(width: 10, height: 12)
+        let gap: CGFloat = image == nil ? 0 : 4
+        let base = image?.size ?? .zero
+        let result = NSImage(size: NSSize(width: base.width + gap + lockSize.width, height: max(base.height, 18)), flipped: false) { rect in
+            image?.draw(in: NSRect(x: 0, y: (rect.height - base.height) / 2, width: base.width, height: base.height))
+            if let lock {
+                // Drawn in black: as a template image only its shape counts, and macOS tints it.
+                lock.lockFocus()
+                NSColor.black.set()
+                NSRect(origin: .zero, size: lockSize).fill(using: .sourceAtop)
+                lock.unlockFocus()
+                lock.draw(in: NSRect(x: base.width + gap, y: (rect.height - lockSize.height) / 2, width: lockSize.width, height: lockSize.height))
+            }
+            return true
+        }
+        result.isTemplate = true
+        return result
+    }
+
     @MainActor
     private static func make(_ name: String, outlined: Bool) -> NSImage {
         let label = String(name.prefix(3))

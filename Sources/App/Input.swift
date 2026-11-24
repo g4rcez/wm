@@ -103,10 +103,7 @@ final class InputRouter {
             palette?.flagsChanged(flags)
         }
         // The key ups of the hyper key are lost while the tap is off, and a hyper key that stays down would eat every key.
-        tap.onReenabled = { [unowned self] in
-            hyperDown = false
-            overlayHeld = []
-        }
+        tap.onReenabled = { [unowned self] in resetHeldKeys() }
         tap.onButton = { [unowned self] isDown in manager.mouseButton(isDown: isDown) }
         tap.onMouse = { [unowned self] event in
             if let pick = pickDone, event.kind == .down {
@@ -512,6 +509,29 @@ final class InputRouter {
         repeatTimer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated { self?.cancelSequence() }
         }
+    }
+
+    /// Forgets the keys that look held. Their key ups are lost while the tap is off or Secure Input hides the keys, and a hyper key
+    /// that stays down would eat every key.
+    private func resetHeldKeys() {
+        hyperDown = false
+        overlayHeld = []
+        tracker.reset()
+        for timer in longPressTimers.values { timer.invalidate() }
+        longPressTimers = [:]
+    }
+
+    /// Secure Input started or ended: the keys and modifier releases of that time are lost. Starts from a clean state, lets the switcher
+    /// and the palette see the modifiers as they are now (so one whose modifier was released commits), and turns the taps on again.
+    func recoverFromSecureInput() {
+        resetHeldKeys()
+        cancelSequence()
+        modeTimer?.invalidate()
+        modeTimer = nil
+        let flags = EventTap.currentFlags()
+        switcher?.flagsChanged(flags)
+        palette?.flagsChanged(flags)
+        tap.reenable()
     }
 
     func cancelSequence() {

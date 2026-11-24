@@ -58,6 +58,9 @@ public struct BindTracker: Sendable {
 
     public init() {}
 
+    /// Forgets every key that is held: their key ups may never come (Secure Input hides them).
+    public mutating func reset() { held = [:] }
+
     /// `swallow` says whether the key event is used up.
     public mutating func keyDown(keyCode: Int, isRepeat: Bool, lookup: BindLookup) -> (swallow: Bool, effects: [Effect]) {
         guard !lookup.isEmpty else { return (false, []) }

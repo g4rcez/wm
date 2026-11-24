@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let manager = WindowManager()
     private var controller: AppController!
     private var menu: MenuBar!
+    private let secureInput = SecureInputWatcher()
     private var watcher: ConfigWatcher?
     private var permissionTimer: Timer?
     private var setup: OnboardingWindow?
@@ -174,6 +175,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         controller.watchKeyboards()
+        // Secure Event Input (a password field) hides the keys from wm: show a lock, and start the key state again when it changes.
+        secureInput.onChange = { [weak self] holder in
+            guard let self else { return }
+            menu.setSecureInput(holder)
+            controller.input.recoverFromSecureInput()
+        }
+        secureInput.start()
         manager.start()
         controller.keyTapRunning = controller.input.start()
         if !controller.keyTapRunning {

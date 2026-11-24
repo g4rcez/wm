@@ -273,6 +273,7 @@ While the daemon runs, the menu bar icon shows the workspaces that have windows,
 
 - **Mode:** `T` is tiling, `S` scrolling, `M` master and `O` monocle. `F` replaces it while the focused window floats.
 - **Order:** numbers first, from the lowest (`2` before `10`), then other names in ASCII order. The workspace in focus is always listed.
+- **Lock:** a small lock next to the icon means macOS Secure Event Input is on, usually because a password field has focus. macOS then hides the keys from every other app, so no wm bind runs until it ends. The tooltip and the menu say which app holds it, and `wm doctor` shows it. When it starts and when it ends, wm forgets held keys and half-typed key sequences, so the binds work again at once.
 - Minimized windows count. A sticky window belongs to no workspace. A special workspace is not listed.
 
 | Config key | Default | Meaning |
