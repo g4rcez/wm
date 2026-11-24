@@ -85,3 +85,34 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Dinky (MIT, https://github.com/mikker/Dinky)
+
+The native workspaces (`Sources/PrivateApi/Spaces.c`, `Sources/Core/SpaceSwitcher.swift`) follow how Dinky does it: a synthetic Dock
+swipe to switch desktops (with the IOHID payload that macOS 27 reads), the bridged `SLSBridgedMoveWindowsToManagedSpaceOperation` found
+through the symbol table of SkyLight, and a switcher that keeps one request in flight for each display. Dinky has these from mimi,
+bobrwm and yabai. The code was written again for wm, in C and Swift, from reading Dinky; the license is kept here for that reason.
+
+```
+MIT License
+
+Copyright (c) 2026 Mikkel Malmberg
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
