@@ -15,6 +15,7 @@ Run `wm doctor` first. It checks the config, `shortcuts.toml`, the daemon and th
 - **The switcher shows icons and not pictures, or `wm select` finds no text in a terminal.** Grant Screen Recording.
 - **A window floats or stays out of the layout.** Dialogs and palettes float by design. Use `wm window float` to toggle one, or add a rule.
 - **A shortcut from the Shortcuts window does nothing.** `wm doctor` says why in its `shortcuts` line: `init.lua` does not call `wm.shortcuts()`, `init.lua` binds the same keys later (it wins), or `shortcuts.toml` has an error.
+- **A command such as `wm workspaces balance` says the daemon does not know it.** The daemon started before you upgraded wm and still runs the old version (`wm doctor` shows both versions). Run `wm daemon stop`, then `wm daemon start`.
 - **My config has an error.** The old config stays active. The message is in the menu bar, in the output of `wm daemon reload` and in `wm logs`.
 - **`workspace N` says the workspace has no desktop (`workspaces = "native"`).** wm makes the desktop on macOS 27 and later, so either this macOS is older (add desktops in Mission Control), macOS refused (the limit is 16 desktops for each display), or the name is not a number and has no `space` in its `wm.workspace` rule. `wm doctor` lists the workspaces without a desktop.
 - **Workspace 2 is not desktop 2 any more (`workspaces = "native"`).** macOS reordered the desktops. Turn off *Automatically rearrange Spaces based on most recent use* in System Settings > Desktop & Dock > Mission Control.

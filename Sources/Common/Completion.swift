@@ -86,6 +86,18 @@ private let extraFlags: [String: [String]] = [
     "exec": ["--float", "--tile", "--center", "--maximize", "--focus", "--no-focus", "--workspace", "--monitor", "--width", "--size", "--layout", "--timeout", "--app"],
 ]
 
+/// A word that only starts subcommands (`wm window ...`) has no command of its own, so no summary in `commandSpecs`.
+private let groupSummaries: [String: String] = [
+    "window": "Act on a window: close, float, move, send, snap, place.",
+    "workspaces": "Act on all workspaces at once (balance).",
+    "layout": "Change the layout of the workspace and its columns, stacks and splits.",
+    "menubar": "Set or reset the text of the menu bar icon.",
+    "key": "Send a key to an app, or type one.",
+    "memory": "Manage what `window remember` keeps.",
+    "daemon": "Start, stop, check or reload the wm daemon.",
+    "config": "Check the config without applying it.",
+]
+
 private let directionNames = ["left", "right", "up", "down"]
 private let placeholders: Set<String> = ["name", "pattern", "fraction", "n"]
 private let globalFlags = ["--window", "--json", "--verbose", "--help"]
@@ -126,7 +138,7 @@ private func completionNodes() -> [(path: String, node: CompletionNode)] {
                 if let index = node.children.firstIndex(where: { $0.word == words[depth] }) {
                     if isLeaf { node.children[index].summary = spec.summary }
                 } else {
-                    node.children.append((words[depth], isLeaf ? spec.summary : nil))
+                    node.children.append((words[depth], isLeaf ? spec.summary : groupSummaries[words[depth]]))
                 }
             }
         }

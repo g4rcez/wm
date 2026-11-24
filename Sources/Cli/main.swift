@@ -424,6 +424,11 @@ do {
         ClientRequest(args: arguments, windowId: windowId, windowSelector: windowSelector),
         timeoutSeconds: arguments.first == "pick" ? 35 : 5)
     write(answer.stdout, to: .standardOutput)
+    // A daemon that started before an upgrade does not know the commands that came after it.
+    if answer.exitCode == 2, let first = arguments.first, answer.stderr.contains("unknown command '\(first)'") {
+        printError("wm: error: the running daemon does not know '\(first)'\nhint: it is older than this wm (\(wmVersion)): run `wm daemon stop`, then `wm daemon start`\n")
+        exit(2)
+    }
     printError(answer.stderr)
     exit(answer.exitCode)
 } catch {
