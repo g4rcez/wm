@@ -449,6 +449,14 @@ struct ScrollingTwoStripTests {
         #expect(frames[1] == CGRect(x: 0, y: 0, width: 375, height: 800))
     }
 
+    @Test func balanceWithoutFocusFitsEveryStrip() {
+        let workspace = workspace(columns: [1, 2], rows: [10, 11, 12, 13])
+        #expect(workspace.perform(.balance, focused: nil, in: context))
+        let frames = workspace.frames(in: context, focused: nil)
+        #expect(frames[10]?.height == 200)
+        #expect(frames[1]?.width == 375)
+    }
+
     @Test func stackInTheVerticalStripJoinsTheRowAboveAndUnstackPullsItOutBelow() {
         let workspace = workspace(columns: [1], rows: [10, 11])
         #expect(workspace.perform(.stack(.left), focused: 11, in: context))

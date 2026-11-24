@@ -247,6 +247,14 @@ public struct ScrollingEngine: LayoutEngine {
             return true
         }
 
+        if command == .balance {
+            // The strip of the focused window; with no window in focus (or one outside the layout), every strip.
+            if let focused, let at = locate(focused) { return self[strip: at.strip].fit() }
+            let horizontalChanged = horizontal.fit()
+            let verticalChanged = vertical.fit()
+            return horizontalChanged || verticalChanged
+        }
+
         guard let focused, let at = locate(focused) else { return false }
         let strip = at.strip
         let here: Strip.Location = (at.lane, at.index)
@@ -314,9 +322,6 @@ public struct ScrollingEngine: LayoutEngine {
                 return resizeVerticalZone(by: direction == side ? points : -points, in: area)
             }
             return false
-
-        case .balance:
-            return self[strip: strip].fit()
 
         case .expandColumn:
             return self[strip: strip].expand(lane: here.lane, length: length)

@@ -385,6 +385,24 @@ struct ScrollingEngineTests {
         #expect(!engine.perform(.balance, focused: 1, in: context))
     }
 
+    @Test func balanceNeedsNoWindowInFocus() {
+        let engine = engine([1, 2, 3, 4])
+        _ = engine.perform(.columnWidth(.fraction(0.9)), focused: 1, in: context)
+        #expect(engine.perform(.balance, focused: nil, in: context))
+        #expect(engine.frames(in: context, focused: nil)[1]?.width == 250)
+        #expect(!engine.perform(.balance, focused: nil, in: context))
+    }
+
+    @Test func balanceUnzoomsAMaximizedColumn() {
+        let engine = engine([1, 2])
+        _ = engine.perform(.maximize, focused: 1, in: context)
+        #expect(engine.engine.isMaximized(1))
+        #expect(engine.perform(.balance, focused: 2, in: context))
+        #expect(!engine.engine.isMaximized(1))
+        #expect(engine.engine.tabs(of: 1) == nil)
+        #expect(engine.frames(in: context, focused: 2)[1]?.width == 500)
+    }
+
     @Test func balanceOfFourColumnsGivesEachAQuarterOfTheScreen() {
         let engine = engine([1, 2, 3, 4])
         #expect(engine.perform(.balance, focused: 2, in: context))
@@ -566,7 +584,6 @@ struct ScrollingEngineTests {
         let engine = engine([1, 2])
         #expect(!engine.perform(.toggleSplit, focused: 1, in: context))
         #expect(!engine.perform(.swapSplit, focused: 1, in: context))
-        #expect(!engine.perform(.balance, focused: nil, in: context))
     }
 
     // MARK: Neighbours

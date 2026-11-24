@@ -184,7 +184,16 @@ extension ScrollingEngine {
         /// Every lane gets 1/N of the zone, so all of them fit at once. With more than 1/minSize lanes the share
         /// stops at the minimum size.
         mutating func fit() -> Bool {
-            setEverySize(to: Self.clampedSize(1 / Double(lanes.count)))
+            guard !lanes.isEmpty else { return false }
+            let before = lanes
+            // A maximized column takes its share like the others, and leaves its tabs.
+            for index in lanes.indices {
+                guard let zoom = lanes[index].zoom else { continue }
+                lanes[index].tabbed = zoom.tabbed
+                lanes[index].zoom = nil
+            }
+            _ = setEverySize(to: Self.clampedSize(1 / Double(lanes.count)))
+            return lanes != before
         }
 
         mutating func matchSize(of lane: Int) -> Bool { setEverySize(to: lanes[lane].size) }
