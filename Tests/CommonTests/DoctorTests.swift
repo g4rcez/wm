@@ -139,3 +139,35 @@ struct ShortcutsCheckTests {
         #expect(doctorExitCode([check]) == 0)
     }
 }
+
+struct NativeDoctorTests {
+    private let good = NativeFacts(canList: true, canMoveWindows: true, rearrangesSpaces: false, separateSpaces: true, desktops: 4, missing: [])
+
+    @Test func healthyDesktopsAreAllOk() {
+        #expect(nativeChecks(good).allSatisfy { $0.status == .ok })
+    }
+
+    @Test func missingDesktopsAndRearrangingAreWarnings() {
+        var facts = good
+        facts.missing = ["5", "web"]
+        facts.rearrangesSpaces = true
+        let checks = nativeChecks(facts)
+        #expect(checks.first { $0.name == "desktops needed" }?.detail.contains("5, web") == true)
+        #expect(checks.first { $0.name == "desktop order" }?.status == .warn)
+    }
+
+    @Test func missingDesktopsAreMadeWhenWmCanMakeThem() {
+        var facts = good
+        facts.missing = ["5"]
+        facts.canCreate = true
+        let check = nativeChecks(facts).first { $0.name == "desktops needed" }
+        #expect(check?.status == .ok)
+        #expect(check?.detail.contains("5") == true)
+    }
+
+    @Test func noListingIsAFailure() {
+        var facts = good
+        facts.canList = false
+        #expect(nativeChecks(facts).first { $0.name == "desktops" }?.status == .fail)
+    }
+}

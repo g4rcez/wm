@@ -2,11 +2,9 @@ import Foundation
 
 public enum DoctorStatus: String, Codable, Sendable {
     case ok, warn, fail
-    /// The check cannot run (the daemon is off, or the system has no such thing).
     case skip
 }
 
-/// One line of `wm doctor`: what was checked, the result, and what to do when it is not ok.
 public struct DoctorCheck: Codable, Equatable, Sendable {
     public var name: String
     public var status: DoctorStatus
@@ -21,25 +19,21 @@ public struct DoctorCheck: Codable, Equatable, Sendable {
     }
 }
 
-/// What the daemon knows about itself. The daemon sends these facts as JSON and `wm doctor` makes the checks from them, so the
-/// text of the checks is in one place and the daemon stays small.
 public struct DoctorFacts: Codable, Equatable, Sendable {
     public var accessibility: Bool
-    /// The tap that reads the keys runs.
     public var keyTap: Bool
     public var screenRecording: Bool
-    /// `start_at_login` of the config.
     public var loginItemWanted: Bool
     public var loginItemEnabled: Bool
-    /// Only an installed wm.app can be a login item.
     public var isAppBundle: Bool
-    /// The user pressed Start in the setup window (`Onboarding`). Until then wm moves no window.
     public var onboarded: Bool
+    public var native: NativeFacts?
 
     public init(
         accessibility: Bool, keyTap: Bool, screenRecording: Bool, loginItemWanted: Bool, loginItemEnabled: Bool, isAppBundle: Bool,
-        onboarded: Bool
+        onboarded: Bool, native: NativeFacts? = nil
     ) {
+        self.native = native
         self.accessibility = accessibility
         self.keyTap = keyTap
         self.screenRecording = screenRecording
@@ -50,8 +44,26 @@ public struct DoctorFacts: Codable, Equatable, Sendable {
     }
 }
 
-/// The check of `shortcuts.toml`. `problem` is the message of reading the file. `overrides` are the binds that replaced a
-/// bind of the other file (`wm.shortcuts()` and `wm.bind` for the same keys).
+public struct NativeFacts: Codable, Equatable, Sendable {
+    public var canList: Bool
+    public var canMoveWindows: Bool
+    public var canCreate: Bool
+    public var rearrangesSpaces: Bool
+    public var separateSpaces: Bool
+    public var desktops: Int
+    public var missing: [String]
+
+    public init(canList: Bool, canMoveWindows: Bool, canCreate: Bool = false, rearrangesSpaces: Bool, separateSpaces: Bool, desktops: Int, missing: [String]) {
+        self.canList = canList
+        self.canMoveWindows = canMoveWindows
+        self.canCreate = canCreate
+        self.rearrangesSpaces = rearrangesSpaces
+        self.separateSpaces = separateSpaces
+        self.desktops = desktops
+        self.missing = missing
+    }
+}
+
 public func shortcutsCheck(fileExists: Bool, imported: Bool, count: Int, problem: String?, overrides: [String]) -> DoctorCheck {
     if let problem {
         return DoctorCheck("shortcuts", .fail, problem, hint: "fix the line, or open Shortcuts… in the wm menu to save the file again")
@@ -100,10 +112,45 @@ public func daemonChecks(_ facts: DoctorFacts) -> [DoctorCheck] {
     } else {
         checks.append(DoctorCheck("login item", .warn, "wm is a login item, but start_at_login is off", hint: "set start_at_login = true, or turn wm off in System Settings > General > Login Items"))
     }
+    if let native = facts.native { checks += nativeChecks(native) }
     return checks
 }
 
-/// The text of `wm doctor`: one line for each check, and its hint under it when it is not ok.
+public func nativeChecks(_ facts: NativeFacts) -> [DoctorCheck] {
+    let mission = "System Settings > Desktop & Dock > Mission Control"
+    var checks: [DoctorCheck] = []
+    checks.append(
+        facts.canList
+            ? DoctorCheck("desktops", .ok, "\(facts.desktops) desktops")
+            : DoctorCheck("desktops", .fail, "macOS does not list the desktops to wm: native workspaces do not work", hint: "set workspaces = \"emulated\""))
+    if facts.canList, !facts.missing.isEmpty {
+        let names = facts.missing.joined(separator: ", ")
+        checks.append(
+            facts.canCreate
+                ? DoctorCheck("desktops needed", .ok, "no desktop yet for workspace \(names): wm makes it when the workspace is shown")
+                : DoctorCheck(
+                    "desktops needed", .warn, "no desktop for workspace \(names)",
+                    hint: "add desktops in Mission Control (Control-Up): this macOS does not let wm make them"))
+    }
+    checks.append(
+        facts.canMoveWindows
+            ? DoctorCheck("send to desktop", .ok, "wm can move a window to a desktop")
+            : DoctorCheck("send to desktop", .warn, "`window send workspace` cannot move windows to another desktop on this macOS"))
+    checks.append(
+        facts.rearrangesSpaces
+            ? DoctorCheck(
+                "desktop order", .warn, "macOS rearranges the desktops by use: workspace 2 may not stay desktop 2",
+                hint: "turn off Automatically rearrange Spaces based on most recent use in \(mission)")
+            : DoctorCheck("desktop order", .ok, "the desktops keep their order"))
+    checks.append(
+        facts.separateSpaces
+            ? DoctorCheck("separate spaces", .ok, "each display has its own desktops")
+            : DoctorCheck(
+                "separate spaces", .warn, "the displays share their desktops: wm cannot tell the displays apart",
+                hint: "turn on Displays have separate Spaces in \(mission), then log out"))
+    return checks
+}
+
 public func renderDoctor(_ checks: [DoctorCheck]) -> String {
     let width = checks.map(\.name.count).max() ?? 0
     var lines: [String] = []
@@ -115,7 +162,6 @@ public func renderDoctor(_ checks: [DoctorCheck]) -> String {
     return lines.joined(separator: "\n") + "\n"
 }
 
-/// `wm doctor` exits with 1 when a check failed. A warning is not a failure.
 public func doctorExitCode(_ checks: [DoctorCheck]) -> Int32 {
     checks.contains { $0.status == .fail } ? 1 : 0
 }

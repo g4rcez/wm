@@ -17,9 +17,7 @@ public struct CompletionCandidate: Equatable, Sendable {
 
 public enum CompletionResult: Equatable, Sendable {
     case candidates([CompletionCandidate])
-    /// The shell completes a command name.
     case command
-    /// The shell completes a file name.
     case file
 }
 
@@ -35,7 +33,6 @@ public struct LiveWindow: Equatable, Sendable {
     }
 }
 
-/// What only the running daemon knows. Each closure runs only when the word under the cursor needs it.
 public struct CompletionSource {
     public var windows: () -> [LiveWindow] = { [] }
     public var workspaces: () -> [String] = { [] }
@@ -47,7 +44,6 @@ public struct CompletionSource {
 
 private enum LiveArgument { case window, workspace, special, mode, mark }
 
-/// The commands whose first argument is a name or an id that the daemon knows.
 private let liveArguments: [String: LiveArgument] = [
     "focus window": .window,
     "workspace": .workspace,
@@ -58,7 +54,6 @@ private let liveArguments: [String: LiveArgument] = [
     "window unmark": .mark,
 ]
 
-/// What a shell completes after the words of one command: the next words, the values of the first argument, the options.
 private struct CompletionNode {
     var children: [(word: String, summary: String?)] = []
     var values: [String] = []
@@ -67,18 +62,18 @@ private struct CompletionNode {
 
 private let monitorWords = ["left", "right", "up", "down", "next", "prev", "last", "main", "secondary", "tertiary"]
 
-/// Arguments that `CommandSpec.args` cannot list: the text of the spec names a placeholder, or describes them in `details`.
 private let extraValues: [String: [String]] = [
     "list": ["windows", "workspaces", "monitors", "keyboards", "memory", "binds"],
     "query": ["windows", "workspaces", "monitors", "keyboards", "memory"],
     "zen": ["on", "off"],
     "layout set": ["scrolling", "tiling", "master", "monocle", "floating"],
-    "init": ["omarchy", "osx", "windows", "i3", "hyprland", "niri"],  // the spec says [template], to keep the help narrow
+    "init": ["omarchy", "osx", "windows", "i3", "hyprland", "niri"],
     "resize": ["width", "height", "smart", "left", "right", "up", "down"],
     "window place": ["2", "3", "4", "5", "6", "2+1", "1+2", "2/3", "3/4", "1/4", "center"],
     "workspace float-all": ["on", "off", "2", "3", "4", "5", "6", "2+1", "1+2", "2/3", "3/4", "1/4"],
     "window snap": ["left", "right", "top", "bottom", "top-left", "top-right", "bottom-left", "bottom-right", "top-center", "bottom-center", "center"],
     "workspace": ["next", "prev", "empty"],
+    "workspaces": ["balance"],
     "workspace all": ["scrolling", "tiling", "master", "monocle", "floating"],
     "window send workspace": ["next", "prev", "empty"],
     "focus monitor": monitorWords,
@@ -95,7 +90,6 @@ private let directionNames = ["left", "right", "up", "down"]
 private let placeholders: Set<String> = ["name", "pattern", "fraction", "n"]
 private let globalFlags = ["--window", "--json", "--verbose", "--help"]
 
-/// The words that `<a|b|c>` or `[a|b]` stands for. `dir` is the four directions; `<name>` and `<0.1-0.9>` give nothing.
 private func literalValues(of args: String) -> [String] {
     guard let first = args.split(separator: " ").first else { return [] }
     let inner = first.trimmingCharacters(in: CharacterSet(charactersIn: "<>[]"))
@@ -116,7 +110,6 @@ private func options(of flags: String) -> [String] {
     }
 }
 
-/// One node per command prefix, built from `commandSpecs`. The key of the root is the empty string.
 private func completionNodes() -> [(path: String, node: CompletionNode)] {
     var order: [String] = []
     var nodes: [String: CompletionNode] = [:]
@@ -147,8 +140,6 @@ private func completionNodes() -> [(path: String, node: CompletionNode)] {
     return order.map { ($0, nodes[$0]!) }
 }
 
-
-/// The candidates for the last word of `words` (the words after `wm`, the last one being the word under the cursor).
 public func complete(_ words: [String], source: CompletionSource = CompletionSource()) -> CompletionResult {
     let nodes = Dictionary(uniqueKeysWithValues: completionNodes().map { ($0.path, $0.node) })
     var path = ""
@@ -191,8 +182,6 @@ public func complete(_ words: [String], source: CompletionSource = CompletionSou
     return .candidates(found.filter { seen.insert($0.word).inserted })
 }
 
-/// What can finish the command line `text` (the text after `wm`, as in a shortcut: `focus l`). `partial` is the last word, which
-/// is what the user is typing, and `words` are the words that complete it, without `partial` itself. For the Shortcuts window.
 public func commandSuggestions(for text: String, source: CompletionSource = CompletionSource()) -> (partial: String, words: [String]) {
     var words = text.split(separator: " ").map(String.init)
     if text.isEmpty || text.hasSuffix(" ") { words.append("") }
@@ -207,7 +196,6 @@ private func windowCandidates(_ windows: [LiveWindow]) -> [CompletionCandidate] 
     }
 }
 
-/// The text that `wm __complete` prints: one candidate per line (`word<TAB>summary`), or `@command` or `@file`.
 public func renderCompletion(_ result: CompletionResult) -> String {
     func clean(_ text: String) -> String { String(text.map { $0.isNewline || $0 == "\t" ? " " : $0 }) }
     switch result {
@@ -218,13 +206,10 @@ public func renderCompletion(_ result: CompletionResult) -> String {
     }
 }
 
-// MARK: - What the daemon says
-
 private func jsonArray(_ data: Data) -> [[String: Any]] {
     (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] ?? []
 }
 
-/// The `wm list windows --json` document.
 public func parseLiveWindows(_ json: Data) -> [LiveWindow] {
     jsonArray(json).compactMap { item in
         guard let id = item["id"] as? Int else { return nil }
@@ -232,25 +217,18 @@ public func parseLiveWindows(_ json: Data) -> [LiveWindow] {
     }
 }
 
-/// The `wm list workspaces --json` document.
 public func parseLiveWorkspaces(_ json: Data) -> [String] {
     jsonArray(json).compactMap { $0["name"] as? String }
 }
 
-/// The `wm list windows --json` document: every mark of every window.
 public func parseLiveMarks(_ json: Data) -> [String] {
     Array(Set(jsonArray(json).flatMap { $0["marks"] as? [String] ?? [] })).sorted()
 }
 
-/// The `wm list binds --json` document: every mode that has a bind.
 public func parseLiveModes(_ json: Data) -> [String] {
     Array(Set(jsonArray(json).compactMap { $0["mode"] as? String })).sorted()
 }
 
-// MARK: - The scripts
-
-/// The script that `wm completion <shell>` prints. It only asks `wm __complete` for the candidates, so the script
-/// never goes out of date, also when a shell caches it (`znap eval`).
 public func completionScript(for shell: CompletionShell) -> String {
     switch shell {
     case .zsh:

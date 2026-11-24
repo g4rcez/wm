@@ -4,7 +4,7 @@
 -- Keep it in step with Sources/Scripting (ConfigParsing.swift, LuaState.swift, Chord.swift) and Sources/App.
 
 ---@alias wm.Layout "tiling"|"scrolling"|"master"|"monocle"|"floating"
----@alias wm.WorkspaceMode "emulated"
+---@alias wm.WorkspaceMode "emulated"|"native"
 ---@alias wm.CenterMode "never"|"always"|"on-overflow"
 ---@alias wm.Side "left"|"right"
 ---@alias wm.Orientation "horizontal"|"vertical"
@@ -34,6 +34,7 @@
 ---| "resize dir left 50" | "resize dir right 50" | "resize dir up 50" | "resize dir down 50"
 ---| "resize left +50" | "resize left -50" | "resize right +50" | "resize right -50" | "resize up +50" | "resize up -50" | "resize down +50" | "resize down -50"
 ---| "workspace back" | "workspace special" | "workspace float-all" | "workspace float-all on" | "workspace float-all off" | "workspace float-all 2" | "workspace float-all 3" | "workspace float-all 4" | "workspace float-all 2+1" | "workspace float-all 1+2"
+---| "workspaces balance" | "workspaces balance 2" | "workspaces balance 3" | "workspaces balance 4" | "workspaces balance 5" | "workspaces balance 6"
 ---| "workspace move monitor left" | "workspace move monitor right" | "workspace move monitor up" | "workspace move monitor down" | "workspace move monitor next" | "workspace move monitor prev" | "workspace move monitor last"
 ---| "window close" | "window float" | "window float on" | "window float off" | "window center" | "window fullscreen" | "window maximize" | "window native-fullscreen"
 ---| "window sticky" | "zen" | "zen on" | "zen off"
@@ -381,10 +382,14 @@
 ---@field enabled? boolean Keeps its value when missing.
 ---@field only_fully_visible? boolean The pointer focuses only windows that are fully on screen. Default false.
 
+---@class (exact) wm.WorkspacesConfig
+---@field mode? wm.WorkspaceMode Default "emulated".
+---@field max? integer The most workspaces there can be, 1 to 999.
+
 --- Every key is optional. Two `wm.config` calls merge: a key that is absent keeps its value. An unknown key is an error.
 ---@class (exact) wm.Config
 ---@field layout? wm.Layout Default layout of a workspace. Default "tiling".
----@field workspaces? wm.WorkspaceMode Kept for old configs. The only mode is "emulated" (wm hides windows); "native" was removed.
+---@field workspaces? wm.WorkspaceMode|integer|wm.WorkspacesConfig The mode, the limit, or both. "emulated" (default): wm hides the windows of other workspaces at a screen corner. "native": each workspace is a macOS desktop, made when the workspace is first shown (macOS 27 and later; before it the desktop must exist; see `space` of `wm.WorkspaceSpec`). A number (1 to 999) is the most workspaces there can be: a numbered workspace above it is refused, and `workspaces balance` spreads the windows over that many.
 ---@field gaps? wm.Gaps
 ---@field animations? wm.Animations
 ---@field border? wm.Border
@@ -465,6 +470,7 @@
 ---@field layout_options? wm.LayoutOptions Tiling and scrolling options of this workspace only.
 ---@field on_empty? string|wm.OnEmpty A command that runs when the workspace is shown with no window on it. The window that it opens goes to this workspace.
 ---@field wallpaper? string An image (an absolute path, or `~/...`) that the monitor shows while it shows this workspace. The other workspaces keep the picture that the monitor had. See the limits in the docs: it changes the desktop of the current Space only.
+---@field space? integer With `workspaces = "native"`: the number of the desktop that this workspace is (1 is the first desktop of the leftmost display). Ignored with emulated workspaces.
 ---@field persistent? boolean The workspace exists without windows: it shows in the menu bar and `workspace next|prev` stops there. Default false.
 
 --- `on_empty` as a table: the command, and the options of `wm.exec` for its window (not `workspace`: it is this workspace).

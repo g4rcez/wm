@@ -2,7 +2,6 @@ import CoreGraphics
 import Core
 import Foundation
 
-/// Typed access to one Lua table that was converted to `LuaValue`. Every error names the owner and the dotted key.
 struct Fields {
     let owner: String
     let path: [String]
@@ -56,20 +55,17 @@ struct Fields {
         return text
     }
 
-    /// A whole number (at least `min`) or a string, as text: a monitor or a workspace can be named by either.
     func numberOrString(_ key: String, min: Int) throws -> String? {
         if case .number? = values[key] { return String(try integer(key, min: min)!) }
         return try string(key)
     }
 
-    /// A list of numbers in `range` that has at least one item.
     func nonEmptyNumbers(_ key: String, in range: ClosedRange<Double>) throws -> [Double]? {
         guard let list = try numbers(key, in: range) else { return nil }
         guard !list.isEmpty else { throw ConfigError(message: "\(owner): '\(dotted(key))' must not be empty") }
         return list
     }
 
-    /// One of `options`, or a name in `aliases` (which gives the option that it stands for).
     func choice(_ key: String, _ options: [String], aliases: [String: String] = [:]) throws -> String? {
         guard let given = try string(key) else { return nil }
         let text = aliases[given] ?? given
@@ -79,7 +75,6 @@ struct Fields {
         return text
     }
 
-    /// `choice` over the cases of a string enum, as the case.
     func choice<E: CaseIterable & RawRepresentable>(_ key: String, _ type: E.Type, aliases: [String: String] = [:]) throws -> E?
     where E.RawValue == String {
         try choice(key, E.allCases.map(\.rawValue), aliases: aliases).map { E(rawValue: $0)! }
@@ -90,7 +85,6 @@ struct Fields {
         return try Fields(value, owner: owner, path: path + [key], allowed: allowed)
     }
 
-    /// A Lua list. An empty Lua table counts as an empty list.
     func list(_ key: String) throws -> [LuaValue]? {
         guard let value = values[key] else { return nil }
         switch value {
@@ -136,7 +130,6 @@ func parseColor(_ text: String) -> Color? {
         : Color(red: channel(16), green: channel(8), blue: channel(0))
 }
 
-/// The letters of `hints.letters`: 4 to 26 different lowercase letters a to z.
 private func hintLetters(_ text: String) throws -> [Character] {
     let letters = Array(text)
     let valid = letters.allSatisfy { $0.isASCII && $0.isLowercase && $0.isLetter }
@@ -146,13 +139,11 @@ private func hintLetters(_ text: String) throws -> [Character] {
     return letters
 }
 
-/// `enabled` and `rate` of one kind of animation.
 private func animationKind(_ fields: Fields, into kind: inout AnimationKind) throws {
     if let flag = try fields.bool("enabled") { kind.enabled = flag }
     if let rate = try fields.number("rate", min: 0.1) { kind.rate = rate }
 }
 
-/// A color, or a list of two or more colors for a gradient. A list of one is an error: it would be a color.
 func colorList(_ fields: Fields, _ key: String) throws -> [Color]? {
     guard let value = fields.values[key] else { return nil }
     let name = (fields.path + [key]).joined(separator: ".")
@@ -185,8 +176,6 @@ private func color(_ fields: Fields, _ key: String) throws -> Color? {
     return color
 }
 
-/// One chord or a list of chords for an action of the select step, as the names that `SelectSettings` compares. Hyper is not a flag
-/// of macOS, so the select step cannot see it.
 private func selectChords(_ value: LuaValue, action: SelectAction) throws -> [String] {
     let name = "wm.config: 'select.keys.\(action.rawValue)'"
     var texts: [String] = []
@@ -210,7 +199,6 @@ private func selectChords(_ value: LuaValue, action: SelectAction) throws -> [St
     }
 }
 
-/// The keys of `wm.config`. `types/wm.lua` must describe every one of them (a test checks it).
 let topLevelConfigKeys = [
     "layout", "workspaces", "gaps", "animations", "border", "focus_follows_mouse", "mouse_follows_focus",
     "start_at_login", "wrap_focus", "mouse", "trackpad", "workspace_back_and_forth", "tiling", "scrolling", "switcher", "prefix", "url",
@@ -223,8 +211,6 @@ private let appearanceKeys = [
     "radius", "shadow", "font", "font_size", "mono_font", "animation",
 ]
 
-/// Keys that styled one overlay and are gone: `appearance` is the one place for the look of all of them. They still load, so an old
-/// config keeps working: each one is read as its `appearance` key, and an explicit `appearance` wins over it.
 private let removedKeys: [String: String] = [
     "switcher.background": "appearance.background", "switcher.selected": "appearance.accent",
     "overview.backdrop": "appearance.background", "prefix.label.background": "appearance.background",
@@ -232,7 +218,6 @@ private let removedKeys: [String: String] = [
     "prefix.label.font_size": "appearance.font_size", "prefix.label.font": "appearance.font",
 ]
 
-/// The keys of `appearance`: one look for every overlay.
 private func parseAppearance(_ fields: Fields, into settings: inout AppearanceSettings) throws {
     if let value = try fields.choice("style", AppearanceStyle.self) { settings.style = value }
     if let value = try fields.choice("density", Density.self) { settings.density = value }
@@ -257,7 +242,6 @@ private func parseAppearance(_ fields: Fields, into settings: inout AppearanceSe
     if let value = try fields.number("animation", min: animation.lowerBound, max: animation.upperBound) { settings.animation = value }
 }
 
-/// Reads the removed keys of `value` as the `appearance` keys that replaced them.
 private func applyRemovedKeys(_ value: LuaValue, owner: String, to settings: inout AppearanceSettings) throws {
     for (dotted, replacement) in removedKeys.sorted(by: { $0.key < $1.key }) {
         var node: LuaValue? = value
@@ -272,18 +256,24 @@ private func applyRemovedKeys(_ value: LuaValue, owner: String, to settings: ino
     }
 }
 
-/// Applies the keys that are present; keys that are absent keep their value, so two `wm.config` calls merge.
 func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
     let owner = "wm.config"
     let top = try Fields(value, owner: owner, allowed: topLevelConfigKeys)
 
     if let value = try top.choice("layout", LayoutKind.self) { settings.layout = value }
-    // `workspaces = "native"` (the macOS desktops) was removed. "emulated" is the only mode and stays valid.
-    _ = try top.choice("workspaces", ["emulated"])
+    switch top.values["workspaces"] {
+    case nil: break
+    case .number?: settings.workspaceLimit = try top.integer("workspaces", min: 1, max: 999)
+    case .table?:
+        let fields = try top.table("workspaces", allowed: ["mode", "max"])!
+        if let value = try fields.choice("mode", WorkspaceMode.self) { settings.workspaceMode = value }
+        if let value = try fields.integer("max", min: 1, max: 999) { settings.workspaceLimit = value }
+    default:
+        if let value = try top.choice("workspaces", WorkspaceMode.self) { settings.workspaceMode = value }
+    }
     switch top.values["focus_follows_mouse"] {
     case nil: break
     case .table?:
-        // The table form: `enabled` keeps its value when it is missing.
         let fields = try top.table("focus_follows_mouse", allowed: ["enabled", "only_fully_visible"])!
         if let flag = try fields.bool("enabled") { settings.focusFollowsMouse.enabled = flag }
         if let flag = try fields.bool("only_fully_visible") { settings.focusFollowsMouse.onlyFullyVisible = flag }
@@ -298,7 +288,6 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
             settings.trackpad.enabled = flag
             settings.trackpad.warnsWhenMissing = flag
         }
-        // `scroll_fingers` follows `fingers` unless the config sets it too.
         if let count = try trackpad.integer("fingers", min: 0) {
             guard [3, 4].contains(count) else { throw ConfigError(message: "wm.config: 'trackpad.fingers' must be 3 or 4") }
             settings.trackpad.fingers = count
@@ -425,7 +414,6 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
     }
 
     if let prefix = try top.table("prefix", allowed: ["timeout", "menubar", "label"]) {
-        // `timeout` is accepted and ignored so that old configs still load: a sequence waits until a key or Escape.
         _ = try prefix.number("timeout", min: 0.1)
         if let flag = try prefix.bool("menubar") { settings.prefix.menuBar = flag }
         if let label = try prefix.table("label", allowed: ["enabled", "position", "offset", "show_keys"]) {
@@ -458,9 +446,7 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
 
     if let commands = try top.table("commands", allowed: ["mode", "timeout", "layers"]) {
         if let value = try commands.choice("mode", CommandSettings.Mode.self) { settings.commands.mode = value }
-        // `wm.commands.timeout` is in milliseconds, as in Hyprland.
         if let milliseconds = try commands.number("timeout", min: 100, max: 10_000) { settings.commands.timeout = milliseconds / 1000 }
-        // `wm.commands.layers`: the same two keys for one prefix, such as `["hyper-w"]`.
         if case .table(let named)? = commands.values["layers"], let layers = try commands.table("layers", allowed: Array(named.keys)) {
             settings.commands.layers = [:]
             for name in named.keys.sorted() {
@@ -494,7 +480,6 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
     }
 
     if let entries = top.values["keyboards"] {
-        // Names of keyboards are the keys, so there is no fixed list of fields: `default` and then `["name"] = bool`.
         guard case .table(let table) = entries else {
             throw ConfigError(message: "wm.config: 'keyboards' must be a table like { default = true, [\"Keyboard name\"] = false }")
         }
@@ -561,8 +546,6 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
     }
 }
 
-/// The `templates` list of the `tiling` or `scrolling` table: the patterns that the picker and the menu list.
-/// A template is `{ name, key?, title?, cells, area? }`; `wm.templates` has the built-in ones in this shape.
 private func templates(_ group: Fields) throws -> [SplitTemplate]? {
     guard let items = try group.list("templates") else { return nil }
     let list = (group.path + ["templates"]).joined(separator: ".")
@@ -590,7 +573,6 @@ private func templates(_ group: Fields) throws -> [SplitTemplate]? {
             return CGRect(x: numbers[0], y: numbers[1], width: numbers[2], height: numbers[3])
         }
         let cells = try rows.enumerated().map { cellIndex, row in try rect(row, "\(at).cells[\(cellIndex + 1)]") }
-        // The area is optional: the part of the screen that the cells fill (the middle two thirds, for example).
         var area = SplitTemplate.unit
         if let value = fields.values["area"], value != .nil { area = try rect(value, at + ".area") }
         if let problem = SplitTemplate.shapeError(cells, area: area) {
@@ -603,23 +585,17 @@ private func templates(_ group: Fields) throws -> [SplitTemplate]? {
     return result
 }
 
-/// The options of `layout_options` in a workspace rule: the ones of `tiling` and of `scrolling` in `wm.config`, flat.
 private let tilingOptionKeys: Set<String> = ["split_ratio", "preserve_split", "force_split", "split_width_multiplier", "smart_split", "split_under_pointer"]
-/// The options of the `master` table, in `layout_options` with a `master_` in front (`orientation` is also a scrolling option).
 private let masterOptionKeys: Set<String> = ["master_ratio", "master_count", "master_orientation", "master_new_window"]
 private let scrollingOptionKeys: Set<String> = [
     "presets", "default_width", "center", "sliver_width", "sliver_height", "vertical",
     "always_center_single_column", "default_column_display", "preset_heights", "single_window_fit", "visible_columns", "orientation",
 ]
 
-/// Applies the overrides of a workspace rule (a table shaped like `wm.config`: `gaps`, `border`, `tiling`, `scrolling`)
-/// on top of `settings`.
 public func applyWorkspaceOverrides(_ overrides: LuaValue, to settings: inout Settings) throws {
     try applyConfig(overrides, to: &settings)
 }
 
-/// `on_empty`: a shell command, or `{ cmd = "...", float = true, ... }` with the options of `wm.exec`. The window that it opens goes to
-/// the workspace, so the table cannot name another one.
 private func parseOnEmpty(_ fields: Fields, workspace: String) throws -> ExecRequest? {
     guard let value = fields.values["on_empty"] else { return nil }
     var options = ExecOptions(rule: WindowRule(stop: true))
@@ -648,13 +624,14 @@ private func parseOnEmpty(_ fields: Fields, workspace: String) throws -> ExecReq
 
 func parseWorkspaceRule(name: String, _ value: LuaValue) throws -> WorkspaceRule {
     let fields = try Fields(
-        value, owner: "wm.workspace", allowed: ["layout", "monitor", "default", "gaps", "border", "layout_options", "on_empty", "persistent", "wallpaper"])
+        value, owner: "wm.workspace", allowed: ["layout", "monitor", "default", "gaps", "border", "layout_options", "on_empty", "persistent", "wallpaper", "space"])
     guard !fields.values.isEmpty else { throw ConfigError(message: "wm.workspace: '\(name)' needs at least one option") }
     var rule = WorkspaceRule()
     if let layout = try fields.choice("layout", LayoutKind.self) { rule.layout = layout }
     rule.monitor = try fields.numberOrString("monitor", min: 1)
     rule.isDefault = try fields.bool("default") ?? false
     rule.persistent = try fields.bool("persistent") ?? false
+    rule.space = try fields.integer("space", min: 1)
     if let path = try fields.string("wallpaper") {
         let expanded = (path as NSString).expandingTildeInPath
         guard expanded.hasPrefix("/") else {
@@ -686,7 +663,6 @@ func parseWorkspaceRule(name: String, _ value: LuaValue) throws -> WorkspaceRule
         if !master.isEmpty { overrides["master"] = .table(master) }
     }
     if !overrides.isEmpty {
-        // Check the values now, so a mistake is a config error and not a surprise later.
         var scratch = Settings()
         do { try applyConfig(.table(overrides), to: &scratch) } catch let error as ConfigError {
             throw ConfigError(message: error.message.replacingOccurrences(of: "wm.config", with: "wm.workspace '\(name)'"))
@@ -724,7 +700,6 @@ func parseRule(_ value: LuaValue) throws -> WindowRule {
     return rule
 }
 
-/// The keys of a rule that say what happens to a window, not which windows: `wm.rule` and the options of `wm.exec` share them.
 private let ruleActionKeys = ["float", "workspace", "layout", "size", "center", "maximize", "width", "monitor", "focus", "run"]
 
 func applyRuleActions(_ fields: Fields, to rule: inout WindowRule) throws {
@@ -747,8 +722,6 @@ func applyRuleActions(_ fields: Fields, to rule: inout WindowRule) throws {
     }
 }
 
-/// The second argument of `wm.exec(command, options)`: the same actions as `wm.rule`, plus `timeout` (seconds to wait for the
-/// window) and `app` (a bundle id or name that may also claim the window). `nil` when there is nothing to apply.
 func parseExecOptions(_ value: LuaValue, owner: String = "wm.exec", path: [String] = []) throws -> ExecOptions? {
     if case .nil = value { return nil }
     let fields = try Fields(value, owner: owner, path: path, allowed: ruleActionKeys + ["timeout", "app"])

@@ -3,7 +3,6 @@ import Foundation
 import Testing
 @testable import Scripting
 
-/// The app boundary. Records what the Lua side sends and answers from fixed tables.
 final class FakeBridge: HostBridge, @unchecked Sendable {
     private let lock = NSLock()
     private var _logs: [String] = []
@@ -40,7 +39,6 @@ final class FakeBridge: HostBridge, @unchecked Sendable {
     func log(_ message: String) { lock.withLock { _logs.append(message) } }
 }
 
-/// A temporary config directory. Files are written next to each other so `require` can find them.
 struct ConfigDir {
     let url: URL
 
@@ -177,7 +175,6 @@ struct LuaHostTests {
     @Test func sampleConfigLoadsRules() throws {
         let config = try host.load(configURL: dir.write("init.lua", sampleConfig))
 
-        // The rules of the config come first; the default floating rules follow them.
         #expect(config.rules.dropFirst(5).map(\.name) == Self.defaultFloatingNames)
         #expect(Array(config.rules.prefix(5)) == [
             WindowRule(app: "com.apple.finder", float: true, size: RuleSize(width: 0.62, height: 0.68), center: true),
@@ -234,9 +231,7 @@ struct LuaHostTests {
         let eizo = monitor(1, "Eizo", role: "main")
         let ex = monitor(2, "Ex", role: "secondary")
 
-        // "e" fits both monitors, and "main" only the first: the profile fits when "e" takes the second one.
         #expect(logsAfterDisplaysChange([eizo, ex]) == ["pair"])
-        // Two selectors and three monitors: no profile fits.
         #expect(logsAfterDisplaysChange([eizo, ex, monitor(3, "Z", role: "tertiary")]) == ["pair"])
     }
 
@@ -352,7 +347,6 @@ struct LuaHostTests {
         #expect(config.binds["main"]?[a] == .command("focus right"))
         #expect(config.holdBinds["main"]?[a] == .command("focus right"))
         #expect(config.bindRecords.first?.trigger == .hold)
-        // On a sequence the option has no effect, as before.
         #expect(config.holdBinds["main"]?[try parseChord("alt-b")] == nil)
         #expect(config.sequences["main"]?[[try parseChord("alt-b"), try parseChord("c")]] == .command("focus up"))
     }
@@ -630,7 +624,6 @@ struct LuaHostTests {
         ])
         #expect(border.active == Color(red: 1, green: 0, blue: 0))
         #expect(border.angle == 90)
-        // A solid color in a later call replaces the gradient.
         let solid = try host.load(configURL: dir.write("init.lua", """
         wm.config { border = { active = { "#ff0000", "#00ff00" } } }
         wm.config { border = { active = "#112233" } }
@@ -809,6 +802,50 @@ struct LuaHostTests {
         #expect(error?.message.contains(expected) == true)
     }
 
+    @Test func nativeWorkspacesAndTheDesktopOfAName() throws {
+        let config = try host.load(configURL: dir.write("init.lua", """
+        wm.config({ workspaces = "native" })
+        wm.workspace("web", { space = 2 })
+        """))
+        #expect(config.settings.workspaceMode == .native)
+        #expect(config.workspaceRules["web"]?.space == 2)
+    }
+
+    @Test func workspacesCanBeALimitOrATableWithTheMode() throws {
+        let limit = try host.load(configURL: dir.write("init.lua", "wm.config({ workspaces = 6 })"))
+        #expect(limit.settings.workspaceLimit == 6)
+        #expect(limit.settings.workspaceMode == .emulated)
+        let both = try host.load(configURL: dir.write("init.lua", "wm.config({ workspaces = { mode = 'native', max = 4 } })"))
+        #expect(both.settings.workspaceLimit == 4)
+        #expect(both.settings.workspaceMode == .native)
+    }
+
+    @Test(arguments: [
+        ("wm.config({ workspaces = 0 })", "workspaces"),
+        ("wm.config({ workspaces = 2.5 })", "workspaces"),
+        ("wm.config({ workspaces = { max = 'x' } })", "max"),
+        ("wm.config({ workspaces = { size = 3 } })", "size"),
+    ])
+    func badWorkspaceLimitsAreErrors(script: String, expected: String) {
+        let error = #expect(throws: ConfigError.self) { try host.load(configURL: dir.write("init.lua", script)) }
+        #expect(error?.message.contains(expected) == true)
+    }
+
+    @Test func workspacesAreEmulatedByDefault() throws {
+        let config = try host.load(configURL: dir.write("init.lua", "wm.config({ workspaces = 'emulated' })"))
+        #expect(config.settings.workspaceMode == .emulated)
+    }
+
+    @Test(arguments: [
+        ("wm.config({ workspaces = 'virtual' })", "workspaces"),
+        ("wm.workspace('1', { space = 0 })", "'space'"),
+        ("wm.workspace('1', { space = 'two' })", "'space'"),
+    ])
+    func badNativeSettingsAreErrors(script: String, expected: String) {
+        let error = #expect(throws: ConfigError.self) { try host.load(configURL: dir.write("init.lua", script)) }
+        #expect(error?.message.contains(expected) == true)
+    }
+
     @Test func aWorkspaceCanHaveAWallpaper() throws {
         let config = try host.load(configURL: dir.write("init.lua", """
         wm.workspace("code", { wallpaper = "~/Pictures/code.jpg" })
@@ -909,10 +946,7 @@ struct LuaHostTests {
         #expect(error?.message.contains(expected) == true)
     }
 
-    // MARK: the type stubs that editors read
-
     private func typeStubs() throws -> String {
-        // Tests/ScriptingTests/LuaHostTests.swift -> the repository root.
         var root = URL(fileURLWithPath: #filePath)
         for _ in 0..<3 { root.deleteLastPathComponent() }
         return try String(contentsOf: root.appendingPathComponent("types/wm.lua"), encoding: .utf8)
@@ -1614,8 +1648,6 @@ struct LuaHostTests {
         #expect(bridge.logs[0].contains("longer than 2 seconds"))
         #expect(bridge.logs[1] == "fast")
     }
-
-    // MARK: Tile templates
 
     @Test func theCenteredTemplateAndACustomAreaCanBeListed() throws {
         let config = try host.load(configURL: dir.write("init.lua", """

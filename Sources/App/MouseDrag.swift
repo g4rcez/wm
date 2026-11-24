@@ -47,7 +47,10 @@ extension WindowManager {
         switch event.kind {
         case .down: return beginDrag(event)
         case .dragged:
-            guard let drag = modifierDrag, drag.button == event.button else { return false }
+            guard let drag = modifierDrag, drag.button == event.button else {
+                refreshLiveBorder()
+                return false
+            }
             continueDrag(drag, to: event.location)
             return true
         case .up:

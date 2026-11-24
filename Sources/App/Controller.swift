@@ -7,7 +7,6 @@ import Platform
 import Scripting
 import ServiceManagement
 
-/// The one entry point for commands from the CLI, Lua and `wm://` URLs, and the owner of the config lifecycle.
 final class AppController: HostBridge, @unchecked Sendable {
     static let version = wmVersion
 
@@ -15,14 +14,12 @@ final class AppController: HostBridge, @unchecked Sendable {
     let configURL: URL
     private let broadcaster = Broadcaster()
     private(set) var input: InputRouter!
-    /// `wm doctor` reports it: the key tap started when wm began to control the windows.
     @MainActor var keyTapRunning = false
     private(set) var switcher: SwitcherController!
     @MainActor private var idleWatcher: IdleWatcher!
     @MainActor private var wallpaper: WallpaperSwitcher!
     @MainActor private(set) var palette: PaletteController!
     @MainActor let cheatsheet = CheatsheetController()
-    /// The window that `tile` with no argument (the picker) applies the chosen pattern to.
     @MainActor private var pickerTarget: WindowID?
     @MainActor private lazy var picker: TemplatePicker = {
         let picker = TemplatePicker()
@@ -44,7 +41,6 @@ final class AppController: HostBridge, @unchecked Sendable {
         colors: { [unowned self] in manager.settings.hints }, keys: { [unowned self] in manager.settings.select },
         look: { [unowned self] in labelLook }, display: { [unowned self] in manager.focusedMonitor.map { ($0.id, $0.frame) } },
         notify: { [unowned self] text in onNotify(text, 2) })
-    /// The keys of the hint, scroll and select modes look like the which-key label, at its place.
     @MainActor private var labelLook: LabelLook {
         LabelLook(settings: manager.settings.prefix.label, style: manager.settings.appearance.resolved())
     }
@@ -52,14 +48,10 @@ final class AppController: HostBridge, @unchecked Sendable {
     @MainActor private lazy var menuPopup = MenuPopup()
     private lazy var host = LuaHost(bridge: self)
     private var server: SocketServer?
-    /// Called on the main actor when a config error appears or clears.
     @MainActor var onConfigError: (String?) -> Void = { _ in }
-    /// Reports whether macOS shows the menu bar icon.
     @MainActor var trayVisible: () -> Bool = { false }
     @MainActor var trayDebug: () -> String = { "" }
-    /// Shows a message for a number of seconds (`wm notify`).
     @MainActor var onNotify: (String, TimeInterval) -> Void = { _, _ in }
-    /// Every bind of the config that is loaded, for `wm list binds`.
     @MainActor private(set) var bindRecords: [BindRecord] = []
 
     @MainActor init(manager: WindowManager, configURL: URL) {
@@ -70,7 +62,6 @@ final class AppController: HostBridge, @unchecked Sendable {
             run: { [unowned self] command in
                 let words = splitCommand(command)
                 let answer = run(words)
-                // A bind has no terminal: without this, a `window remember` that fails says nothing.
                 if words.first == "window", ["remember", "forget"].contains(words.dropFirst().first) {
                     notifyOutcome(of: answer)
                 }
@@ -106,7 +97,6 @@ final class AppController: HostBridge, @unchecked Sendable {
         }
     }
 
-    /// Shows the first line of what a command answered, without the `wm: error:` prefix of a failure.
     @MainActor private func notifyOutcome(of answer: ServerAnswer) {
         let failed = answer.exitCode != 0
         let line = (failed ? answer.stderr : answer.stdout).split(separator: "\n").first.map(String.init) ?? ""
@@ -116,7 +106,6 @@ final class AppController: HostBridge, @unchecked Sendable {
 
     @MainActor func startServer() throws {
         server = try SocketServer(subscriber: { [broadcaster, unowned self] descriptor, words in
-            // `run` has checked the words, so they parse. The state goes first, so that the client misses no change.
             guard case .success(let subscription) = Subscription.parse(words) else {
                 close(descriptor)
                 return
@@ -127,8 +116,6 @@ final class AppController: HostBridge, @unchecked Sendable {
         }
     }
 
-    /// The first line of `wm subscribe --snapshot`: `wm list --json` (windows, workspaces and monitors) with the event name
-    /// `snapshot`, and the current binding mode.
     private func snapshotJSON() -> String {
         let overview = run(ClientRequest(args: ["list", "--json"])).stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         let mode = onMain { manager.mode }
@@ -142,11 +129,6 @@ final class AppController: HostBridge, @unchecked Sendable {
         wallpaper.restore()
     }
 
-    // MARK: - Commands
-
-    /// A request from the CLI, a URL or Lua. `--window <id>` must name a window. Commands that are not about a window
-    /// (`mode`, `daemon`, ...) just ignore it; `workspace`, `list`, `exec` and `switcher` use it. `--verbose` adds one
-    /// line with the state after a command that worked.
     func run(_ request: ClientRequest) -> ServerAnswer {
         let (args, verbose) = stripVerbose(request.args)
         if let id = request.windowId, onMain({ manager.windows[id] == nil }) {
@@ -164,8 +146,6 @@ final class AppController: HostBridge, @unchecked Sendable {
         return answer
     }
 
-    /// `menu`: the menus of the app of the window (the focused app without one), as a pop-up at the pointer. The read goes on
-    /// in the background, so the command returns at once.
     @MainActor private func showMenu(of target: WindowID?) -> ServerAnswer {
         let pid: pid_t
         if let id = target ?? manager.focused, let managed = manager.windows[id] {
@@ -183,14 +163,12 @@ final class AppController: HostBridge, @unchecked Sendable {
             }
             menuPopup.show(tree) { token in
                 NSRunningApplication(processIdentifier: pid)?.activate()
-                // The app needs a moment to become active before it takes the press.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { reader.press(token: token) }
             }
         }
         return ok()
     }
 
-    /// Starts or stops the reading of the trackpad. A reload starts it again, to find a trackpad that was connected later.
     @MainActor private func updateTrackpad(_ settings: TrackpadSettings) {
         trackpad.stop()
         guard settings.enabled else { return }
@@ -216,7 +194,8 @@ final class AppController: HostBridge, @unchecked Sendable {
                 let facts = DoctorFacts(
                     accessibility: AXIsProcessTrusted(), keyTap: keyTapRunning, screenRecording: CGPreflightScreenCaptureAccess(),
                     loginItemWanted: manager.settings.startAtLogin, loginItemEnabled: SMAppService.mainApp.status == .enabled,
-                    isAppBundle: Bundle.main.bundleURL.pathExtension == "app", onboarded: Onboarding.isDone())
+                    isAppBundle: Bundle.main.bundleURL.pathExtension == "app", onboarded: Onboarding.isDone(),
+                    native: manager.nativeFacts())
                 return (try? JSONEncoder().encode(facts)).map { ok(String(decoding: $0, as: UTF8.self)) } ?? fail("cannot encode the facts")
             }
         case "switcher":
@@ -236,7 +215,6 @@ final class AppController: HostBridge, @unchecked Sendable {
             guard parsed.isValid else { return fail("\(args[0]) takes open, close or toggle", 2, usage: args[0]) }
             let mode = parsed.mode?.rawValue
             return onMain {
-                // One mode at a time: each takes every key.
                 if mode != "close" { selector.close(); jump.close() }
                 let error: String?
                 if args[0] == "hints" {
@@ -326,8 +304,6 @@ final class AppController: HostBridge, @unchecked Sendable {
         }
     }
 
-    /// `pick [--json]`: waits for the next click (30 seconds at most) and describes the window under it. The wait blocks the
-    /// thread of the request, so it is for the CLI; the main thread (a bind, Lua, a URL) must never wait.
     private func pick(_ rest: [String]) -> ServerAnswer {
         if let bad = unknownOption(Set(rest.filter { $0.hasPrefix("--") }), allowed: ["--json"], usage: "pick") { return bad }
         if rest.contains(where: { !$0.hasPrefix("--") }) { return fail("pick takes no arguments", 2, usage: "pick") }
@@ -345,7 +321,6 @@ final class AppController: HostBridge, @unchecked Sendable {
         }
         guard armed else { return fail("another `wm pick` is waiting for a click") }
         let finished = clicked.wait(timeout: .now() + 30) == .success
-        // A click that comes just after the timeout still counts: it was swallowed already.
         let point = onMain {
             input.endPick()
             return click.value
@@ -353,7 +328,6 @@ final class AppController: HostBridge, @unchecked Sendable {
         guard let point else { return fail(finished ? "pick cancelled" : "no click within 30 seconds") }
         guard let hit = WindowList.frontmost(at: point) else { return fail("there is no window at the click") }
 
-        // A window that wm does not manage is read from its app. The main thread stays free for that read.
         let unmanaged = Slot<WindowInfo>()
         if onMain({ manager.windows[hit.id] == nil }) {
             let read = DispatchSemaphore(value: 0)
@@ -371,7 +345,6 @@ final class AppController: HostBridge, @unchecked Sendable {
         }
     }
 
-    /// `cheatsheet [gui]`: the panel with the keys of the config; again to close it. The terminal sheet is drawn by the CLI itself.
     private func cheatsheetCommand(_ words: [String]) -> ServerAnswer {
         guard words.count <= 1, words.first.map({ ["tui", "gui"].contains($0) }) ?? true else {
             return fail("expected tui or gui", 2, usage: "cheatsheet")
@@ -385,7 +358,6 @@ final class AppController: HostBridge, @unchecked Sendable {
         }
     }
 
-    /// `list binds [--json]`: every bind with its keys, trigger, command and description.
     @MainActor private func listBinds(_ flags: Set<String>) -> ServerAnswer {
         if let bad = unknownOption(flags, allowed: ["--json"], usage: "list") { return bad }
         func when(_ trigger: BindTrigger) -> String { trigger == .longPress ? "long press" : trigger.rawValue }
@@ -404,7 +376,6 @@ final class AppController: HostBridge, @unchecked Sendable {
         }))
     }
 
-    /// `daemon status|reload|stop|start`. `start` is for the CLI, which starts the app; a daemon that answers runs already.
     private func daemon(_ words: [String]) -> ServerAnswer {
         let flags = Set(words.filter { $0.hasPrefix("--") })
         switch words.first(where: { !$0.hasPrefix("--") }) {
@@ -453,7 +424,6 @@ final class AppController: HostBridge, @unchecked Sendable {
         return DispatchQueue.main.sync { MainActor.assumeIsolated(body) }
     }
 
-    /// `batch "a; b; c"`: the commands run in order, and it stops at the first one that fails.
     private func batch(_ text: String, target: WindowID?) -> ServerAnswer {
         let commands = splitBatch(text)
         guard !commands.isEmpty else { return fail("batch needs commands separated by ;", 2, usage: "batch") }
@@ -472,7 +442,6 @@ final class AppController: HostBridge, @unchecked Sendable {
         return ok(output)
     }
 
-    /// `set <key> <value>`: one config value, until the config loads again.
     @MainActor private func setSetting(_ words: [String]) -> ServerAnswer {
         guard words.count >= 2 else { return fail("set needs a setting and a value", 2, usage: "set") }
         var next = manager.settings
@@ -489,7 +458,6 @@ final class AppController: HostBridge, @unchecked Sendable {
         return ok()
     }
 
-    /// `notify <text> [--seconds=n]`: a message on the screen, in the style of the prefix label.
     @MainActor private func notify(_ words: [String]) -> ServerAnswer {
         var seconds = 2.0
         var text: [String] = []
@@ -508,8 +476,6 @@ final class AppController: HostBridge, @unchecked Sendable {
         return ok()
     }
 
-    /// `key send <chord>`: a key press for the app of a window, which does not get the focus.
-    /// `key press <chord>`: a key press for the system, as if typed (a media key such as `play` also works).
     @MainActor private func sendKey(_ words: [String], target: WindowID?) -> ServerAnswer {
         guard let verb = words.first, ["send", "press"].contains(verb), let text = words.dropFirst().first else {
             return fail("key needs send or press, and a chord", 2, usage: "key send")
@@ -529,8 +495,6 @@ final class AppController: HostBridge, @unchecked Sendable {
         return ok()
     }
 
-    /// Runs a shell command without waiting for it. `WM_WINDOW_ID` tells it which window `--window` named. Returns the
-    /// process id of the shell.
     @discardableResult
     private func runShell(_ command: String, window: WindowID? = nil) -> Int32? {
         let process = Process()
@@ -551,8 +515,6 @@ final class AppController: HostBridge, @unchecked Sendable {
         }
     }
 
-    // MARK: - URL
-
     @MainActor func handle(url: URL) {
         guard let request = commandRequest(fromURL: url) else { return }
         if let command = urlBlockedCommand(in: request.args, allowed: manager.settings.urlAllow) {
@@ -563,10 +525,7 @@ final class AppController: HostBridge, @unchecked Sendable {
         if answer.exitCode != 0 { Log.write(.error, answer.stderr.trimmingCharacters(in: .whitespacesAndNewlines), source: "url") }
     }
 
-    // MARK: - Config
-
     private func reloadFromAnyThread() -> ServerAnswer {
-        // Loading blocks on the Lua queue, so it must never run on the main thread or inside a Lua handler.
         if Thread.isMainThread { return reloadInBackground() }
         return reload()
     }
@@ -576,7 +535,6 @@ final class AppController: HostBridge, @unchecked Sendable {
         return ok("reloading\n")
     }
 
-    /// Loads the config. `notify`: tell the user in a notification of macOS how it went; the load at the start does not.
     func reload(notify: Bool = true) -> ServerAnswer {
         guard FileManager.default.fileExists(atPath: configURL.path) else {
             let message = "no config at \(configURL.path); using defaults"
@@ -599,7 +557,6 @@ final class AppController: HostBridge, @unchecked Sendable {
         }
     }
 
-    /// One notification for the config: a new one replaces the last.
     private func notifyConfig(title: String, body: String) {
         Task {
             do { try await SystemNotification.post(title: title, body: body, id: "wm.config") } catch {
@@ -608,7 +565,6 @@ final class AppController: HostBridge, @unchecked Sendable {
         }
     }
 
-    /// `binds.disable_system_cmd_tab`: macOS's own Cmd+Tab is off while the config asks for it. Only a change calls macOS.
     private var systemCmdTabDisabled = false
 
     @MainActor private func setSystemCmdTab(disabled: Bool) {
@@ -617,8 +573,6 @@ final class AppController: HostBridge, @unchecked Sendable {
         SystemShortcuts.setCommandTab(enabled: !disabled)
     }
 
-    /// `binds.capslock`: CapsLock sends F18 while the config asks for the hyper key. It also runs on a reload, after wake and when a
-    /// keyboard connects, so that every keyboard that the config enables (`keyboards`) has the mapping.
     private var capsLockMapped = false
     private var keyboardSettings = KeyboardSettings()
     @MainActor private lazy var keyboardWatcher = KeyboardWatcher { [unowned self] in refreshKeyboards() }
@@ -629,8 +583,6 @@ final class AppController: HostBridge, @unchecked Sendable {
         if on { refreshKeyboards() } else { KeyboardRemap.removeCapsLockMapping() }
     }
 
-    /// Gives the hyper key to the keyboards that the config enables, and takes it from the ones that it turns off. Without a
-    /// readable list of keyboards, every keyboard gets it.
     @MainActor private func refreshKeyboards() {
         guard capsLockMapped else { return }
         let keyboards = KeyboardDevices.list()
@@ -641,18 +593,15 @@ final class AppController: HostBridge, @unchecked Sendable {
         }
     }
 
-    /// Looks for keyboards that connect later (USB, Bluetooth).
     @MainActor func watchKeyboards() {
         keyboardWatcher.start()
     }
 
-    /// Gives macOS its Cmd+Tab and its CapsLock back. Runs when the daemon quits.
     @MainActor func restoreSystemShortcuts() {
         setSystemCmdTab(disabled: false)
         setCapsLockHyper(false)
     }
 
-    /// After sleep the keyboards may have been set up again.
     @MainActor func keyboardsWoke() {
         refreshKeyboards()
     }
@@ -668,7 +617,6 @@ final class AppController: HostBridge, @unchecked Sendable {
         input.holdBinds = loaded.holdBinds
         setSystemCmdTab(disabled: loaded.settings.binds.disableSystemCmdTab)
         keyboardSettings = loaded.settings.keyboards
-        // Also on a reload with the hyper key already on: the keyboards or their settings may have changed.
         setCapsLockHyper(loaded.settings.binds.capsLockHyper)
         input.noRepeat = loaded.noRepeat
         input.modeOptions = loaded.modeOptions
@@ -692,7 +640,6 @@ final class AppController: HostBridge, @unchecked Sendable {
     }
 
     @MainActor private func updateStartAtLogin(_ wanted: Bool) {
-        // Only an installed .app can register as a login item.
         guard Bundle.main.bundleURL.pathExtension == "app" else { return }
         let service = SMAppService.mainApp
         do {
@@ -703,13 +650,10 @@ final class AppController: HostBridge, @unchecked Sendable {
         }
     }
 
-    // MARK: - HostBridge (called on the Lua thread)
-
     func dispatch(_ command: String, window: UInt32?) -> (exitCode: Int32, stdout: String, stderr: String) {
         var words = splitCommand(command)
         var target = window
         var selector: String?
-        // `wm.dispatch("--window 3042 close")` works like the CLI.
         if target == nil {
             do {
                 let parsed = try parseWindowFlag(words)
@@ -720,7 +664,6 @@ final class AppController: HostBridge, @unchecked Sendable {
                 return (2, "", "wm: \(error.message)\n")
             } catch {}
         }
-        // Reloading from inside a Lua handler would wait for the Lua queue that the handler is running on.
         let answer = Array(words.prefix(2)) == ["daemon", "reload"] ? reloadInBackground() : run(ClientRequest(args: words, windowId: target, windowSelector: selector))
         return (answer.exitCode, answer.stdout, answer.stderr)
     }
@@ -738,7 +681,6 @@ final class AppController: HostBridge, @unchecked Sendable {
         onMain { manager.expectWindow(from: pid, options: options) }
     }
 
-    /// `wm.log` of a script.
     func log(_ message: String) {
         Log.write(.info, message, source: "lua")
     }
@@ -748,12 +690,10 @@ final class AppController: HostBridge, @unchecked Sendable {
     }
 }
 
-/// Writes events to every `wm subscribe` client that wants them and drops the ones that went away.
 final class Broadcaster: @unchecked Sendable {
     private let queue = DispatchQueue(label: "wm.broadcast")
     private var subscribers: [(descriptor: Int32, subscription: Subscription)] = []
 
-    /// `snapshot` is the first line of the client, before any event.
     func add(_ descriptor: Int32, _ subscription: Subscription, snapshot: String? = nil) {
         queue.async {
             if let snapshot, (try? writeFrame(descriptor, Data(snapshot.utf8))) == nil {
@@ -777,7 +717,6 @@ final class Broadcaster: @unchecked Sendable {
     }
 }
 
-/// A value that one thread sets and another reads after a semaphore has ordered the two.
 private final class Slot<Value>: @unchecked Sendable {
     var value: Value?
 }

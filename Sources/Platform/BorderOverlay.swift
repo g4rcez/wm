@@ -9,6 +9,7 @@ public final class BorderOverlay {
     /// A gradient border is a gradient that only shows through the outline: the mask is the same stroke as `shape`.
     private let gradient = CAGradientLayer()
     private let gradientMask = CAShapeLayer()
+    private var shown: (size: CGSize, settings: BorderSettings)?
 
     public init() {
         window = NSWindow(contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: false)
@@ -33,6 +34,11 @@ public final class BorderOverlay {
     /// `frame` is the window to outline, in Accessibility coordinates. The line is drawn just outside it.
     public func show(around frame: CGRect, _ settings: BorderSettings) {
         let outer = Displays.cocoaRect(frame.insetBy(dx: -settings.width, dy: -settings.width))
+        if let shown, shown.size == outer.size, shown.settings == settings, window.isVisible {
+            window.setFrameOrigin(outer.origin)
+            return
+        }
+        shown = (outer.size, settings)
         window.setFrame(outer, display: false)
         let bounds = CGRect(origin: .zero, size: outer.size)
         let path = CGPath(
@@ -65,6 +71,7 @@ public final class BorderOverlay {
     }
 
     public func hide() {
+        shown = nil
         window.orderOut(nil)
     }
 

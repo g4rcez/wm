@@ -1,16 +1,10 @@
 import Foundation
 
-/// One command of the CLI. This table is the single source for `wm help`, for the `usage:` line of an error, and for
-/// the hint that names the new command when someone types an old one.
 public struct CommandSpec: Sendable, Equatable {
-    /// The command words, for example `window send workspace`.
     public let path: String
-    /// Positional arguments, for example `<name>`.
     public let args: String
-    /// Options, for example `[--stay] [--tile]`.
     public let flags: String
     public let summary: String
-    /// More text for `wm help <command>`.
     public let details: String?
     public let example: String?
 
@@ -25,10 +19,8 @@ public struct CommandSpec: Sendable, Equatable {
 
     public var words: [String] { path.split(separator: " ").map(String.init) }
 
-    /// The words and arguments without options, for example `window send workspace <name>`.
     public var signature: String { [path, args].filter { !$0.isEmpty }.joined(separator: " ") }
 
-    /// For example `wm window send workspace <name> [--stay] [--tile]`.
     public var usage: String { ["wm", path, args, flags].filter { !$0.isEmpty }.joined(separator: " ") }
 }
 
@@ -161,7 +153,7 @@ public let commandSections: [CommandSection] = [
     CommandSection(title: "Workspaces", specs: [
         CommandSpec(
             "workspace", "<name|back>", "", "Show a workspace on the focused monitor.",
-            details: "Names with a meaning: back (the previous workspace), next and prev (the workspaces in use, wrapping around)\nand empty (the lowest free number).",
+            details: "Names with a meaning: back (the previous workspace), next and prev (the workspaces in use, wrapping around)\nand empty (the lowest free number).\nWith workspaces = \"native\" this switches to the macOS desktop of the workspace, and makes the desktop first when it does not exist\n(macOS 27 or later); next and prev walk the desktops of the focused display.",
             example: "wm workspace next"),
         CommandSpec(
             "workspace all", "<layout>", "", "Give every workspace this layout.",
@@ -169,13 +161,17 @@ public let commandSections: [CommandSection] = [
             example: "wm workspace all scrolling"),
         CommandSpec(
             "workspace move monitor", "<monitor>", "", "Move this workspace to another monitor.",
-            details: "That monitor shows the workspace from now on, and this monitor shows the lowest free workspace number. A workspace\nthat a wm.workspace rule binds to a monitor stays there. The monitor is the same as in `wm help focus monitor`.",
+            details: "That monitor shows the workspace from now on, and this monitor shows the lowest free workspace number. A workspace\nthat a wm.workspace rule binds to a monitor stays there. The monitor is the same as in `wm help focus monitor`.\nNot available with workspaces = \"native\": a desktop stays on its display.",
             example: "wm workspace move monitor right"),
         CommandSpec(
             "workspace float-all", "[off|pattern]", "", "Float every window of this workspace, or tile them again.",
             details: "It acts on the workspace that the focused monitor shows. Each window floats where it is, as `window float on` does. `off` tiles\nthem all again. With a pattern of `layout tile` (2, 2+1, 2/3, 1-over-2, center ...) the windows float into its cells, the tiled ones in\nlayout order first; a window past the last cell stays where it is. All of them set the state, so running them twice changes nothing.\nA minimized window or one in native fullscreen is left alone.",
             example: "wm workspace float-all 2+1"),
         CommandSpec("workspace special", "[name]", "", "Show or hide a special workspace (default: special).", example: "wm workspace special term"),
+        CommandSpec(
+            "workspaces balance", "[count]", "", "Spread the windows evenly over the workspaces.",
+            details: "With as many workspaces as windows, or more, each workspace gets one window. With more windows, no workspace gets more than one window\nabove another. A window moves only when it has to. The workspaces are 1 to `count`, or to the `workspaces` limit of the config when\nthere is no count (an error when neither is set). With workspaces = \"native\" they are the first desktops. Sticky, minimized and\nspecial-workspace windows stay.",
+            example: "wm workspaces balance 4"),
     ]),
     CommandSection(title: "Layout", specs: [
         CommandSpec(
@@ -384,10 +380,8 @@ public let commandSections: [CommandSection] = [
 
 public let commandSpecs: [CommandSpec] = commandSections.flatMap(\.specs)
 
-/// The first words of all commands: `focus`, `window`, `layout`, ...
 public let commandNames: Set<String> = Set(commandSpecs.compactMap(\.words.first))
 
-/// The `usage:` lines of every command whose words start with `prefix` (`"window"`, `"layout column"`, ...).
 public func usageLines(for prefix: String) -> [String] {
     let wanted = prefix.split(separator: " ").map(String.init)
     return commandSpecs.filter { Array($0.words.prefix(wanted.count)) == wanted }.map(\.usage)
@@ -433,8 +427,6 @@ private let environmentRows: [(String, String)] = [
     ("WM_LOG_LEVEL", "Lowest level in the log file: debug (default), info, warn or error."),
 ]
 
-/// The text of `wm help` (no topic), or of `wm help <command>`. `nil` when the topic is not a command. `style` adds colors;
-/// the default is plain text.
 public func renderHelp(topic: String? = nil, style: HelpStyle = .plain) -> String? {
     guard let topic, !topic.isEmpty else { return overviewHelp(style: style) }
     let wanted = topic.split(separator: " ").map(String.init)
@@ -459,12 +451,10 @@ public func renderHelp(topic: String? = nil, style: HelpStyle = .plain) -> Strin
     return lines.joined(separator: "\n") + "\n"
 }
 
-/// `wm window send workspace <name> [--stay]`, with a color for each kind of word.
 private func styledUsage(_ spec: CommandSpec, _ style: HelpStyle) -> String {
     ["wm", style.command(spec.path), style.argument(spec.args), style.option(spec.flags)].filter { !$0.isEmpty }.joined(separator: " ")
 }
 
-/// The whole page of one command: usage, what it does, its options and an example.
 private func commandPage(_ spec: CommandSpec, style: HelpStyle) -> [String] {
     var lines = [styledUsage(spec, style), "", "  " + spec.summary]
     if let details = spec.details { lines += [""] + reflow(details, width: 98).map { "  " + $0 } }
@@ -475,8 +465,6 @@ private func commandPage(_ spec: CommandSpec, style: HelpStyle) -> [String] {
     return lines
 }
 
-/// The text in lines of at most `width` columns. The details are written with line breaks that fit a wide screen; this
-/// joins the lines of a paragraph and wraps them again. A line that starts with a space is a list item and stays as it is.
 func reflow(_ text: String, width: Int) -> [String] {
     var lines: [String] = []
     var paragraph: [Substring] = []
@@ -507,7 +495,6 @@ func reflow(_ text: String, width: Int) -> [String] {
     return lines
 }
 
-/// A table of options: the option, then what it does; a longer text goes on under the first line.
 private func optionLines(_ options: [CommandOption], style: HelpStyle) -> [String] {
     let width = options.map(\.flag.count).max() ?? 0
     return options.flatMap { option -> [String] in
@@ -517,7 +504,6 @@ private func optionLines(_ options: [CommandOption], style: HelpStyle) -> [Strin
     }
 }
 
-/// Two columns: the left one padded to the widest plain text, so the colors do not move the right one.
 private func rows(_ pairs: [(String, String)], paint: (String) -> String) -> [String] {
     let width = pairs.map(\.0.count).max() ?? 0
     return pairs.map { "  " + paint($0.0) + String(repeating: " ", count: width - $0.0.count) + "  " + $0.1 }
@@ -547,7 +533,6 @@ private func overviewHelp(style: HelpStyle) -> String {
     return lines.joined(separator: "\n") + "\n"
 }
 
-/// What to tell someone who typed `word`: the new name of a renamed command, or the closest command.
 public func unknownCommandHint(_ word: String) -> String? {
     if let renamed = renamedCommands[word] { return "'\(word)' is now `wm \(renamed)`" }
     let limit = word.count <= 4 ? 1 : 2
@@ -555,7 +540,6 @@ public func unknownCommandHint(_ word: String) -> String? {
     return near.map { "did you mean `wm \($0.0)`?" }
 }
 
-/// The commands that changed their names. The key is the old first word; the value is the new command.
 public let renamedCommands: [String: String] = [
     "focus-back": "focus back",
     "focus-window": "focus window <id>",
@@ -592,7 +576,6 @@ public let renamedCommands: [String: String] = [
     "ping": "daemon status",
 ]
 
-/// The number of single-character edits between two words.
 func editDistance(_ a: String, _ b: String) -> Int {
     let a = Array(a), b = Array(b)
     var previous = Array(0...b.count)

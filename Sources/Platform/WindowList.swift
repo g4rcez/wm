@@ -32,4 +32,11 @@ public enum WindowList {
         }
         return nil
     }
+
+    public static func bounds(of id: WindowID) -> CGRect? {
+        let list = CGWindowListCopyWindowInfo([.optionIncludingWindow], CGWindowID(id)) as? [[String: Any]] ?? []
+        guard let entry = list.first(where: { ($0[kCGWindowNumber as String] as? Int) == Int(id) }),
+              let bounds = entry[kCGWindowBounds as String] as? NSDictionary else { return nil }
+        return CGRect(dictionaryRepresentation: bounds as CFDictionary)
+    }
 }
