@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Releases wm: bumps Version.swift, commits, tags and pushes, then bumps Formula/wm.rb in the Homebrew tap
-# (g4rcez/homebrew-tap) with your own git access. The release workflow tests the tag and creates the GitHub release.
+# (g4rcez/homebrew-tap) with your own git access. The release workflow tests the tag, builds and signs the app and creates
+# the GitHub release; the formula installs that signed app.
 #
 #   scripts/release.sh patch|minor|major|X.Y.Z [--dry-run]
 set -euo pipefail
@@ -50,14 +51,16 @@ git push origin main "$tag"
 
 echo "pushed $tag: follow the release at https://github.com/g4rcez/wm/actions"
 
-# The tap: the archive of the tag is what the formula builds. GitHub makes it a moment after the push.
-url="https://github.com/g4rcez/wm/archive/refs/tags/$tag.tar.gz"
+# The tap: the formula installs the signed app that the release workflow attaches to the release. Wait for it.
+asset="wm-$next-macos.tar.gz"
+url="https://github.com/g4rcez/wm/releases/download/$tag/$asset"
+echo "waiting for the release workflow to attach $asset (up to 30 minutes)..."
 sha=""
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-  sha="$(curl -fsSL "$url" | shasum -a 256 | cut -d' ' -f1)" && [ "$sha" != "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" ] && break
-  sha=""; sleep 3
+for _ in $(seq 1 180); do
+  sha="$(curl -fsSL "$url.sha256" 2>/dev/null | tr -d '[:space:]')" && [[ "$sha" =~ ^[0-9a-f]{64}$ ]] && break
+  sha=""; sleep 10
 done
-[ -n "$sha" ] || { echo "error: cannot read $url; bump the tap by hand" >&2; exit 1; }
+[ -n "$sha" ] || { echo "error: $asset is not on the release; check https://github.com/g4rcez/wm/actions and bump the tap by hand" >&2; exit 1; }
 
 tap="$(mktemp -d)"
 trap 'rm -rf "$tap"' EXIT
