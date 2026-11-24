@@ -285,6 +285,10 @@ public let commandSections: [CommandSection] = [
             details: "Separate the commands with `;` (quote a `;` that belongs to a command). They run in order, all on the window that\n--window names. The first one that fails stops the batch: its error and its exit code are the answer. A batch cannot\nhold another batch.",
             example: "wm batch 'workspace 2; layout set tiling'"),
         CommandSpec(
+            "animations", "[on|off] [kind]", "[--json]", "Show the animations, or switch them on or off.",
+            details: "With no word it lists the kinds of animation and whether each one runs: windows (moves and resizes), workspaces and\nspecial (the slide of a workspace switch and of a special workspace toggle) and overlays (the fades of the switcher, the overview\nand the cheatsheet). `off` and `on` switch every animation, or only `kind`, until the next reload; the config keys are\n`animations.enabled` and `animations.<kind>.enabled`.",
+            example: "wm animations off overlays"),
+        CommandSpec(
             "set", "<key> <value>", "", "Change a config value until the next reload.",
             details: "The key is the config path, for example gaps.inner or tiling.split_ratio. Lists are comma-separated\n(scrolling.presets 0.3,0.5,1). `workspaces` and `url` only change in the config file.",
             example: "wm set gaps.inner 4"),

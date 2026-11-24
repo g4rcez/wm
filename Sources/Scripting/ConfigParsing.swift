@@ -332,10 +332,17 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
         }
     }
 
-    if let animations = try top.table("animations", allowed: ["enabled", "fps", "rate", "windows", "workspaces", "special"]) {
+    if let animations = try top.table("animations", allowed: ["enabled", "fps", "rate", "windows", "workspaces", "special", "overlays"]) {
         if let flag = try animations.bool("enabled") { settings.animations.enabled = flag }
         if let fps = try animations.number("fps", min: 30, max: 240) { settings.animations.fps = fps }
         if let rate = try animations.number("rate", min: 0.1) { settings.animations.rate = rate }
+        if let overlays = try animations.table("overlays", allowed: ["enabled", "duration"]) {
+            if let flag = try overlays.bool("enabled") { settings.animations.overlays.enabled = flag }
+            let range = AppearanceSettings.animationRange
+            if let seconds = try overlays.number("duration", min: range.lowerBound, max: range.upperBound) {
+                settings.animations.overlays.duration = seconds
+            }
+        }
         if let windows = try animations.table("windows", allowed: ["enabled", "rate"]) {
             try animationKind(windows, into: &settings.animations.windows)
         }

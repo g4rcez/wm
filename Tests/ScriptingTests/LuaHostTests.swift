@@ -714,7 +714,34 @@ struct LuaHostTests {
         #expect(animations.special.rate == nil)
     }
 
+    @Test func overlayFadesHaveTheirOwnAnimationSetting() throws {
+        let defaults = try host.load(configURL: dir.write("init.lua", "wm.config { layout = 'tiling' }"))
+        #expect(defaults.settings.animations.overlays == OverlayAnimation())
+        #expect(defaults.settings.overlayDuration == 0.12)
+        let config = try host.load(configURL: dir.write("init.lua", """
+        wm.config { appearance = { animation = 0.3 }, animations = { overlays = { duration = 0.5 } } }
+        """))
+        #expect(config.settings.animations.overlays.duration == 0.5)
+        #expect(config.settings.overlayDuration == 0.5)
+        let alias = try host.load(configURL: dir.write("init.lua", "wm.config { appearance = { animation = 0.3 } }"))
+        #expect(alias.settings.overlayDuration == 0.3)
+        let off = try host.load(configURL: dir.write("init.lua", "wm.config { animations = { overlays = { enabled = false } } }"))
+        #expect(off.settings.overlayDuration == 0)
+        let master = try host.load(configURL: dir.write("init.lua", "wm.config { animations = { enabled = false } }"))
+        #expect(master.settings.overlayDuration == 0)
+        #expect(master.settings.overlayStyle().animation == 0)
+        #expect(master.settings.animationStatus().allSatisfy { !$0.enabled })
+    }
+
+    @Test func theStatusOfAWorkspaceSlideWithNoStyleIsOff() throws {
+        let config = try host.load(configURL: dir.write("init.lua", "wm.config { animations = { special = { style = 'slide' } } }"))
+        let status = Dictionary(uniqueKeysWithValues: config.settings.animationStatus().map { ($0.name, $0.enabled) })
+        #expect(status == ["windows": true, "workspaces": false, "special": true, "overlays": true])
+    }
+
     @Test(arguments: [
+        ("wm.config { animations = { overlays = { duration = 3 } } }", "'animations.overlays.duration' must be between 0 and 2"),
+        ("wm.config { animations = { overlays = { rate = 3 } } }", "unknown key 'animations.overlays.rate'"),
         ("wm.config { animations = { workspaces = { style = 'fade' } } }", "'animations.workspaces.style' must be one of"),
         ("wm.config { animations = { windows = { style = 'slide' } } }", "unknown key 'animations.windows.style'"),
         ("wm.config { animations = { special = { rate = 0 } } }", "'animations.special.rate' must be at least 0.1"),

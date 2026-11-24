@@ -115,8 +115,17 @@ public struct AnimationKind: Sendable, Equatable {
     public init() {}
 }
 
+/// The fades of the overlays (switcher, overview, cheatsheet). `duration` is in seconds; absent, `appearance.animation` decides.
+public struct OverlayAnimation: Sendable, Equatable {
+    public var enabled = true
+    public var duration: Double?
+    public init() {}
+}
+
 public struct AnimationSettings: Sendable, Equatable {
+    /// The master switch: off, no animation runs, whatever the kinds say.
     public var enabled: Bool = true
+    public var overlays = OverlayAnimation()
     public var windows = AnimationKind()
     public var workspaces = AnimationKind()
     public var special = AnimationKind()

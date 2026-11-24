@@ -131,7 +131,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let label = manager.settings.prefix.label
         // A message that was asked for shows even when the key label is turned off.
         if let content = labelContent(), label.enabled || notice != nil, let monitor = manager.focusedMonitor {
-            prefixLabel.show(content, settings: label, style: manager.settings.appearance.resolved(), on: monitor.workArea)
+            prefixLabel.show(content, settings: label, style: manager.settings.overlayStyle(), on: monitor.workArea)
         } else {
             prefixLabel.hide()
         }

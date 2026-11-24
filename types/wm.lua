@@ -34,6 +34,7 @@
 ---| "resize dir left 50" | "resize dir right 50" | "resize dir up 50" | "resize dir down 50"
 ---| "resize left +50" | "resize left -50" | "resize right +50" | "resize right -50" | "resize up +50" | "resize up -50" | "resize down +50" | "resize down -50"
 ---| "workspace back" | "workspace special" | "workspace float-all" | "workspace float-all on" | "workspace float-all off" | "workspace float-all 2" | "workspace float-all 3" | "workspace float-all 4" | "workspace float-all 2+1" | "workspace float-all 1+2"
+---| "animations" | "animations on" | "animations off" | "animations off overlays" | "animations on overlays"
 ---| "workspaces balance" | "workspaces balance 2" | "workspaces balance 3" | "workspaces balance 4" | "workspaces balance 5" | "workspaces balance 6"
 ---| "workspace move monitor left" | "workspace move monitor right" | "workspace move monitor up" | "workspace move monitor down" | "workspace move monitor next" | "workspace move monitor prev" | "workspace move monitor last"
 ---| "window close" | "window float" | "window float on" | "window float off" | "window center" | "window fullscreen" | "window maximize" | "window native-fullscreen"
@@ -121,8 +122,15 @@
 ---@field rate? number Spring stiffness of the slide, >= 0.1. Default: the `rate` of `animations`.
 ---@field style? wm.SlideStyle `none`: the windows jump. `slide`: they come in from the right when you go to a later workspace and from the left for an earlier one. `slidevert`: from the bottom. A side with another monitor is not used: the windows jump. Default "none".
 
+--- The fades of the overlays: the window switcher, the overview and the cheatsheet panel.
+---@class (exact) wm.OverlaysAnimation
+---@field enabled? boolean `false`: the overlays open and close with no fade. Default true.
+---@field duration? number Seconds of a fade, 0 to 2; 0 is no fade. Default: `appearance.animation` (0.12).
+
+--- Every animation of wm. `wm animations` shows which ones run and switches them until the next reload.
 ---@class (exact) wm.Animations
----@field enabled? boolean Default true.
+---@field enabled? boolean The master switch: `false` turns off every animation, the overlay fades too. Default true.
+---@field overlays? wm.OverlaysAnimation The fades of the switcher, the overview and the cheatsheet.
 ---@field windows? wm.WindowsAnimation Moves inside a layout.
 ---@field workspaces? wm.WorkspaceAnimation Windows that a workspace switch shows.
 ---@field special? wm.WorkspaceAnimation Windows that a special workspace toggle shows.
@@ -232,7 +240,7 @@
 ---@field font? string Name of a font, for example "SF Pro Rounded". Default: the system font.
 ---@field font_size? number Body size in points, 8 to 40. The other text scales with it. Default 13.
 ---@field mono_font? string Name of a monospaced font, for hints and key caps. Default: the system one.
----@field animation? number Seconds of the fades, 0 to 2. 0 turns them off. Default 0.12.
+---@field animation? number Seconds of the fades, 0 to 2. 0 turns them off. Default 0.12. The same as `animations.overlays.duration`, which wins when both are set.
 
 ---@class (exact) wm.MasterConfig
 ---@field ratio? number Share of the screen that the master area takes: 0.1 to 0.9. Default 0.55.

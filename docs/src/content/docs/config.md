@@ -19,7 +19,7 @@ wm reads `init.lua` and `shortcuts.toml` from `~/.config/wm/`. The Lua functions
 |---|---|---|
 | `layout` | `"tiling"` | `scrolling`, `tiling`, `master` or `monocle`. |
 | `gaps` | `{ inner = 8, outer = 8, smart = false }` | `outer` can be `{ top=, right=, bottom=, left= }`. `smart`: no gaps around a lone tiled window. |
-| `animations` | `{ enabled = true, fps = 120, rate = 16 }` | `fps`: 30 to 240, capped by the display. `rate`: spring stiffness. Sub-tables `windows`, `workspaces`, `special` (below). |
+| `animations` | `{ enabled = true, fps = 120, rate = 16 }` | Every animation of wm, with a master switch. `fps`: 30 to 240, capped by the display. `rate`: spring stiffness. Sub-tables `windows`, `workspaces`, `special`, `overlays` (see Animations below). |
 | `border` | `{ enabled = true, width = 2, radius = 10, active = "#89b4fa", inactive = "#00000000" }` | `active` can be `{ "#89b4fa", "#cba6f7" }` for a gradient (`angle = 45`). |
 | `focus_follows_mouse` | `false` | Or `{ enabled = true, only_fully_visible = true }`. |
 | `workspaces` | none | The mode, the limit, or both. `"emulated"` (the mode, default) hides the windows of other workspaces at a screen corner; `"native"` makes each workspace a macOS desktop (see [Native workspaces](#native-workspaces)). A number is the most workspaces there can be: `workspace 7` with `workspaces = 6` is an error, and `wm workspaces balance` spreads the windows over that many. A table has both: `{ mode = "native", max = 6 }`. Names that are not numbers are free. |
@@ -47,17 +47,32 @@ wm reads `init.lua` and `shortcuts.toml` from `~/.config/wm/`. The Lua functions
 
 `prefix.label` (the key panel): `enabled = true`, `show_keys = true`, `position = "bottom-center"` (also `top-left`, `top-center`, `top-right`, `center`, `bottom-left`, `bottom-right`), `offset = { x = 0, y = 0 }`, `font_size = 11`, `font = ""` (the system font).
 
-`animations` sub-tables:
+### Animations
+
+All the animations of wm are in `animations`. `animations.enabled = false` is the master switch: it turns off every animation, the fades of the overlays too. Each kind has its own `enabled`.
+
+| Animation | Key | What it does |
+|---|---|---|
+| Window moves | `animations.windows` (`enabled`, `rate`) | A window that opens, closes, resizes or moves in the layout glides to its place. |
+| Workspace switch | `animations.workspaces` (`enabled`, `rate`, `style`) | The windows that a workspace switch shows slide in. Off by default (`style = "none"`). |
+| Special workspace | `animations.special` (`enabled`, `rate`, `style`) | The same for a special workspace toggle. |
+| Overlays | `animations.overlays` (`enabled`, `duration`) | The fades of the window switcher, the overview and the cheatsheet panel. `duration` is in seconds, 0 to 2 (default 0.12). `appearance.animation` is the same setting and is used when `duration` is not set. |
 
 ```lua
 wm.config { animations = {
-  windows    = { enabled = true, rate = 20 },      -- a window that opens, closes or resizes
-  workspaces = { style = "slide", rate = 14 },     -- windows shown by a workspace switch
-  special    = { style = "slidevert" },            -- windows shown by a special workspace toggle
+  enabled    = true,                                -- the master switch
+  fps        = 120,
+  rate       = 16,                                  -- spring stiffness for all the moves
+  windows    = { enabled = true, rate = 20 },       -- a window that opens, closes or resizes
+  workspaces = { style = "slide", rate = 14 },      -- windows shown by a workspace switch
+  special    = { style = "slidevert" },             -- windows shown by a special workspace toggle
+  overlays   = { enabled = true, duration = 0.12 }, -- the fades of the switcher, the overview and the cheatsheet
 } }
 ```
 
 `style` is `"none"` (the default: windows jump), `"slide"` (new windows come in from the right, or the left for an earlier workspace) or `"slidevert"` (from the bottom). wm moves real windows, so it cannot fade them.
+
+`wm animations` lists the kinds and whether each one runs. `wm animations off` and `wm animations on` switch all of them; `wm animations off overlays` switches one kind (`windows`, `workspaces`, `special` or `overlays`). The change lasts until the next reload, as with `wm set`.
 
 ### shortcuts.toml
 
@@ -318,7 +333,7 @@ Every key is optional. A key that is absent comes from the preset of `style`.
 | `shadow` | The shadow of the windows. |
 | `font`, `mono_font` | A font name such as `"SF Pro Rounded"`, and the font of hints and key caps. Default: the system fonts. |
 | `font_size` | The body size in points, 8 to 40 (default 13). |
-| `animation` | Seconds of the fades, 0 to 2. `0` turns them off. Default 0.12. |
+| `animation` | Seconds of the fades, 0 to 2. `0` turns them off. Default 0.12. The same as `animations.overlays.duration`, which wins when both are set, and `animations.enabled = false` turns the fades off as well. |
 
 A reload applies the new look the next time an overlay opens.
 

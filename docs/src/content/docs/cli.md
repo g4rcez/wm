@@ -29,7 +29,7 @@ LAYOUT           layout set <scrolling|tiling|master|monocle|floating> | balance
                  layout master <promote|count|ratio|orientation>
 INTERFACE        switcher | overview | palette | cheatsheet [tui|gui|cli] | menu | mode <name|back> | pointer <window|monitor> | zen [on|off]
                  hints [open|close|toggle] [--wait] | scroll [open|close|toggle] | select [open|close|toggle] | jump [open|close|toggle] [--swap] [--close]
-                 exec [options] <command> | batch <commands> | set <key> <value> | menubar set <text> | menubar reset | notify <text> | key send <chord> | key press <chord>
+                 exec [options] <command> | batch <commands> | set <key> <value> | animations [on|off] [kind] [--json] | menubar set <text> | menubar reset | notify <text> | key send <chord> | key press <chord>
 INSPECT          doctor [--json] | pick [--json] | list [windows|workspaces|monitors|keyboards|memory|binds] | query [what] | subscribe [--snapshot] [event ...] | logs [-n count] [-f] [-o otel|json]
 MEMORY           memory list | forget <app> [--title=<text>] [--all] | clear
 DAEMON           daemon start | stop | status | reload | version
@@ -45,7 +45,7 @@ Options for every command:
 | Option | Effect |
 |---|---|
 | `--window <w>` | acts on that window (see [Choosing a window](#choosing-a-window)) |
-| `--json` | prints JSON (`list`, `memory list`, `daemon status`, `doctor`, `pick`) |
+| `--json` | prints JSON (`list`, `memory list`, `daemon status`, `animations`, `doctor`, `pick`) |
 | `-v`, `--verbose` | prints the state after the command |
 | `-h`, `--help` | shows help |
 

@@ -57,7 +57,7 @@ final class PaletteController {
         self.cachedImage = cachedImage
         self.run = run
         self.notify = notify
-        panel.style = { manager.settings.appearance.resolved() }
+        panel.style = { manager.settings.overlayStyle() }
         panel.onChange = { [unowned self] text in changed(text) }
         panel.onActivate = { [unowned self] row in activate(row) }
         panel.onTab = { [unowned self] row in complete(row) }

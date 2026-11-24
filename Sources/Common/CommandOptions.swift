@@ -64,6 +64,7 @@ public let commandOptions: [String: [CommandOption]] = [
         CommandOption("-o, --output=<otel|json>", "Text in the OpenTelemetry log model (default), or one JSON object per line."),
     ],
     "daemon status": [CommandOption("--json", "Print JSON for scripts.")],
+    "animations": [CommandOption("--json", "Print the animations and their state as JSON for scripts.")],
     "doctor": [CommandOption("--json", "Print the checks as JSON for scripts.")],
     "lsp": [
         CommandOption("--write", "Save .luarc.json next to the config file."),

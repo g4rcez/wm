@@ -74,6 +74,7 @@ private let extraValues: [String: [String]] = [
     "window snap": ["left", "right", "top", "bottom", "top-left", "top-right", "bottom-left", "bottom-right", "top-center", "bottom-center", "center"],
     "workspace": ["next", "prev", "empty"],
     "workspaces": ["balance"],
+    "animations": ["on", "off", "windows", "workspaces", "special", "overlays"],
     "workspace all": ["scrolling", "tiling", "master", "monocle", "floating"],
     "window send workspace": ["next", "prev", "empty"],
     "focus monitor": monitorWords,

@@ -327,7 +327,7 @@ final class SwitcherController {
         }
     }
 
-    private func style() -> ResolvedStyle { manager.settings.appearance.resolved() }
+    private func style() -> ResolvedStyle { manager.settings.overlayStyle() }
 
     /// The transform that fits a layout into most of the screen; the overlay adds its own padding and title row.
     private func fit(_ overview: LayoutOverview, on monitor: Monitor) -> CGAffineTransform {

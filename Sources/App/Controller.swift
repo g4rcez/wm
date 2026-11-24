@@ -23,7 +23,7 @@ final class AppController: HostBridge, @unchecked Sendable {
     @MainActor private var pickerTarget: WindowID?
     @MainActor private lazy var picker: TemplatePicker = {
         let picker = TemplatePicker()
-        picker.style = { [unowned self] in manager.settings.appearance.resolved() }
+        picker.style = { [unowned self] in manager.settings.overlayStyle() }
         picker.onChoose = { [unowned self] template in
             if let template, template.isFrame, !manager.templates(of: pickerTarget).contains(template) { manager.remember(frame: template) }
             _ = run(["layout", "tile", TemplateGlyph.label(template)], target: pickerTarget)
@@ -42,7 +42,7 @@ final class AppController: HostBridge, @unchecked Sendable {
         look: { [unowned self] in labelLook }, display: { [unowned self] in manager.focusedMonitor.map { ($0.id, $0.frame) } },
         notify: { [unowned self] text in onNotify(text, 2) })
     @MainActor private var labelLook: LabelLook {
-        LabelLook(settings: manager.settings.prefix.label, style: manager.settings.appearance.resolved())
+        LabelLook(settings: manager.settings.prefix.label, style: manager.settings.overlayStyle())
     }
     private let menuReader = MenuReader()
     @MainActor private lazy var menuPopup = MenuPopup()
@@ -287,6 +287,8 @@ final class AppController: HostBridge, @unchecked Sendable {
             return batch(args.dropFirst().joined(separator: " "), target: target)
         case "set":
             return onMain { setSetting(Array(args.dropFirst())) }
+        case "animations":
+            return onMain { animationsCommand(Array(args.dropFirst())) }
         case "notify":
             return onMain { notify(Array(args.dropFirst())) }
         case "key":
@@ -353,7 +355,7 @@ final class AppController: HostBridge, @unchecked Sendable {
             return fail("the terminal sheet is drawn by `wm` in a terminal", 2, usage: "cheatsheet", hint: "run `wm cheatsheet tui` in a terminal")
         }
         return onMain {
-            cheatsheet.toggle(binds: bindRecords.map(CheatBind.init), mode: manager.mode, style: manager.settings.appearance.resolved())
+            cheatsheet.toggle(binds: bindRecords.map(CheatBind.init), mode: manager.mode, style: manager.settings.overlayStyle())
             return ok()
         }
     }
@@ -456,6 +458,39 @@ final class AppController: HostBridge, @unchecked Sendable {
         input.tap.setPointerTracking(next.focusFollowsMouse.enabled)
         updateTrackpad(next.trackpad)
         return ok()
+    }
+
+    /// `animations [on|off] [windows|workspaces|special|overlays] [--json]`: shows every animation and whether it runs, or switches
+    /// one kind (or all of them) until the next reload.
+    @MainActor private func animationsCommand(_ args: [String]) -> ServerAnswer {
+        let usage = "animations"
+        let flags = Set(args.filter { $0.hasPrefix("--") })
+        if let bad = unknownOption(flags, allowed: ["--json"], usage: usage) { return bad }
+        let words = args.filter { !$0.hasPrefix("--") }
+        if let word = words.first {
+            guard ["on", "off"].contains(word), words.count <= 2 else {
+                return fail("animations takes on or off, and a kind", 2, usage: usage, hint: "kinds: " + AnimationStatus.kinds.joined(separator: ", "))
+            }
+            var path = "animations.enabled"
+            if words.count == 2 {
+                guard AnimationStatus.kinds.contains(words[1]) else {
+                    return fail("unknown animation '\(words[1])'", 2, usage: usage, hint: "kinds: " + AnimationStatus.kinds.joined(separator: ", "))
+                }
+                path = "animations.\(words[1]).enabled"
+            }
+            let answer = setSetting([path, word == "on" ? "true" : "false"])
+            guard answer.exitCode == 0 else { return answer }
+        }
+        let master = manager.settings.animations.enabled
+        let status = manager.settings.animationStatus()
+        if flags.contains("--json") {
+            let kinds = status.map { entry -> LuaValue in
+                .table(["name": .string(entry.name), "enabled": .bool(entry.enabled), "detail": .string(entry.detail)])
+            }
+            return ok(LuaValue.table(["enabled": .bool(master), "animations": .array(kinds)]).json + "\n")
+        }
+        let rows = status.map { [$0.name, $0.enabled ? "on" : "off", $0.detail] }
+        return ok((master ? "" : "all animations are off (animations.enabled = false)\n") + renderTable(["animation", "state", "detail"], rows))
     }
 
     @MainActor private func notify(_ words: [String]) -> ServerAnswer {
