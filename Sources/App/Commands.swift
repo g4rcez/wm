@@ -178,18 +178,45 @@ extension WindowManager {
         guard let managed = windows[id], !managed.isOutOfLayout else {
             return fail("this window is not in the layout (minimized or in native fullscreen)")
         }
+        // A tiled window stays in the layout: snapping only rearranges it toward that side.
+        if !managed.floating { return snapInLayout(id, place) }
         let context = layoutContext(forWorkspace: managed.workspace)
         let area = context.gaps.outerArea(context.viewport)
         guard area.width > 0, area.height > 0 else { return fail("there is no monitor") }
-        var step = 0
-        if managed.floating {
-            step = nextSnapStep(current: managed.floatFrame ?? currentFrame(of: id) ?? .zero, place: place, in: area)
-        } else {
-            setFloating(id, true)
-        }
+        let step = nextSnapStep(current: managed.floatFrame ?? currentFrame(of: id) ?? .zero, place: place, in: area)
         setFloatFrame(id, snapFrame(place, step: step, in: area))
         relayout()
         return ok()
+    }
+
+    /// `snap` on a tiled window: it moves one slot toward the side of `place` and stays tiled. `center` has no side.
+    private func snapInLayout(_ id: WindowID, _ place: SnapPlace) -> ServerAnswer {
+        let direction: Direction
+        switch place {
+        case .left, .topLeft, .bottomLeft: direction = .left
+        case .right, .topRight, .bottomRight: direction = .right
+        case .top, .topCenter: direction = .up
+        case .bottom, .bottomCenter: direction = .down
+        case .center: return ok()
+        }
+        guard let managed = windows[id] else { return fail("there is no focused window") }
+        let workspace = workspace(managed.workspace)
+        if workspace.engine.perform(.move(direction), focused: id, in: layoutContext(forWorkspace: workspace.name)) {
+            endMaximize(in: workspace)
+            relayout()
+        }
+        return ok()
+    }
+
+    /// Ends maximize and fullscreen on the workspace, so that a rearranged layout shows.
+    private func endMaximize(in workspace: Workspace) {
+        workspace.fullscreen = nil
+        workspace.maximized = []
+        guard workspace.engine is ScrollingEngine else { return }
+        let context = layoutContext(forWorkspace: workspace.name)
+        for window in workspace.engine.windows where (workspace.engine as? ScrollingEngine)?.isMaximized(window) == true {
+            _ = workspace.engine.perform(.maximize, focused: window, in: context)
+        }
     }
 
     private func focusLane(_ index: LaneIndex, inStack: Bool) -> ServerAnswer {
@@ -528,8 +555,17 @@ extension WindowManager {
         guard let number = Int(words[1]), (1...template.count).contains(number) else {
             return fail("the pattern '\(template.name)' has \(template.count) cell(s): give a number from 1 to \(template.count)", 2, usage: "window place")
         }
+        if !managed.floating {
+            // A tiled window stays in the layout: it takes the place of the window at that position.
+            let workspace = workspace(managed.workspace)
+            let order = workspace.engine.windows
+            if let other = order.indices.contains(number - 1) ? order[number - 1] : order.last, swapWindows(id, other) {
+                endMaximize(in: workspace)
+                relayout()
+            }
+            return ok()
+        }
         guard let frame = cellFrame(template, number - 1, workspace: managed.workspace) else { return fail("there is no monitor") }
-        setFloating(id, true)
         setFloatFrame(id, frame)
         relayout()
         return ok()
@@ -601,18 +637,45 @@ extension WindowManager {
         if column.count > 1, isTabbed != tabbed { _ = destination.engine.perform(.toggleTabs, focused: head, in: context) }
     }
 
+    /// The workspace of the target window, or the focused one when the target is not a managed window.
+    private func targetWorkspace(_ id: WindowID?) -> Workspace? {
+        id.flatMap { windows[$0] }.map { workspace($0.workspace) } ?? focusedWorkspace
+    }
+
     private func tilingCommand(_ command: LayoutCommand, _ id: WindowID?, _ name: String) -> ServerAnswer {
-        guard focusedWorkspace?.kind == .tiling else {
+        guard targetWorkspace(id)?.kind == .tiling else {
             return fail("\(name) needs the tiling layout", 1, hint: "switch with `wm layout set tiling`")
         }
         return layoutCommand(command, target: id)
     }
 
     private func masterCommand(_ command: LayoutCommand, _ id: WindowID?, _ name: String) -> ServerAnswer {
-        guard focusedWorkspace?.kind == .master else {
+        guard targetWorkspace(id)?.kind == .master else {
             return fail("\(name) needs the master layout", 1, hint: "switch with `wm layout set master`")
         }
         return layoutCommand(command, target: id)
+    }
+
+    /// A command that acts on the whole workspace (the target window's, or the focused one), so it needs no window in focus.
+    /// The window is passed to the layout only when it is a tiled window of that workspace.
+    /// `clearMaximized` ends maximize and fullscreen there, which would hide the result.
+    private func workspaceLayoutCommand(
+        _ command: LayoutCommand, target id: WindowID?, needs kind: LayoutKind? = nil, name: String = "", clearMaximized: Bool = false
+    ) -> ServerAnswer {
+        guard let workspace = targetWorkspace(id) else { return fail("there is no workspace") }
+        if let kind, workspace.kind != kind {
+            return fail("\(name) needs the \(kind.rawValue) layout", 1, hint: "switch with `wm layout set \(kind.rawValue)`")
+        }
+        if clearMaximized {
+            workspace.fullscreen = nil
+            workspace.maximized = []
+        } else {
+            workspace.fullscreen = nil
+        }
+        let tiledFocus = id.flatMap { id in windows[id].flatMap { $0.workspace == workspace.name && !$0.floating ? id : nil } }
+        _ = workspace.engine.perform(command, focused: tiledFocus, in: layoutContext(forWorkspace: workspace.name))
+        relayout()
+        return ok()
     }
 
     private func masterGroup(_ words: [String], _ id: WindowID?) -> ServerAnswer {
@@ -624,18 +687,18 @@ extension WindowManager {
             guard let amount, let number = Int(amount) else {
                 return fail("layout master count needs a number, or +n or -n", 2, usage: "layout master count")
             }
-            return masterCommand(.masterCount(number, relative: relative), id, "layout master count")
+            return workspaceLayoutCommand(.masterCount(number, relative: relative), target: id, needs: .master, name: "layout master count")
         case "ratio":
             guard let amount, let number = Double(amount) else {
                 return fail("layout master ratio needs a number, or +n or -n", 2, usage: "layout master ratio")
             }
-            return masterCommand(.masterRatio(number, relative: relative), id, "layout master ratio")
+            return workspaceLayoutCommand(.masterRatio(number, relative: relative), target: id, needs: .master, name: "layout master ratio")
         case "orientation":
-            if amount == nil || amount == "next" { return masterCommand(.masterOrientation(nil), id, "layout master orientation") }
+            if amount == nil || amount == "next" { return workspaceLayoutCommand(.masterOrientation(nil), target: id, needs: .master, name: "layout master orientation") }
             guard let place = amount.flatMap(MasterOrientation.init(rawValue:)) else {
                 return fail("layout master orientation takes left, right, top, bottom, center or next", 2, usage: "layout master orientation")
             }
-            return masterCommand(.masterOrientation(place), id, "layout master orientation")
+            return workspaceLayoutCommand(.masterOrientation(place), target: id, needs: .master, name: "layout master orientation")
         default:
             return fail("layout master takes promote, count, ratio or orientation", 2, usage: "layout master")
         }
@@ -647,7 +710,7 @@ extension WindowManager {
         let value = words.dropFirst().first
         switch sub {
         case "set": return setLayout(value)
-        case "balance": return layoutCommand(.balance, target: id)
+        case "balance": return workspaceLayoutCommand(.balance, target: id, clearMaximized: true)
         case "master": return masterGroup(words, id)
         case "flip": return rotateLayout()
         case "tile": return tile(value, target: id)
@@ -656,7 +719,7 @@ extension WindowManager {
             return rotate(clockwise: value != "ccw")
         case "preselect":
             guard let side = value.flatMap(Direction.init(rawValue:)) else { return fail("layout preselect needs a direction", 2, usage: "layout preselect") }
-            return tilingCommand(.preselect(side), id, "layout preselect")
+            return workspaceLayoutCommand(.preselect(side), target: id, needs: .tiling, name: "layout preselect")
         case "split":
             switch value {
             case "toggle": return layoutCommand(.toggleSplit, target: id)
@@ -740,7 +803,7 @@ extension WindowManager {
         let workspace = workspace(managed.workspace)
         guard let other = workspace.engine.neighbor(of: id, direction, wrap: wrap, in: layoutContext(forWorkspace: workspace.name)),
               swapWindows(id, other) else { return ok() }
-        workspace.fullscreen = nil
+        endMaximize(in: workspace)
         relayout()
         return ok()
     }
@@ -808,10 +871,11 @@ extension WindowManager {
         }
         let workspace = workspace(managed.workspace)
         if workspace.engine.perform(.move(direction), focused: id, in: layoutContext(forWorkspace: workspace.name)) {
+            endMaximize(in: workspace)
             relayout()
         } else if wrap, let other = workspace.engine.neighbor(of: id, direction, wrap: true, in: layoutContext(forWorkspace: workspace.name)),
                   swapWindows(id, other) {
-            workspace.fullscreen = nil
+            endMaximize(in: workspace)
             relayout()
         } else if let monitor = adjacentMonitor(direction) {
             moveWindow(id, to: monitor.workspace)
@@ -988,22 +1052,11 @@ extension WindowManager {
     }
 
     private func rotate(clockwise: Bool) -> ServerAnswer {
-        guard let workspace = focusedWorkspace else { return fail("there is no workspace") }
-        workspace.fullscreen = nil
-        let tiledFocus = focused.flatMap { id in windows[id].flatMap { $0.workspace == workspace.name && !$0.floating ? id : nil } }
-        _ = workspace.engine.perform(.rotate(clockwise: clockwise), focused: tiledFocus, in: layoutContext(forWorkspace: workspace.name))
-        relayout()
-        return ok()
+        workspaceLayoutCommand(.rotate(clockwise: clockwise), target: focused)
     }
 
     private func rotateLayout() -> ServerAnswer {
-        guard let workspace = focusedWorkspace else { return fail("there is no workspace") }
-        guard workspace.kind == .tiling else { return fail("layout flip needs the tiling layout", 1, hint: "switch with `wm layout set tiling`") }
-        workspace.fullscreen = nil
-        let tiledFocus = focused.flatMap { id in windows[id].flatMap { $0.workspace == workspace.name && !$0.floating ? id : nil } }
-        _ = workspace.engine.perform(.rotateLayout, focused: tiledFocus, in: layoutContext(forWorkspace: workspace.name))
-        relayout()
-        return ok()
+        workspaceLayoutCommand(.rotateLayout, target: focused, needs: .tiling, name: "layout flip")
     }
 
     private func setLayout(_ name: String?) -> ServerAnswer {

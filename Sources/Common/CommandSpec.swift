@@ -102,11 +102,11 @@ public let commandSections: [CommandSection] = [
             example: "wm window sticky"),
         CommandSpec(
             "window snap", "<place>", "", "Float the window into a part of the screen.",
-            details: "`place` is left, right, top, bottom, top-left, top-right, bottom-left, bottom-right, top-center, bottom-center or center. The window floats (a tiled window\nfirst) and fills that part of the work area inside the gaps. The same place again goes on to the next size: half, a third, two thirds\n(center: 60%, 80%, 40%).",
+            details: "`place` is left, right, top, bottom, top-left, top-right, bottom-left, bottom-right, top-center, bottom-center or center. A floating window fills that part of the work area inside the gaps. A tiled window\nstays tiled: it moves one slot toward that side (`center` does nothing), like `move`. The same place again goes on to the next size: half, a third, two thirds\n(center: 60%, 80%, 40%).",
             example: "wm window snap left"),
         CommandSpec(
             "window place", "<pattern> <n>", "", "Float the window into cell n of a tile pattern.",
-            details: "`pattern` is one of `layout tile` (2, 2+1, 2/3, 1-over-2, corner-tl ...), or a template of your config. Cells count from 1, in reading\norder. The window floats (a tiled one first) and fills the cell inside the gaps; the other windows do not move.\n`workspace float-all <pattern>` places all the windows at once.",
+            details: "`pattern` is one of `layout tile` (2, 2+1, 2/3, 1-over-2, corner-tl ...), or a template of your config. Cells count from 1, in reading\norder. A floating window fills the cell inside the gaps. A tiled window stays tiled and swaps places with the window at position n of the layout.\n`workspace float-all <pattern>` places all the windows at once.",
             example: "wm window place 2+1 2"),
         CommandSpec(
             "window move-to", "<x> <y>", "", "Move the floating window to a point of the work area.",
@@ -193,7 +193,9 @@ public let commandSections: [CommandSection] = [
             "layout master orientation", "[place]", "", "Move the master area (master layout).",
             details: "`place` is left, right, top, bottom, center or next. left, right, top and bottom put the master on that side. center puts it in the middle with the stack on both sides.\nWithout a name, or with next, it goes to the next one in that order.",
             example: "wm layout master orientation center"),
-        CommandSpec("layout balance", "", "", "Give every window (or column) an equal share."),
+        CommandSpec(
+            "layout balance", "", "", "Give every window (or column) an equal share.",
+            details: "It acts on the whole workspace, so no window has to be in focus (a floating window, or the desktop, is fine). It also ends maximize and fullscreen on that workspace, and a maximized scrolling column takes its share with the others. With no window in focus, scrolling balances both strips."),
         CommandSpec(
             "layout rotate", "[cw|ccw]", "", "Move every window one slot around the layout.",
             details: "cw (the default) moves each window to the next slot, ccw to the previous one.",
@@ -344,15 +346,15 @@ public let commandSections: [CommandSection] = [
             example: "wm memory clear"),
     ]),
     CommandSection(title: "Daemon", specs: [
-        CommandSpec("daemon start", "", "", "Start wm in the background."),
+        CommandSpec("daemon start", "", "", "Start wm in the background.", details: "When an older build already runs, it says so and points to `wm daemon reload`."),
         CommandSpec("daemon stop", "", "", "Stop wm. Hidden windows come back on screen."),
         CommandSpec(
             "daemon status", "", "[--json]", "Show whether wm runs and its state (exit 1 if not).",
             details: "The exit code tells a script whether wm runs: 0 when it does, 1 when it does not.",
             example: "wm daemon status || wm daemon start"),
         CommandSpec(
-            "daemon reload", "", "", "Load the config again.",
-            details: "Reads init.lua again. A value that `wm set` changed goes back to what the config says.",
+            "daemon reload", "", "", "Load the config; after an upgrade, run the new build.",
+            details: "Reads init.lua again. A value that `wm set` changed goes back to what the config says. When the running wm is an older build than this `wm` (after `brew upgrade wm`), it restarts wm from the new one instead: the Accessibility and Screen Recording permissions stay.",
             example: "wm daemon reload"),
         CommandSpec(
             "doctor", "", "[--json]", "Check the config, the daemon and the permissions.",

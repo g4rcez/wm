@@ -409,7 +409,7 @@ final class AppController: HostBridge, @unchecked Sendable {
         let debug = ProcessInfo.processInfo.environment["WM_DEBUG"] != nil
         if json {
             return ok(LuaValue.table([
-                "running": .bool(true), "version": .string(Self.version),
+                "running": .bool(true), "version": .string(Self.version), "bundle": .string(Bundle.main.bundleURL.path),
                 "workspace": .string(workspace?.name ?? ""), "layout": .string(workspace?.kind.rawValue ?? ""),
                 "mode": .string(manager.mode), "windows": .number(Double(manager.windows.count)),
                 "monitors": .number(Double(manager.monitors.count)), "menu_bar_visible": .bool(trayVisible()),

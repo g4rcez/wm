@@ -87,7 +87,7 @@ if arguments == ["version"] || arguments == ["--version"] {
 if let first = arguments.first, !commandNames.contains(first) {
     die("unknown command '\(first)'", hint: unknownCommandHint(first) ?? "run `wm help` to see the commands", code: 2)
 }
-let localCommands = [["daemon", "start"], ["daemon", "stop"], ["subscribe"], ["logs"], ["pick"], ["init"], ["config", "check"], ["doctor"], ["cheatsheet"], ["skills"]]
+let localCommands = [["daemon", "start"], ["daemon", "stop"], ["daemon", "reload"], ["subscribe"], ["logs"], ["pick"], ["init"], ["config", "check"], ["doctor"], ["cheatsheet"], ["skills"]]
 if windowId != nil || windowSelector != nil, localCommands.contains(where: { Array(arguments.prefix($0.count)) == $0 }) {
     die("--window does not apply to '\(arguments.prefix(2).filter { !$0.hasPrefix("--") }.joined(separator: " "))'", code: 2)
 }
@@ -100,7 +100,7 @@ func appBundle() -> URL? {
     guard _NSGetExecutablePath(&buffer, &size) == 0, let real = realpath(buffer, nil) else { return nil }
     defer { free(real) }
     let bundle = URL(fileURLWithPath: String(cString: real)).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-    if bundle.pathExtension == "app" { return bundle }
+    if bundle.pathExtension == "app" { return URL(fileURLWithPath: stableBundlePath(bundle.path)) }
     let home = FileManager.default.homeDirectoryForCurrentUser
     return [URL(fileURLWithPath: "/Applications/wm.app"), home.appendingPathComponent("Applications/wm.app")]
         .first { FileManager.default.fileExists(atPath: $0.path) }
@@ -342,7 +342,7 @@ if arguments.first == "doctor" {
         checks.append(
             running == wmVersion
                 ? DoctorCheck("daemon", .ok, "runs, version \(running)")
-                : DoctorCheck("daemon", .warn, "runs version \(running), and this wm is \(wmVersion)", hint: "run `wm daemon stop`, then `wm daemon start`"))
+                : DoctorCheck("daemon", .warn, "runs version \(running), and this wm is \(wmVersion)", hint: "run `wm daemon reload`"))
         if let facts = try? sendRequest(ClientRequest(args: ["doctor"]), timeoutSeconds: 2),
            let decoded = try? JSONDecoder().decode(DoctorFacts.self, from: Data(facts.stdout.utf8)) {
             checks += daemonChecks(decoded)
@@ -363,11 +363,24 @@ if arguments.first == "doctor" {
     exit(doctorExitCode(checks))
 }
 
-if arguments == ["daemon", "start"] {
-    if (try? sendRequest(ClientRequest(args: ["version"]))) != nil {
-        print("wm is already running")
-        exit(0)
+/// What the running daemon says about itself (`daemon status --json`): nil when none answers.
+func runningDaemon() -> (version: String, bundle: String?)? {
+    guard let answer = try? sendRequest(ClientRequest(args: ["daemon", "status", "--json"]), timeoutSeconds: 2), answer.exitCode == 0,
+          let object = try? JSONSerialization.jsonObject(with: Data(answer.stdout.utf8)) as? [String: Any],
+          let version = object["version"] as? String else {
+        // An answer to `version` without the status: an old daemon, it is running all the same.
+        guard let answer = try? sendRequest(ClientRequest(args: ["version"]), timeoutSeconds: 2), answer.exitCode == 0 else { return nil }
+        return (answer.stdout.split(separator: " ").dropFirst().first.map(String.init) ?? "?", nil)
     }
+    return (version, object["bundle"] as? String)
+}
+
+func isStale(_ daemon: (version: String, bundle: String?)) -> Bool {
+    needsRestart(daemonVersion: daemon.version, daemonBundle: daemon.bundle, cliVersion: wmVersion, cliBundle: appBundle()?.path)
+}
+
+/// Opens wm.app and waits for it to answer. Exits the process on failure.
+func startDaemon() {
     guard let bundle = appBundle() else {
         die("cannot find wm.app", hint: "run `wm` from inside wm.app, or install wm.app in /Applications")
     }
@@ -377,13 +390,44 @@ if arguments == ["daemon", "start"] {
     do { try open.run() } catch { die("cannot start \(bundle.path): \(error)") }
     open.waitUntilExit()
     for _ in 0..<50 {
-        if (try? sendRequest(ClientRequest(args: ["version"]))) != nil {
-            print("wm started in the background")
-            exit(0)
-        }
+        if (try? sendRequest(ClientRequest(args: ["version"]))) != nil { return }
         usleep(100_000)
     }
     die("started \(bundle.path) but it did not answer within 5 seconds", hint: "grant Accessibility to wm when macOS asks, then run `wm daemon status`")
+}
+
+if arguments == ["daemon", "start"] {
+    if let running = runningDaemon() {
+        print(isStale(running) ? "wm \(running.version) is running; run `wm daemon reload` to switch to \(wmVersion)" : "wm is already running")
+        exit(0)
+    }
+    startDaemon()
+    print("wm started in the background")
+    exit(0)
+}
+
+if arguments == ["daemon", "reload"] {
+    // After `brew upgrade` the daemon still runs the old build: reload then replaces it, so the new features and mappings load.
+    // The permissions stay: the signature of every release is the same.
+    if let running = runningDaemon(), isStale(running) {
+        _ = try? sendRequest(ClientRequest(args: ["daemon", "stop"]))
+        for _ in 0..<50 {
+            if (try? sendRequest(ClientRequest(args: ["version"]), timeoutSeconds: 1)) == nil { break }
+            usleep(100_000)
+        }
+        if runningDaemon() != nil { _ = try? Process.run(URL(fileURLWithPath: "/usr/bin/pkill"), arguments: ["-x", "wmd"]); sleep(1) }
+        startDaemon()
+        print("wm restarted: \(running.version) -> \(wmVersion)")
+        exit(0)
+    }
+    do {
+        let answer = try sendRequest(ClientRequest(args: arguments))
+        write(answer.stdout, to: .standardOutput)
+        printError(answer.stderr)
+        exit(answer.exitCode)
+    } catch {
+        die("cannot reach the daemon: \(error)", hint: "start it with `wm daemon start`")
+    }
 }
 
 if arguments == ["daemon", "stop"] {
