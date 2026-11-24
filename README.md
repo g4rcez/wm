@@ -70,6 +70,8 @@ wm has no default key bindings. Until you bind keys in `init.lua`, it only react
 
 - **Emulated workspaces** (like AeroSpace). wm hides the windows of other workspaces, so it needs no macOS desktops. You can
   have any number of workspaces with any name.
+- **Native workspaces** (opt in with `workspaces = "native"`, like Dinky). Each workspace is a macOS desktop and SIP stays on. See
+  [Native workspaces](https://wm.garcez.dev/docs/config#native-workspaces).
 - **Several monitors.** A workspace shows on one monitor at a time. Name a monitor by role (`main`, `secondary`), by number or
   by part of its name.
 - **Per-workspace settings:** layout, gaps, border and monitor. See [Configuration](https://wm.garcez.dev/docs/config).

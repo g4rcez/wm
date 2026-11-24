@@ -12,7 +12,7 @@ wm is a tiling window manager for macOS. It is written in Swift, runs with SIP o
   - `scrolling` puts windows in columns on a strip that moves sideways, as niri and PaperWM do. A new window opens beside the focused one and never resizes the others.
   - `tiling` splits the screen in a binary tree, as Hyprland's dwindle layout does. A new window splits the focused one.
   - Floating windows sit above the layout. See [Layouts](/docs/layouts).
-- **Workspaces.** They are emulated, as in AeroSpace: wm hides the windows of other workspaces at a screen corner, so it needs no macOS desktops. Names are free.
+- **Workspaces.** By default they are emulated, as in AeroSpace: wm hides the windows of other workspaces at a screen corner, so it needs no macOS desktops. Names are free. With `workspaces = "native"` each workspace is a real macOS desktop instead, and switching is the macOS switch of desktops. See [Native workspaces](/docs/config#native-workspaces).
 - **Monitors.** A workspace shows on one monitor at a time. Name a monitor by role (`main` has the menu bar; `secondary` and `tertiary` are the others from left to right), by number (1 is the leftmost) or by part of its name.
 - **Special workspaces.** A scratchpad, like Hyprland's. One key shows it on the focused monitor, and the same key hides it.
 - **Modes.** A mode is a separate set of binds. Enter one with `mode <name>`, leave with `mode main`.

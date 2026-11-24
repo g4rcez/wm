@@ -22,6 +22,7 @@ WINDOWS          window close | float [on|off] | center | fullscreen | native-fu
 WORKSPACES       workspace <name|back|next|prev|empty> | workspace special [name]
                  workspace move monitor <monitor> | workspace float-all [off|pattern]
                  workspace all <layout>
+                 workspaces balance [count]
 LAYOUT           layout set <scrolling|tiling|master|monocle|floating> | balance | rotate | flip | tile | preselect <dir>
                  layout split <toggle|swap|root|ratio> | column <width|match|expand|center|center-visible>
                  layout stack <join|leave|tabs|equalize|height> | column move <first|last|n>

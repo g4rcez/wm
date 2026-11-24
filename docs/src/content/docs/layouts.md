@@ -179,7 +179,20 @@ wm.rule { app = "com.spotify.client", workspace = "special:music" }
 `on_empty` starts a program the first time you show the workspace, only when it has no window. The window it opens goes to that
 workspace, even if you switched away. See [Configuration](/docs/config) for rules.
 
+With `workspaces = "native"` the special workspace shows over the desktop that the monitor shows: its windows move there when it is shown.
+
 The workspace takes the work area with 5% free on each side (`special.size`, 0.9 by default). It hides when you run the command again, switch to a workspace, its last window goes away, or a window of the normal workspace on the same monitor gets focus. Other `special` keys: `backdrop` (a color such as `"#00000066"`, `""` is none) and `hide_on_other_monitor`.
+
+## Balance the workspaces
+
+`wm workspaces balance [count]` spreads the windows over the workspaces so that none has more than one window above another. With
+as many workspaces as windows, or more, each workspace gets one window. A window moves only when it has to, and the window that has
+the focus keeps it (its workspace is shown). Sticky, minimized, full-screen and special-workspace windows stay.
+
+The workspaces are 1 to `count`, or 1 to the `workspaces` limit of the config when there is no `count`; with neither, the command is
+an error. With `workspaces = "native"` they are the first desktops instead. `wm workspaces balance 4` with six windows on workspace 1
+leaves 2, 2, 1, 1. A `count` above the limit is an error. Windows on workspaces with a name (`web`) are outside the set, so they move
+into it.
 
 ## Sticky and zen
 

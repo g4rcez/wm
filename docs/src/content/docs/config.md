@@ -22,6 +22,7 @@ wm reads `init.lua` and `shortcuts.toml` from `~/.config/wm/`. The Lua functions
 | `animations` | `{ enabled = true, fps = 120, rate = 16 }` | `fps`: 30 to 240, capped by the display. `rate`: spring stiffness. Sub-tables `windows`, `workspaces`, `special` (below). |
 | `border` | `{ enabled = true, width = 2, radius = 10, active = "#89b4fa", inactive = "#00000000" }` | `active` can be `{ "#89b4fa", "#cba6f7" }` for a gradient (`angle = 45`). |
 | `focus_follows_mouse` | `false` | Or `{ enabled = true, only_fully_visible = true }`. |
+| `workspaces` | none | The mode, the limit, or both. `"emulated"` (the mode, default) hides the windows of other workspaces at a screen corner; `"native"` makes each workspace a macOS desktop (see [Native workspaces](#native-workspaces)). A number is the most workspaces there can be: `workspace 7` with `workspaces = 6` is an error, and `wm workspaces balance` spreads the windows over that many. A table has both: `{ mode = "native", max = 6 }`. Names that are not numbers are free. |
 | `mouse_follows_focus` | `false` | Moves the cursor to the center of a window that a command focuses. Switching workspaces never moves it. |
 | `start_at_login` | `true` | Only when running as wm.app. |
 | `mouse` | `{ move_modifier = "alt", resize_modifier = "alt" }` | Both are off by default. |
@@ -250,6 +251,18 @@ wm.rule { app = "org.mozilla.firefox", title = "^Picture-in-Picture$", float = t
 
 wm adds default rules after yours: browser popups and picture-in-picture, Finder, Preview, Calculator, Activity Monitor, Archive Utility, QuickTime Player, System Settings and the Raycast settings start floating and centered. `wm.floating.disable("finder", "preview")` tiles those again (names such as `finder`, `preview`, `calculator`, `system-settings`), `wm.floating.enabled = false` removes them all, and a rule of yours wins.
 
+### Native workspaces
+
+`wm.config { workspaces = "native" }` gives every workspace a macOS desktop (a Space) and keeps SIP on. `workspace 2` swipes to desktop 2, `window send workspace 3` moves the window to desktop 3, and a window that you drag to another desktop in Mission Control changes workspace. The method is the one of [Dinky](https://github.com/mikker/Dinky): a synthetic Dock swipe to switch, and the bridged window move of SkyLight to send. Both are private macOS interfaces and can change with a macOS update.
+
+- **Numbering.** The desktops are numbered 1, 2, 3... across the displays, from the leftmost display, each in the order of Mission Control. Workspace `"N"` is desktop N. `wm.workspace("web", { space = 2 })` makes desktop 2 the workspace `web` (and `"2"` then names nothing).
+- **wm makes the desktop when you ask for it.** `wm workspace 5` with three desktops makes desktops 4 and 5 and switches to 5. The new desktops go at the end of the last display, so no workspace changes desktop. This needs macOS 27 or later; before it, add desktops in Mission Control (Control-Up, then +) and `wm workspace 7` with six desktops fails and says so. A name that is not a number needs a desktop number: `wm.workspace("web", { space = 5 })`. wm never removes a desktop. The `workspaces` limit (`workspaces = 6`) stops it from making more than that.
+- **Settings of macOS.** Turn off *Automatically rearrange Spaces based on most recent use* (System Settings > Desktop & Dock > Mission Control), or the numbers drift. Turn on *Displays have separate Spaces*. `wm doctor` checks both.
+- **What changes.** `animations.workspaces` has no effect, as macOS animates the switch. `workspace move monitor` is not available, as a desktop stays on its display. `next` and `prev` walk the desktops of the focused display, and `empty` is the first desktop with no window.
+- **What stays.** Special workspaces, zen and sticky windows work over the desktop that is shown. A desktop that is no workspace (a full-screen app) is shown as `space:<id>`.
+- **Cursor.** The swipe goes to the display under the cursor. When the cursor is on another display, wm puts it on the target display for about 60 ms and back.
+- **Going back.** Setting `workspaces = "emulated"` and reloading brings every window to the desktop that its monitor shows.
+
 ### Workspace rules
 
 `wm.workspace(name, options)` needs at least one option.
@@ -261,6 +274,7 @@ wm adds default rules after yours: browser popups and picture-in-picture, Finder
 | `default` | With `monitor`: the monitor starts with this workspace. |
 | `gaps`, `border` | Settings for this workspace only. `border = false` turns the border off. |
 | `on_empty` | A command that runs when the workspace is shown with no window: `"ghostty"`, or `{ cmd = "open -a Notes", app = "Notes", float = true }`. |
+| `space` | With `workspaces = "native"`: the number of the desktop that this workspace is (1 is the first desktop of the leftmost display). Ignored with emulated workspaces. |
 | `persistent` | The workspace exists with no window: the menu bar lists it, and `workspace next` and `workspace prev` stop there. |
 | `wallpaper` | A picture (an absolute path, or `~/...`) that the monitor shows while it shows this workspace. |
 | `layout_options` | Layout options for this workspace only, for example `{ split_ratio = 0.6 }`. Master options start with `master_`: `master_ratio`, `master_count`, `master_orientation`, `master_new_window`. |
