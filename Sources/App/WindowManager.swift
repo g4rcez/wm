@@ -1805,7 +1805,7 @@ final class WindowManager {
 
     func updateBorder() {
         guard let focused, let managed = windows[focused], !managed.isOutOfLayout, settings(forWorkspace: managed.workspace).border.enabled,
-              let frame = borderLiveFrame.flatMap { $0.id == focused ? $0.frame : nil } ?? currentFrame(of: focused),
+              let frame = borderLiveFrame.flatMap({ $0.id == focused ? $0.frame : nil }) ?? currentFrame(of: focused),
               isVisible(managed.workspace) else {
             border.hide()
             return

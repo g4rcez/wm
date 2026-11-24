@@ -210,17 +210,22 @@ final class AppController: HostBridge, @unchecked Sendable {
             }
             return onMain { switcher.overview(mode: mode ?? "toggle").map { fail($0) } ?? ok() }
         case "hints", "scroll":
-            let parsed = parseToggleArguments(Array(args.dropFirst()))
+            let isHints = args[0] == "hints"
+            let (scope, parsed) = isHints
+                ? parseHintsArguments(Array(args.dropFirst()))
+                : (HintScope.all, parseToggleArguments(Array(args.dropFirst())))
             let flags = parsed.flags
-            if let bad = unknownOption(flags, allowed: args[0] == "hints" ? ["--wait"] : [], usage: args[0]) { return bad }
-            guard parsed.isValid else { return fail("\(args[0]) takes open, close or toggle", 2, usage: args[0]) }
+            if let bad = unknownOption(flags, allowed: isHints ? ["--wait"] : [], usage: args[0]) { return bad }
+            guard parsed.isValid else {
+                return fail(isHints ? "hints takes all or window, and open, close or toggle" : "scroll takes open, close or toggle", 2, usage: args[0])
+            }
             let mode = parsed.mode?.rawValue
             return onMain {
                 if mode != "close" { selector.close(); jump.close() }
                 let error: String?
                 if args[0] == "hints" {
                     if mode != "close" { scroller.close() }
-                    error = hints.command(mode ?? "toggle", wait: flags.contains("--wait"))
+                    error = hints.command(mode ?? "toggle", wait: flags.contains("--wait"), scope: scope)
                 } else {
                     if mode != "close" { hints.close() }
                     error = scroller.command(mode ?? "toggle")

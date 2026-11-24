@@ -1,8 +1,9 @@
 import AppKit
+import Common
 import Core
 import Platform
 
-/// `wm hints`: two-letter labels on the clickable elements of the focused window, the menu bar, the menu extras and the Dock, as the
+/// `wm hints`: two-letter labels on the clickable elements of every window on the screen (or only the focused one), the menu bar, the menu extras and the Dock, as the
 /// flash plugin of Neovim does. `/` starts a search that keeps the labels of the matches. There are two modes. In the click mode
 /// typing a label clicks the element. In the wait mode (`--wait`) the search starts at once, a label only highlights the element,
 /// and Return clicks it (Shift-Return right-clicks).
@@ -42,17 +43,17 @@ final class HintController {
     }
 
     /// `open`, `close` or `toggle`, in the wait mode or not. Returns an error message, or `nil`.
-    func command(_ mode: String, wait: Bool) -> String? {
+    func command(_ mode: String, wait: Bool, scope: HintScope) -> String? {
         switch mode {
         case "close": close()
-        case "open": return isOpen ? nil : open(wait: wait)
+        case "open": return isOpen ? nil : open(wait: wait, scope: scope)
         default:
-            if isOpen { close() } else { return open(wait: wait) }
+            if isOpen { close() } else { return open(wait: wait, scope: scope) }
         }
         return nil
     }
 
-    private func open(wait: Bool) -> String? {
+    private func open(wait: Bool, scope: HintScope) -> String? {
         self.wait = wait
         guard let app = NSWorkspace.shared.frontmostApplication else { return "no app is in front" }
         generation += 1
@@ -60,7 +61,7 @@ final class HintController {
         phase = .loading
         let screens = Displays.all().map(\.frame)
         Task { @MainActor in
-            let elements = await reader.clickables(pid: app.processIdentifier, screens: screens)
+            let elements = await reader.clickables(pid: app.processIdentifier, screens: screens, allWindows: scope == .all)
             guard generation == current, case .loading = phase else { return }
             search = ElementSearch(elements: elements, keepsLabels: wait, letters: colors().letters)
             if wait { search.beginSearch() }

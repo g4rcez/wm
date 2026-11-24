@@ -2,6 +2,7 @@ import AppKit
 import ApplicationServices
 import Core
 import Foundation
+import PrivateApi
 
 /// What `ElementReader.scrollTarget` finds: the focused window and the scroll areas that show in it.
 public struct ScrollTarget: Sendable, Equatable {
@@ -53,6 +54,8 @@ public final class ElementReader: @unchecked Sendable {
     private var found: [HintElement] = []
     private var areas: [CGRect] = []
     private var screens: [CGRect] = []
+    /// The frames of the windows that were read and are in front of the next one.
+    private var occluders: [CGRect] = []
     /// A web area with no children was seen: the app has not built the tree of its page.
     var sawEmptyWebArea = false
     /// Apps that were asked for their web content tree.
@@ -62,10 +65,11 @@ public final class ElementReader: @unchecked Sendable {
 
     // MARK: - Reading
 
-    /// The clickable elements of the focused window of the app `pid`, and of the menu bar, the menu extras and the Dock.
+    /// The clickable elements of the app `pid`, and of the menu bar, the menu extras and the Dock. With `allWindows` the
+    /// elements of every window that shows on the screen; without it, of the focused window of the app only.
     /// `screens` are the frames of the displays: an element outside of them is not on the screen.
-    public func clickables(pid: pid_t, screens: [CGRect]) async -> [HintElement] {
-        await thread.run { [self] in readClickables(pid: pid, screens: screens) }
+    public func clickables(pid: pid_t, screens: [CGRect], allWindows: Bool) async -> [HintElement] {
+        await thread.run { [self] in readClickables(pid: pid, screens: screens, allWindows: allWindows) }
     }
 
     /// The focused window of the app `pid` and its scroll areas, or `nil` when the app has no focused window.
@@ -73,19 +77,27 @@ public final class ElementReader: @unchecked Sendable {
         await thread.run { [self] in readScrollTarget(pid: pid) }
     }
 
-    private func readClickables(pid: pid_t, screens: [CGRect]) -> [HintElement] {
+    private func readClickables(pid: pid_t, screens: [CGRect], allWindows: Bool) -> [HintElement] {
         let app = application(pid)
         reset(screens: screens)
-        walkWindow(of: app)
-        // A browser builds the tree of a page only for an assistive tool. After the ask, the walk goes again.
-        if sawEmptyWebArea, enableWebContent(app, pid: pid) {
-            reset(screens: screens)
+        if allWindows {
+            walkVisibleWindows(screens: screens)
+        } else {
             walkWindow(of: app)
+            // A browser builds the tree of a page only for an assistive tool. After the ask, the walk goes again.
+            if sawEmptyWebArea, enableWebContent(app, pid: pid) {
+                reset(screens: screens)
+                walkWindow(of: app)
+            }
         }
-        if let bar: AXUIElement = attribute(app, kAXMenuBarAttribute) { visitBarItems(of: bar) }
+        // The bars and the Dock are in front of the windows.
+        occluders = []
+        let system = AXUIElementCreateSystemWide()
+        AXUIElementSetMessagingTimeout(system, 0.25)
+        if let bar: AXUIElement = attribute(app, kAXMenuBarAttribute) { visitBarItems(of: bar, system: system) }
         for extras in Self.statusItemPIDs() {
-            let owner = application(extras)
-            if let bar: AXUIElement = attribute(owner, "AXExtrasMenuBar") { visitBarItems(of: bar) }
+            let owner = application(extras, timeout: 0.25)
+            if let bar: AXUIElement = attribute(owner, "AXExtrasMenuBar") { visitBarItems(of: bar, system: system) }
         }
         if let dock = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first {
             visitDock(application(dock.processIdentifier))
@@ -95,6 +107,44 @@ public final class ElementReader: @unchecked Sendable {
 
     private func walkWindow(of app: AXUIElement) {
         if let window = focusedWindow(of: app), let frame = read(window).frame { visit(window, clip: frame, depth: 0) }
+    }
+
+    /// Every window that shows on a display, the one in front first. An element under a window in front is not clickable, so
+    /// it gets no label. Each window has its own node budget, so a window behind is not left with nothing.
+    private func walkVisibleWindows(screens: [CGRect]) {
+        let own = ProcessInfo.processInfo.processIdentifier
+        let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+        let shown = list.compactMap { entry -> (id: CGWindowID, pid: pid_t, frame: CGRect)? in
+            guard (entry[kCGWindowLayer as String] as? Int) == 0, let pid = entry[kCGWindowOwnerPID as String] as? Int, pid_t(pid) != own,
+                  let id = entry[kCGWindowNumber as String] as? Int, let bounds = entry[kCGWindowBounds as String] as? NSDictionary,
+                  let frame = CGRect(dictionaryRepresentation: bounds), frame.width >= 40, frame.height >= 40 else { return nil }
+            return (CGWindowID(id), pid_t(pid), frame)
+        }
+        // Only a window that the Accessibility API knows counts: an app can have a clear window over the whole display.
+        var elements: [CGWindowID: AXUIElement] = [:]
+        for pid in Set(shown.map(\.pid)) {
+            let windows: [AXUIElement] = attribute(application(pid), kAXWindowsAttribute) ?? []
+            for window in windows {
+                var id: CGWindowID = 0
+                if _AXUIElementGetWindow(window, &id) == .success { elements[id] = window }
+            }
+        }
+        for window in shown {
+            guard let element = elements[window.id], !occluders.contains(where: { $0.contains(window.frame) }) else { continue }
+            let start = found.count
+            func walk() {
+                budget = Self.maxNodes
+                sawEmptyWebArea = false
+                visit(element, clip: window.frame, depth: 0)
+            }
+            walk()
+            // A browser builds the tree of a page only for an assistive tool. After the ask, the walk goes again.
+            if sawEmptyWebArea, enableWebContent(application(window.pid), pid: window.pid) {
+                found.removeSubrange(start...)
+                walk()
+            }
+            occluders.append(window.frame)
+        }
     }
 
     private func readScrollTarget(pid: pid_t) -> ScrollTarget? {
@@ -114,14 +164,15 @@ public final class ElementReader: @unchecked Sendable {
         budget = Self.maxNodes
         nextID = 0
         found = []
+        occluders = []
         areas = []
         sawEmptyWebArea = false
         self.screens = screens
     }
 
-    func application(_ pid: pid_t) -> AXUIElement {
+    func application(_ pid: pid_t, timeout: Float = 1) -> AXUIElement {
         let app = AXUIElementCreateApplication(pid)
-        AXUIElementSetMessagingTimeout(app, 1)
+        AXUIElementSetMessagingTimeout(app, timeout)
         return app
     }
 
@@ -141,14 +192,16 @@ public final class ElementReader: @unchecked Sendable {
         return true
     }
 
-    /// The apps that own an item of the menu bar on the right: they own windows at the status level.
+    /// The apps that can own an item of the menu bar on the right. Current macOS has no windows at the status level for them,
+    /// so every app that is not a background daemon is asked (the system items belong to `MenuBarAgent`, an accessory app).
+    /// The owners of status windows and the two system UI apps stay, for the macOS that still uses them.
     private static func statusItemPIDs() -> [pid_t] {
+        var pids = Set(NSWorkspace.shared.runningApplications.filter { $0.activationPolicy != .prohibited }.map(\.processIdentifier))
         let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
         let status = Int(CGWindowLevelForKey(.statusWindow))
-        var pids = Set(list.compactMap { entry -> pid_t? in
-            guard (entry[kCGWindowLayer as String] as? Int) == status, let owner = entry[kCGWindowOwnerPID as String] as? Int else { return nil }
-            return pid_t(owner)
-        })
+        for entry in list where (entry[kCGWindowLayer as String] as? Int) == status {
+            if let owner = entry[kCGWindowOwnerPID as String] as? Int { pids.insert(pid_t(owner)) }
+        }
         for bundle in ["com.apple.systemuiserver", "com.apple.controlcenter"] {
             for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundle) { pids.insert(app.processIdentifier) }
         }
@@ -185,11 +238,35 @@ public final class ElementReader: @unchecked Sendable {
     private static let maxText = 120
 
     /// The items of the menu bar of an app, or of its extras. The menus under them are not read.
-    private func visitBarItems(of bar: AXUIElement) {
-        for item in read(bar).children {
+    private func visitBarItems(of bar: AXUIElement, system: AXUIElement) {
+        visitBarChildren(read(bar).children, system: system, depth: 0)
+    }
+
+    /// The system items sit in a hosting group, so the walk goes two levels down. A button that is a child of the bar itself
+    /// (the one that shows the hidden items) counts too.
+    private func visitBarChildren(_ children: [AXUIElement], system: AXUIElement, depth: Int) {
+        for item in children {
             let node = read(item)
-            if node.role == "AXMenuBarItem", node.enabled, let frame = node.frame { add(role: node.role, frame: frame, text: node.text) }
+            if node.role == "AXMenu" { continue }
+            if node.role == "AXMenuBarItem" || (node.role == "AXButton" && depth == 0) {
+                if node.enabled, let frame = node.frame, isShown(item, frame: frame, system: system) {
+                    add(role: node.role, frame: frame, text: node.text)
+                }
+            } else if depth < 2 {
+                visitBarChildren(node.children, system: system, depth: depth + 1)
+            }
         }
+    }
+
+    /// An item that the menu bar hides (behind the button for the hidden items, or under the notch) still has a frame, but the
+    /// element at its center is another one. When the check fails, the item stays.
+    private func isShown(_ item: AXUIElement, frame: CGRect, system: AXUIElement) -> Bool {
+        var owner: pid_t = 0
+        var hit: AXUIElement?
+        guard AXUIElementGetPid(item, &owner) == .success,
+              AXUIElementCopyElementAtPosition(system, Float(frame.midX), Float(frame.midY), &hit) == .success, let hit else { return true }
+        var other: pid_t = 0
+        return AXUIElementGetPid(hit, &other) != .success || other == owner
     }
 
     /// The items of the Dock: the list is the first child of the Dock.
@@ -222,7 +299,9 @@ public final class ElementReader: @unchecked Sendable {
     /// Keeps the element when it has a visible size, and (for `screens`) lies on a display.
     private func add(role: String, frame: CGRect, text: String) {
         guard frame.width >= 1, frame.height >= 1 else { return }
-        if !screens.isEmpty, !screens.contains(where: { $0.contains(CGPoint(x: frame.midX, y: frame.midY)) }) { return }
+        let center = CGPoint(x: frame.midX, y: frame.midY)
+        if !screens.isEmpty, !screens.contains(where: { $0.contains(center) }) { return }
+        if occluders.contains(where: { $0.contains(center) }) { return }
         found.append(HintElement(id: nextID, frame: frame, role: role, text: text))
         nextID += 1
     }
