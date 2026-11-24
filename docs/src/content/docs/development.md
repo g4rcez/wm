@@ -22,5 +22,19 @@ The app icon is `assets/icon-windows.svg`. `assets/make-icns.sh` makes `bundle/w
 | `App` | `wmd`: window manager state, commands, config, menu bar, URL handler |
 | `Cli` | `wm` |
 
+## Releases and signing
+
+`scripts/release.sh patch|minor|major|X.Y.Z` tests, bumps `Version.swift`, tags, pushes, then waits for the release workflow
+and points `Formula/wm.rb` of `g4rcez/homebrew-tap` at the asset it attached.
+
+The workflow (`.github/workflows/release.yml`) builds a universal `wm.app` with `build-app.sh`, signs it with the project
+certificate and attaches `wm-<version>-macos.tar.gz` (and its `.sha256`) to the GitHub release. It fails when the signature
+is ad hoc (`cdhash` in the designated requirement). macOS keeps the Accessibility and Screen Recording grants by that
+requirement, which with one certificate is the same for every release: users grant the permissions once, and `brew upgrade wm`
+plus `wm daemon reload` is all an update needs.
+
+The certificate is made once by `scripts/make-signing-cert.sh`. It prints the two repository secrets, `WM_SIGNING_P12` and
+`WM_SIGNING_P12_PASSWORD`. Back the `.p12` up: a new certificate makes every user grant the permissions again.
+
 The engines are plain values with no AppKit, so most behavior has a test with literal frames. The parts that need a real
 screen (overlays, the event tap, window moves) were checked by running the daemon.

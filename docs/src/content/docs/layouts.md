@@ -27,7 +27,7 @@ Columns sit on a strip. A column can hold a stack of windows or tabs.
 | Command | What it does |
 |---|---|
 | `layout column width <fraction\|cycle>` | Sets the column width. `cycle` walks `scrolling.presets`. |
-| `layout column match`, `layout balance` | Set column widths. `balance` fits all columns on screen. |
+| `layout column match`, `layout balance` | Set column widths. `balance` fits all columns on screen, takes a maximized column back to its share, and with no window in focus balances both strips. |
 | `layout column expand` | Grows the column into the free room. |
 | `layout column move <first\|last\|n>` | Moves the column. `n` counts from 1; too large means last. |
 | `layout column center`, `center-visible` | Scroll the strip. |
@@ -87,7 +87,7 @@ A master area and a stack beside it, like dwm and xmonad. A lone window fills th
 | `count` | Number of masters. Default 1. They share the area equally. |
 | `new_window` | `"stack"` (default): top of the stack. `"master"`: becomes the master. |
 
-`resize width` (or `height`) and the mouse move the divider; `layout balance` sets the ratio to 0.5. A changed config wins when it reloads.
+`resize width` (or `height`) and the mouse move the divider; `layout balance` sets the ratio to 0.5. `layout master count`, `ratio` and `orientation` act on the workspace and need no window in focus. A changed config wins when it reloads.
 
 ## Monocle
 
@@ -101,9 +101,9 @@ One window at a time fills the workspace inside the gaps; the others wait out of
 |---|---|
 | `window float [on\|off]` | No argument: floats the window in the middle of its screen at its size (a full-area window gets 60%). `on` and `off` never toggle, so a bind repeats safely. `off` tiles it. |
 | `window center` | Floats (a tiled window first) and centers. |
-| `window snap <place>` | Places: `left`, `right`, `top`, `bottom`, the four corners, `top-center`, `bottom-center`, `center`. The same place again goes to the next size: half, a third, two thirds (`center`: 60%, 80%, 40%). |
+| `window snap <place>` | Places: `left`, `right`, `top`, `bottom`, the four corners, `top-center`, `bottom-center`, `center`. The same place again goes to the next size: half, a third, two thirds (`center`: 60%, 80%, 40%). A tiled window is not floated: it moves one slot toward that side (`center` does nothing). |
 | `window move-to <x> <y>` | Top left corner at a point, in points or percent (`50% 10%`). |
-| `window place <pattern> <n>` | Floats into cell n of a tile template, from 1 in reading order. |
+| `window place <pattern> <n>` | Floats into cell n of a tile template, from 1 in reading order. A tiled window stays tiled and swaps places with the window at position n. |
 | `window rescue` | Moves a mostly off-screen window back into the work area. |
 | `move <dir> [points]` | Moves by `points` (40 by default). Stops at the monitor edge. |
 | `resize <width\|height\|smart> <+n\|-n>` | Changes size by n points. `smart` changes both sides around the center. |
@@ -112,7 +112,7 @@ One window at a time fills the workspace inside the gaps; the others wait out of
 | `workspace float-all [off\|<pattern>]` | Floats every window of the workspace in place. `off` tiles them. With a tile template (`2+1`, `2/3`, `corner-tl`, your own) they float into its cells. Minimized and macOS fullscreen windows are left alone. |
 | `window mark <name>`, `window unmark [name]` | Name a window (one window per name), or remove the name. `focus mark <name>` focuses it and `--window mark:<name>` acts on it. Marks last until the window closes. |
 
-`window maximize` keeps a scrolling window in its place in the strip and elsewhere fills the work area inside the outer gaps. `window fullscreen` fills the work area with no gaps and no border. `window native-fullscreen` enters or leaves macOS fullscreen; wm leaves that window out of the layout. A window sent to an empty workspace arrives maximized; otherwise it joins the layout and `balance` runs (`--tile` joins without either).
+`window maximize` keeps a scrolling window in its place in the strip and elsewhere fills the work area inside the outer gaps. `window fullscreen` fills the work area with no gaps and no border. `window native-fullscreen` enters or leaves macOS fullscreen; wm leaves that window out of the layout. A window sent to an empty workspace arrives maximized; otherwise it joins the layout and `balance` runs (`--tile` joins without either). `layout balance` works in every layout, needs no tiled window in focus, and ends maximize and fullscreen on the workspace, so the result is always visible. `move`, `swap`, `window snap` and `window place` on a tiled window do the same: they rearrange the layout and end maximize and fullscreen, so nothing stays hidden.
 
 ## Templates and tile patterns
 

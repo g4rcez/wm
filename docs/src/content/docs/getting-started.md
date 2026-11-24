@@ -27,10 +27,10 @@ wm has no default key bindings. Until you bind keys in `init.lua`, it only react
 Requirements:
 
 - macOS 14 or later.
-- The Swift 6.2 toolchain (Xcode or the command line tools).
+- The Swift 6.2 toolchain (Xcode or the command line tools), only to build from source or to install `--HEAD`.
 - No other window manager running (AeroSpace, yabai, Amethyst). Two of them fight over the same windows.
 
-There is no published binary. Homebrew builds wm from source for you, or you build it yourself.
+Homebrew installs the signed app of each release, or you build it yourself.
 
 ### Homebrew
 
@@ -39,9 +39,17 @@ brew install g4rcez/tap/wm
 wm daemon start
 ```
 
-- The formula needs the Swift 6.2 toolchain (Xcode 26 or newer).
-- It builds the latest tagged release. `brew install --HEAD g4rcez/tap/wm` builds `main`.
-- It links `wm` and `wmd` in `$(brew --prefix)/bin`.
+- It installs the app that the release workflow built and signed, so it needs no Xcode. `brew install --HEAD g4rcez/tap/wm` builds `main` from source instead (Swift 6.2, Xcode 26 or newer), and that build is signed ad hoc.
+- It links `wm` and `wmd` in `$(brew --prefix)/bin`. The app stays at `$(brew --prefix)/opt/wm/wm.app`, a path that does not change between versions.
+
+To upgrade, and keep the permissions:
+
+```sh
+brew upgrade g4rcez/tap/wm
+wm daemon reload    # the running wm is the old build: this restarts it from the new one, and loads the new features and mappings
+```
+
+If you used `make install` before, remove the old copy, so that only one wm.app has the permissions: `wm daemon stop; rm -rf /Applications/wm.app ~/.local/bin/wm`, then `brew install g4rcez/tap/wm` and `wm daemon start`. Grant the permissions once more. If macOS keeps a stale entry, `tccutil reset Accessibility local.wm` clears it.
 
 ### Build from source
 
@@ -57,10 +65,11 @@ make install CODESIGN_IDENTITY="<name>"    # build, sign, copy to /Applications/
 
 ### Signing
 
-macOS keeps the Accessibility and Screen Recording grants of an app by its signature. An ad hoc signature changes at every build, so macOS asks for the permissions again. Homebrew signs ad hoc.
+macOS keeps the Accessibility and Screen Recording grants of an app by its signature. An ad hoc signature changes at every build, so macOS asks for the permissions again.
 
-- To keep the grants, sign with your own certificate: `codesign --force --sign "<certificate>" "$(brew --prefix)/opt/wm/wm.app"`.
-- For `start_at_login`, copy the app to a fixed place: `ditto "$(brew --prefix)/opt/wm/wm.app" /Applications/wm.app`.
+- Every release is signed with the same project certificate, so the Homebrew install keeps its grants through `brew upgrade wm`. You grant the permissions once.
+- A build you make yourself (`./build-app.sh`, `brew install --HEAD`) is signed with the first "Apple Development" certificate of your keychain, or ad hoc without one. Ad hoc loses the grants at every build. Sign with your own certificate to keep them: `codesign --force --sign "<certificate>" "$(brew --prefix)/opt/wm/wm.app"`.
+- Do not mix copies. macOS keeps one grant for the bundle id `local.wm`, and a copy with another signature (for example `/Applications/wm.app` from `make install`) replaces it.
 
 ### First run
 
@@ -93,13 +102,14 @@ wm lsp --write                # once: completion for init.lua in your editor
 ```sh
 wm daemon start    # starts wm.app in the background and returns when the daemon answers
 wm daemon status   # whether it runs, the workspace, the mode, the window count
+wm daemon reload   # loads the config again; after `brew upgrade wm` it restarts wm from the new build (the permissions stay)
 wm daemon stop     # quits wm; hidden windows come back on screen
 wmd --background   # from a terminal: a detached daemon that survives closing the terminal
 ```
 
 The menu bar shows the workspaces that have windows. Mode letters: `T` tiling, `S` scrolling, `M` master, `F` a floating focused window.
 
-To start wm at login, copy `wm.app` to `/Applications` and set `start_at_login = true` in the config.
+To start wm at login, set `start_at_login = true` in the config. With Homebrew, wm starts from `$(brew --prefix)/opt/wm/wm.app`, which stays the same through upgrades. A copy you made yourself has to stay in a fixed place, such as `/Applications`.
 
 ## First five minutes
 

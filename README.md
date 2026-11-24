@@ -180,10 +180,12 @@ Requirements:
 - The Swift 6.2 toolchain (Xcode or the command line tools).
 - No other window manager running (AeroSpace, yabai, Amethyst). Two of them fight over the same windows.
 
-There is no published binary. With Homebrew, the formula in [g4rcez/homebrew-tap](https://github.com/g4rcez/homebrew-tap) builds wm from source:
+With Homebrew, the formula in [g4rcez/homebrew-tap](https://github.com/g4rcez/homebrew-tap) installs the signed app of the latest release:
 
 ```sh
 brew install g4rcez/tap/wm
+wm daemon start
+# later: brew upgrade g4rcez/tap/wm && wm daemon reload   (the permissions stay; reload restarts wm from the new build)
 ```
 
 Or build it yourself:
@@ -206,8 +208,8 @@ macOS asks for **Accessibility** at the first start: wm cannot move windows with
 pictures) and **Automation** (browser tabs in the palette) are optional. The menu bar icon needs System Settings > Menu Bar >
 "Allow in the Menu Bar" > `wm`.
 
-Sign with a stable certificate. An ad-hoc signature changes with every build, and macOS asks for the permissions again each
-time. The [Getting started](https://wm.garcez.dev/docs/getting-started) page explains permissions, signing, the `PATH` link, shell
+Releases are signed with one certificate, so the Homebrew install keeps the permissions through upgrades. When you build it
+yourself, sign with a stable certificate: an ad-hoc signature changes with every build, and macOS asks for the permissions again. The [Getting started](https://wm.garcez.dev/docs/getting-started) page explains permissions, signing, the `PATH` link, shell
 completion and start at login (`start_at_login = true`).
 
 ```sh
