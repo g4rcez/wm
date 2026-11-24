@@ -28,7 +28,7 @@ LAYOUT           layout set <scrolling|tiling|master|monocle|floating> | balance
                  layout stack <join|leave|tabs|equalize|height> | column move <first|last|n>
                  layout master <promote|count|ratio|orientation>
 INTERFACE        switcher | overview | palette | cheatsheet [tui|gui|cli] | menu | mode <name|back> | pointer <window|monitor> | zen [on|off]
-                 hints [open|close|toggle] [--wait] | scroll [open|close|toggle] | select [open|close|toggle] | jump [open|close|toggle] [--swap] [--close]
+                 hints [all|window] [open|close|toggle] [--wait] | scroll [open|close|toggle] | select [open|close|toggle] | jump [open|close|toggle] [--swap] [--close]
                  exec [options] <command> | batch <commands> | set <key> <value> | animations [on|off] [kind] [--json] | menubar set <text> | menubar reset | notify <text> | key send <chord> | key press <chord>
 INSPECT          doctor [--json] | pick [--json] | list [windows|workspaces|monitors|keyboards|memory|binds] | query [what] | subscribe [--snapshot] [event ...] | logs [-n count] [-f] [-o otel|json]
 MEMORY           memory list | forget <app> [--title=<text>] [--all] | clear

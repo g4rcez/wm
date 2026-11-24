@@ -71,7 +71,7 @@ wm.bind("cmd-shift-j", "scroll")
 wm.bind("cmd-shift-y", "select")
 ```
 
-`hints` puts a label of two letters on every clickable element of the focused window, the menu bar (and its extras) and the Dock. With more than 676 elements, labels have three letters. Type the letters and wm clicks the element with a real mouse click.
+`hints` puts a label of two letters on every clickable element of every window that shows on the screen (a part under another window gets none), the menu bar (and its extras) and the Dock. `hints window` labels only the focused window, the menu bar and the Dock. With more than 676 elements, labels have three letters. Type the letters and wm clicks the element with a real mouse click.
 
 | Key | Effect |
 | --- | --- |

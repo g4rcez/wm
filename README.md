@@ -130,7 +130,7 @@ wm has no default key bindings. Until you bind keys in `init.lua`, it only react
 
 ### Keyboard clicking, scrolling and text selection
 
-- **Hints:** two-letter labels on every clickable element of a window, the menu bar and the Dock, with fuzzy search. Works as
+- **Hints:** two-letter labels on every clickable element of the screen (or only of the focused window), the menu bar and the Dock, with fuzzy search. Works as
   Homerow does.
 - **Scroll mode:** number the scroll areas and scroll them with `h` `j` `k` `l`.
 - **Jump:** a giant number on every visible window; type it to focus the window (`--swap` and `--close` do other things).
