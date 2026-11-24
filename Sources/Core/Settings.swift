@@ -318,7 +318,16 @@ public struct SpecialSettings: Sendable, Equatable {
     public init() {}
 }
 
+/// Where wm listens for keys and what its own key events look like (`binds.event_level`).
+public enum EventLevel: String, Sendable, CaseIterable {
+    /// A session event tap, and events with no source: what an app does.
+    case session
+    /// A HID event tap (before the session one), and events that come from the HID system state, as if a keyboard sent them.
+    case hid
+}
+
 public struct BindSettings: Sendable, Equatable {
+    public var eventLevel: EventLevel = .session
     public var longPressTimeout: Double = 0.4
     public var disableSystemCmdTab = false
     public var capsLockHyper = false

@@ -692,6 +692,17 @@ struct LuaHostTests {
         #expect(error?.message.contains(expected) == true)
     }
 
+    @Test func theEventLevelOfTheKeyTapIsASetting() throws {
+        let defaults = try host.load(configURL: dir.write("init.lua", "wm.config { layout = 'tiling' }"))
+        #expect(defaults.settings.binds.eventLevel == .session)
+        let hid = try host.load(configURL: dir.write("init.lua", "wm.config { binds = { event_level = 'hid' } }"))
+        #expect(hid.settings.binds.eventLevel == .hid)
+        let error = #expect(throws: ConfigError.self) {
+            try host.load(configURL: dir.write("init.lua", "wm.config { binds = { event_level = 'kernel' } }"))
+        }
+        #expect(error?.message.contains("'binds.event_level' must be one of") == true)
+    }
+
     @Test func animationsHaveASettingForEachKindOfMotion() throws {
         let defaults = try host.load(configURL: dir.write("init.lua", "wm.config { layout = 'tiling' }"))
         #expect(defaults.settings.animations.windows == AnimationKind())

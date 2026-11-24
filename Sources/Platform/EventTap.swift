@@ -1,4 +1,5 @@
 import AppKit
+import Core
 @preconcurrency import CoreGraphics
 import Foundation
 
@@ -43,6 +44,10 @@ public final class EventTap: @unchecked Sendable {
     /// macOS turned the tap off and it is on again. Key ups that came in the meantime are lost.
     public var onReenabled: (@MainActor () -> Void)?
 
+    /// Where the tap listens: `hid` is before the session tap. When macOS refuses a HID tap, the session tap runs and `level` says so.
+    public private(set) var level: EventLevel = .session
+    public private(set) var wantedLevel: EventLevel = .session
+
     private var port: CFMachPort?
     /// A separate tap for pointer movement. It stays disabled unless something needs the pointer, so mouse moves do not
     /// wait for this process. It is a normal tap, not listen-only: that kind could need Input Monitoring permission.
@@ -58,7 +63,7 @@ public final class EventTap: @unchecked Sendable {
     /// One half of a key press: the key goes down (`isRepeat`: it is held and repeats) or comes up. Used to remap a key, so
     /// that a held key repeats and a key up follows the key down.
     public static func post(keyCode: Int, flags: CGEventFlags, down: Bool, isRepeat: Bool) {
-        guard let event = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(keyCode), keyDown: down) else { return }
+        guard let event = makeKeyEvent(keyCode: keyCode, down: down) else { return }
         event.flags = flags
         event.setIntegerValueField(.eventSourceUserData, value: ownEventTag)
         if isRepeat { event.setIntegerValueField(.keyboardEventAutorepeat, value: 1) }
@@ -74,6 +79,15 @@ public final class EventTap: @unchecked Sendable {
             windowNumber: 0, context: nil, subtype: 8, data1: data, data2: -1)?.cgEvent else { return }
         event.setIntegerValueField(.eventSourceUserData, value: ownEventTag)
         event.post(tap: .cghidEventTap)
+    }
+
+    /// What the events that wm posts look like. `hid`: they come from the HID system state, as if a keyboard sent them, which a tool
+    /// that forwards the keyboard (Universal Control, a software KVM) may need. Set from the config before keys are posted.
+    nonisolated(unsafe) public static var outputLevel: EventLevel = .session
+    private static let hidSource = CGEventSource(stateID: .hidSystemState)
+
+    private static func makeKeyEvent(keyCode: Int, down: Bool) -> CGEvent? {
+        CGEvent(keyboardEventSource: outputLevel == .hid ? hidSource : nil, virtualKey: CGKeyCode(keyCode), keyDown: down)
     }
 
     /// Types a key into one app, without moving the focus: `wm key send`. The app gets it even when it is in the background.
@@ -92,6 +106,22 @@ public final class EventTap: @unchecked Sendable {
 
     /// Returns `false` when macOS refuses the tap (Accessibility permission is missing).
     @MainActor public func start() -> Bool {
+        start(level: wantedLevel)
+    }
+
+    /// Listens at `level`; the same level as now changes nothing. A HID tap that macOS refuses falls back to the session tap.
+    @MainActor @discardableResult
+    public func restart(level: EventLevel) -> Bool {
+        let changed = level != wantedLevel
+        wantedLevel = level
+        guard changed, port != nil else { return port != nil }
+        for old in [port, pointerPort] { if let old { CFMachPortInvalidate(old) } }
+        port = nil
+        pointerPort = nil
+        return start(level: level)
+    }
+
+    @MainActor private func start(level wanted: EventLevel) -> Bool {
         let mask: CGEventMask = (1 << CGEventType.keyDown.rawValue)
             | (1 << CGEventType.keyUp.rawValue)
             | (1 << CGEventType.scrollWheel.rawValue)
@@ -107,9 +137,9 @@ public final class EventTap: @unchecked Sendable {
             let tap = Unmanaged<EventTap>.fromOpaque(context).takeUnretainedValue()
             return MainActor.assumeIsolated { tap.handle(type, event) }
         }
-        func create(_ events: CGEventMask) -> CFMachPort? {
+        func create(_ events: CGEventMask, at location: CGEventTapLocation) -> CFMachPort? {
             guard let created = CGEvent.tapCreate(
-                tap: .cgSessionEventTap,
+                tap: location,
                 place: .headInsertEventTap,
                 options: .defaultTap,
                 eventsOfInterest: events,
@@ -120,10 +150,17 @@ public final class EventTap: @unchecked Sendable {
             CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
             return created
         }
-        guard let created = create(mask) else { return false }
+        var location: CGEventTapLocation = wanted == .hid ? .cghidEventTap : .cgSessionEventTap
+        var made = create(mask, at: location)
+        if made == nil, wanted == .hid {
+            location = .cgSessionEventTap
+            made = create(mask, at: location)
+        }
+        guard let created = made else { return false }
+        level = location == .cghidEventTap ? .hid : .session
         port = created
         CGEvent.tapEnable(tap: created, enable: true)
-        pointerPort = create(1 << CGEventType.mouseMoved.rawValue)
+        pointerPort = create(1 << CGEventType.mouseMoved.rawValue, at: location)
         setPointerTracking(pointerWanted)
         return true
     }

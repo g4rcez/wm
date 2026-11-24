@@ -29,7 +29,7 @@ wm reads `init.lua` and `shortcuts.toml` from `~/.config/wm/`. The Lua functions
 | `wrap_focus` | `false` | `focus`, `move` and `swap` wrap at the edge, as with `--wrap`. |
 | `workspace_back_and_forth` | `false` | `workspace N` while N is shown goes back to the previous one. |
 | `tiling` | `{ split_ratio = 0.5, preserve_split = true, split_under_pointer = false, smart_split = false, force_split = "second", split_width_multiplier = 1 }` | `split_under_pointer`: a new window splits the tile under the mouse. `smart_split`: it opens on the side nearest to the mouse. `force_split`: `"second"` (right, bottom) or `"first"`. `split_width_multiplier` 2 or more keeps columns on an ultrawide screen. |
-| `binds` | `{ long_press_timeout = 0.4, disable_system_cmd_tab = false, capslock = "hyper" }` | See Key binds. |
+| `binds` | `{ long_press_timeout = 0.4, disable_system_cmd_tab = false, capslock = "hyper", event_level = "session" }` | See Key binds. |
 | `commands` | `{ mode = "normal", timeout = 800 }` | Sequences, see Key binds. Same as `wm.commands`. |
 | `keyboards` | every keyboard on | See Key binds. |
 | `urgent` | `{ enabled = true, interval = 2 }` | Reads Dock badges every `interval` seconds, for `focus urgent` and `window_urgent`. |
@@ -170,6 +170,7 @@ wm.mode("vim", { h = { remap = "left" }, l = { remap = "right" }, esc = "mode ma
 
 - `wm.remap(chord, key [, options])` types `key` when `chord` is pressed. It takes one chord and works everywhere. Extra modifiers go with it: after `wm.remap("hyper-h", "left")`, `hyper-shift-h` types `shift-left`.
 - `wm.press(key)` and `wm key press <key>` type a key for the system: a chord or a media key (`volume_up`, `volume_down`, `mute`, `play`, `next`, `previous`, `brightness_up`, `brightness_down`). `wm key send` types into one app.
+- `binds = { event_level = "hid" }` makes wm listen with a HID event tap (before the session tap) and type its keys as if a keyboard sent them. Use it when a remap works here but not on a Mac that you control from this one (Universal Control, a software KVM). It is not a promise: if the tool forwards the keyboard before any event tap sees it, only a virtual keyboard driver such as Karabiner's can change what the other Mac gets. See [Troubleshooting](/docs/troubleshooting).
 - Secure Keyboard Entry (password fields, some terminals) blocks every key tap, so hyper chords do nothing there.
 - `keyboards` turns a keyboard on or off for wm, by name or `vendor:product` (the id wins), and decides where CapsLock becomes hyper. `wm query keyboards` lists them:
 

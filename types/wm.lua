@@ -254,6 +254,7 @@
 ---@class (exact) wm.BindsConfig
 ---@field long_press_timeout? number Seconds a key is held for a `long_press` bind, 0.1 to 3. Default 0.4.
 ---@field disable_system_cmd_tab? boolean Turn off the Cmd+Tab and Cmd+Shift+Tab of macOS while wm runs. Default false.
+---@field event_level? "session"|"hid" Where wm listens for keys, and what the keys it types look like. "session" (default): a session event tap, and events that an app would send. "hid": a HID tap that sits before the session one, and events that come from the HID system, as if a keyboard sent them. Try it when a remap works on this Mac but not on a Mac that you control from this one (Universal Control, a software KVM). It may not be enough: see Troubleshooting.
 ---@field capslock? "hyper" Make CapsLock the `hyper` modifier for chords such as `hyper-k`: a tap alone types Esc. wm sets the key mapping of the keyboards (like `hidutil`) while it runs. Default: CapsLock is not changed.
 
 --- The options of a mode (third argument of `wm.mode`).

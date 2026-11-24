@@ -195,7 +195,8 @@ final class AppController: HostBridge, @unchecked Sendable {
                     accessibility: AXIsProcessTrusted(), keyTap: keyTapRunning, screenRecording: CGPreflightScreenCaptureAccess(),
                     loginItemWanted: manager.settings.startAtLogin, loginItemEnabled: SMAppService.mainApp.status == .enabled,
                     isAppBundle: Bundle.main.bundleURL.pathExtension == "app", onboarded: Onboarding.isDone(),
-                    native: manager.nativeFacts(), secureInput: SecureInput.state())
+                    native: manager.nativeFacts(), secureInput: SecureInput.state(),
+                    keyLevelRefused: input.tap.wantedLevel != input.tap.level)
                 return (try? JSONEncoder().encode(facts)).map { ok(String(decoding: $0, as: UTF8.self)) } ?? fail("cannot encode the facts")
             }
         case "switcher":
@@ -654,6 +655,10 @@ final class AppController: HostBridge, @unchecked Sendable {
         keyboardSettings = loaded.settings.keyboards
         setCapsLockHyper(loaded.settings.binds.capsLockHyper)
         input.noRepeat = loaded.noRepeat
+        EventTap.outputLevel = loaded.settings.binds.eventLevel
+        if input.tap.restart(level: loaded.settings.binds.eventLevel), input.tap.level != loaded.settings.binds.eventLevel {
+            Log.write(.warn, "macOS refused a HID event tap: wm listens at the session level (binds.event_level = \"hid\")", source: "input", prefix: "wmd")
+        }
         input.modeOptions = loaded.modeOptions
         input.longPressTimeouts = loaded.longPressTimeouts
         let pad = loaded.settings.trackpad

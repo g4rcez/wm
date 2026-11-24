@@ -30,11 +30,14 @@ public struct DoctorFacts: Codable, Equatable, Sendable {
     public var native: NativeFacts?
     /// The app that holds Secure Event Input now, or `nil` when it is off.
     public var secureInput: String?
+    /// `binds.event_level = "hid"` is set, but macOS refused the HID tap and the session tap runs.
+    public var keyLevelRefused: Bool?
 
     public init(
         accessibility: Bool, keyTap: Bool, screenRecording: Bool, loginItemWanted: Bool, loginItemEnabled: Bool, isAppBundle: Bool,
-        onboarded: Bool, native: NativeFacts? = nil, secureInput: String? = nil
+        onboarded: Bool, native: NativeFacts? = nil, secureInput: String? = nil, keyLevelRefused: Bool = false
     ) {
+        self.keyLevelRefused = keyLevelRefused
         self.native = native
         self.secureInput = secureInput
         self.accessibility = accessibility
@@ -114,6 +117,11 @@ public func daemonChecks(_ facts: DoctorFacts) -> [DoctorCheck] {
         checks.append(DoctorCheck("login item", .warn, "start_at_login is on, but wm is not a login item", hint: "look in System Settings > General > Login Items"))
     } else {
         checks.append(DoctorCheck("login item", .warn, "wm is a login item, but start_at_login is off", hint: "set start_at_login = true, or turn wm off in System Settings > General > Login Items"))
+    }
+    if facts.keyLevelRefused == true {
+        checks.append(DoctorCheck(
+            "key level", .warn, "binds.event_level = \"hid\", but macOS refused a HID event tap: wm listens at the session level",
+            hint: "remove event_level, or run wm from a terminal that has Input Monitoring and Accessibility permission"))
     }
     if let holder = facts.secureInput {
         checks.append(DoctorCheck(

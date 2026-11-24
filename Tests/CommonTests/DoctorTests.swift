@@ -28,10 +28,18 @@ struct DoctorTests {
         #expect(daemonChecks(healthy).contains { $0.name == "secure input" } == false)
     }
 
+    @Test func aRefusedHidTapIsAWarning() {
+        var facts = healthy
+        facts.keyLevelRefused = true
+        #expect(daemonChecks(facts).first { $0.name == "key level" }?.status == .warn)
+        #expect(daemonChecks(healthy).contains { $0.name == "key level" } == false)
+    }
+
     @Test func factsWithNoSecureInputFieldStillDecode() throws {
         let json = #"{"accessibility":true,"keyTap":true,"screenRecording":true,"loginItemWanted":false,"loginItemEnabled":false,"isAppBundle":true,"onboarded":true}"#
         let facts = try JSONDecoder().decode(DoctorFacts.self, from: Data(json.utf8))
         #expect(facts.secureInput == nil)
+        #expect(facts.keyLevelRefused == nil)
     }
 
     @Test func missingAccessibilityFailsAndSaysWhereToGrantIt() {

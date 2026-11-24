@@ -1,4 +1,5 @@
 import AppKit
+import Common
 import Core
 import Platform
 import Scripting
@@ -7,6 +8,7 @@ import Scripting
 @MainActor
 final class InputRouter {
     let tap = EventTap()
+    private static let logsUsedKeys = ProcessInfo.processInfo.environment["WM_LOG_LEVEL"] == "debug"
     var binds: [String: [Chord: BindAction]] = [:]
     /// Key sequences such as `ctrl-p>h`, per mode (two or more steps).
     var sequences: [String: [[Chord]: BindAction]] = [:]
@@ -87,7 +89,14 @@ final class InputRouter {
 
     /// Returns `false` while Accessibility permission is missing.
     func start() -> Bool {
-        tap.onKey = { [unowned self] code, flags, isRepeat in handleKey(code, flags, isRepeat: isRepeat) }
+        tap.onKey = { [unowned self] code, flags, isRepeat in
+            let used = handleKey(code, flags, isRepeat: isRepeat)
+            // Only the keys that a bind or a remap used, never the other keys: this is not a key logger. It shows whether wm sees the keys.
+            if used, !isRepeat, Self.logsUsedKeys {
+                Log.write(.debug, "key \(code) with flags \(flags.rawValue) was used by a bind or a remap (tap at \(tap.level.rawValue))", source: "input")
+            }
+            return used
+        }
         tap.onKeyUp = { [unowned self] code, flags in
             if hyperEnabled, code == KeyboardRemap.hyperKeyCode { return hyperKeyUp() }
             // A remap that a panel used up: the app never saw the key down, so it does not see the key up.
