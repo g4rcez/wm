@@ -34,4 +34,21 @@ struct ToggleCommandTests {
         #expect(parsed.flags == ["--bogus"])
         #expect(!parsed.isValid)
     }
+
+    @Test func hintsScopeDefaultsToAll() {
+        let parsed = parseHintsArguments([])
+        #expect(parsed.scope == .all)
+        #expect(parsed.toggle == ToggleArguments(flags: [], mode: nil, isValid: true))
+    }
+
+    @Test func hintsScopeWordCanBeAnywhere() {
+        let parsed = parseHintsArguments(["toggle", "window", "--wait"])
+        #expect(parsed.scope == .window)
+        #expect(parsed.toggle == ToggleArguments(flags: ["--wait"], mode: .toggle, isValid: true))
+    }
+
+    @Test func hintsTwoScopesOrAnUnknownWordAreNotValid() {
+        #expect(parseHintsArguments(["all", "window"]).toggle.isValid == false)
+        #expect(parseHintsArguments(["bogus"]).toggle.isValid == false)
+    }
 }
