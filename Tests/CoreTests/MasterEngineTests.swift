@@ -212,6 +212,13 @@ struct MasterEngineTests {
         #expect(!again)
     }
 
+    @Test func balanceNeedsNoWindowInFocus() {
+        var engine = engine(2) { $0.master.ratio = 0.75 }
+        let balanced = engine.perform(.balance, focused: nil, in: context)
+        #expect(balanced)
+        #expect(engine.frames(in: context, focused: nil)[1]?.width == 500)
+    }
+
     @Test func rotatingShiftsEveryWindowOneSlot() {
         var engine = engine(3)
         let clockwise = engine.perform(.rotate(clockwise: true), focused: 1, in: context)

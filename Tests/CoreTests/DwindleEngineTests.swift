@@ -278,6 +278,15 @@ struct DwindleEngineTests {
         #expect(engine.frames(in: context, focused: 1)[1] == CGRect(x: 0, y: 0, width: 500, height: 600))
     }
 
+    @Test func balanceNeedsNoWindowInFocus() {
+        var engine = DwindleEngine(settings: Settings())
+        engine.insert(1, after: nil)
+        engine.insert(2, after: 1)
+        _ = engine.perform(.resize(.width, 125), focused: 1, in: context)
+        #expect(engine.perform(.balance, focused: nil, in: context) == true)
+        #expect(engine.frames(in: context, focused: nil)[1] == CGRect(x: 0, y: 0, width: 500, height: 600))
+    }
+
     @Test func balanceOnABalancedLayoutChangesNothing() {
         var engine = DwindleEngine(settings: Settings())
         engine.insert(1, after: nil)
