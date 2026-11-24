@@ -167,7 +167,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func startWindowControl() {
         // After sleep the keyboards may be set up again, and the CapsLock mapping with them.
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.controller.keyboardsWoke() }
+            MainActor.assumeIsolated {
+                self?.controller.keyboardsWoke()
+                // The Mac may have shrunk or moved windows while it slept: look at them again.
+                self?.manager.scheduleRefresh()
+            }
         }
         controller.watchKeyboards()
         manager.start()

@@ -145,6 +145,12 @@ public final class AppWatcher: @unchecked Sendable {
         }
     }
 
+    /// Forgets the size that `setFrame` set last, so the next call writes size, position and size again. For a window whose real
+    /// size changed behind wm's back.
+    public func forgetSize(_ id: WindowID) {
+        thread.async { [self] in lastSize[id] = nil }
+    }
+
     public func raise(_ id: WindowID) {
         thread.async { [self] in
             guard let app, let window = elements[id] else { return }

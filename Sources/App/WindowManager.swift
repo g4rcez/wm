@@ -109,6 +109,7 @@ final class WindowManager {
     var isPaused: Bool { tracker?.isPaused == true }
     let applier = FrameApplier()
     var animator = Animator()
+    private var drift = FrameDrift()
     private let border = BorderOverlay()
     private let backdrop = SpecialBackdrop()
     private let tabIndicator = TabIndicatorOverlay()
@@ -309,6 +310,17 @@ final class WindowManager {
         return created
     }
 
+    /// A tiled window that is not where wm put it (macOS shrank it after a display change or a wake, or the app restored its own
+    /// size) gets its frame again: the applier and the watcher would otherwise skip it, as they think it is there.
+    private func resendIfDrifted(_ info: WindowInfo, _ managed: ManagedWindow, parked: Bool) {
+        guard !managed.floating, !managed.isOutOfLayout, !parked, !managed.minimized, !managed.nativeFullscreen,
+              managed.workspaceVisible(self), modifierDrag?.window != info.id, !applier.isBusy(info.id),
+              animator.isSettled(info.id), let sent = applier.sentFrame(info.id),
+              drift.shouldResend(info.id, actual: info.frame, sent: sent) else { return }
+        Log.write(.debug, "window \(info.id) (\(info.appName)) is at \(info.frame), not \(sent): sending the frame again", source: "layout", prefix: "wmd")
+        applier.resend(info.id, pid: info.pid)
+    }
+
     private func reconcile(_ infos: [WindowInfo], unread: Set<pid_t>) {
         var seen: Set<WindowID> = []
         for info in infos {
@@ -333,6 +345,7 @@ final class WindowManager {
                         windows[info.id]?.floatFrame = info.frame
                     }
                 }
+                resendIfDrifted(info, managed, parked: parked)
                 if titleChanged { reevaluateDynamicRules(info.id) }
                 continue
             }
@@ -1024,6 +1037,7 @@ final class WindowManager {
         if focused == id { focused = workspace.history.first }
         hideSpecialIfEmpty(workspace.name)
         applier.forget(id)
+        drift.forget(id)
         events.emit("window_close", ["id": .number(Double(id))])
         if let returning, wasFocused { focus(returning) }
     }

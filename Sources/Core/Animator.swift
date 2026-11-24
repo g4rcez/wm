@@ -31,6 +31,9 @@ public struct Animator: Sendable {
 
     public var isSettled: Bool { current == target }
 
+    /// Whether this window has arrived at its target (a window with no target counts as arrived).
+    public func isSettled(_ id: WindowID) -> Bool { current[id] == target[id] }
+
     /// Sets the targets. Windows in `snap`, unseen windows, and every window when animations are off jump straight
     /// to their target. Windows that are no longer in `targets` are forgotten.
     public mutating func setTargets(_ targets: [WindowID: CGRect], snap: Set<WindowID> = []) {

@@ -28,6 +28,18 @@ final class FrameApplier {
         }
     }
 
+    /// The frame that was sent last (rounded), or `nil` when there is none.
+    func sentFrame(_ id: WindowID) -> CGRect? { last[id] }
+
+    /// Whether a frame for this window is being written or waits to be.
+    func isBusy(_ id: WindowID) -> Bool { inFlight.contains(id) || pending[id] != nil }
+
+    /// Makes the next `send` write the whole frame, also when it equals the last one: the real window is not where wm put it.
+    func resend(_ id: WindowID, pid: pid_t) {
+        forget(id)
+        watcher(pid)?.forgetSize(id)
+    }
+
     func forget(_ id: WindowID) {
         last[id] = nil
         pending[id] = nil
