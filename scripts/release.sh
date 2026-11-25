@@ -68,7 +68,9 @@ requirement="$(codesign -dr - "$app" 2>&1 | grep 'designated =>')"
 echo "$requirement"
 echo "$requirement" | grep -qi "H\"$identity\"" || die "the signature does not name the release certificate"
 codesign --verify --deep --strict "$app"
-lipo "$app/Contents/MacOS/wmd" -verify_arch arm64 x86_64 || die "the app is not universal"
+for arch in arm64 x86_64; do
+    lipo "$app/Contents/MacOS/wmd" -verify_arch "$arch" || die "the app has no $arch slice"
+done
 [ "$("$app/Contents/MacOS/wm" --version)" = "wm $next" ] || die "the built app is not version $next"
 
 asset="wm-$next-macos.tar.gz"
