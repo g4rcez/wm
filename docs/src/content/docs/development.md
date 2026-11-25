@@ -27,17 +27,31 @@ left out. A newer Swift or Xcode can add warnings: fix them, so that CI and a bu
 
 ## Releases and signing
 
-`scripts/release.sh patch|minor|major|X.Y.Z` tests, bumps `Version.swift`, tags, pushes, then waits for the release workflow
-and points `Formula/wm.rb` of `g4rcez/homebrew-tap` at the asset it attached.
+Releases are made on the Mac that holds the release certificate, not in CI. `scripts/release.sh patch|minor|major|X.Y.Z`:
 
-The workflow (`.github/workflows/release.yml`) builds a universal `wm.app` with `build-app.sh`, signs it with the project
-certificate and attaches `wm-<version>-macos.tar.gz` (and its `.sha256`) to the GitHub release. It fails when the signature
-is ad hoc (`cdhash` in the designated requirement). macOS keeps the Accessibility and Screen Recording grants by that
-requirement, which with one certificate is the same for every release: users grant the permissions once, and `brew upgrade wm`
-plus `wm daemon reload` is all an update needs.
+1. checks that `main` is clean and in sync, that the certificate is in your keychain and that `gh` is logged in;
+2. runs the tests and bumps `Version.swift`;
+3. builds a universal `wm.app` with `build-app.sh` and signs it with the release certificate;
+4. checks the signature, then commits, tags, pushes and creates the GitHub release with `wm-<version>-macos.tar.gz` (and its
+   `.sha256`);
+5. writes `Formula/wm.rb` of `g4rcez/homebrew-tap` from `scripts/wm.rb.in`. Change the formula there, not in the tap.
 
-The certificate is made once by `scripts/make-signing-cert.sh`. It prints the two repository secrets, `WM_SIGNING_P12` and
-`WM_SIGNING_P12_PASSWORD`. Back the `.p12` up: a new certificate makes every user grant the permissions again.
+`--dry-run` stops after the checks of step 1.
+
+macOS keeps the Accessibility and Screen Recording grants of an app by its designated requirement, which names the bundle id and
+the certificate. With one certificate it is the same for every release: users grant the permissions once, and `brew upgrade wm`
+plus `wm daemon reload` is all an update needs. `scripts/signing-cert.sha1` pins the certificate, and the release stops when the
+build has another signature.
+
+`scripts/make-signing-cert.sh` makes the certificate once. It imports it into your login keychain and keeps a backup (`.p12` and
+password) in `~/Library/Application Support/wm-signing`. Copy that folder somewhere safe. To release from another Mac, import the
+backup there:
+
+```sh
+security import wm-signing.p12 -P "$(cat password.txt)" -T /usr/bin/codesign
+```
+
+A new certificate makes every user grant the permissions again.
 
 The engines are plain values with no AppKit, so most behavior has a test with literal frames. The parts that need a real
 screen (overlays, the event tap, window moves) were checked by running the daemon.

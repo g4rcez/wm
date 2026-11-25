@@ -39,15 +39,17 @@ brew install g4rcez/tap/wm
 wm daemon start
 ```
 
-- It installs the app that the release workflow built and signed, so it needs no Xcode. `brew install --HEAD g4rcez/tap/wm` builds `main` from source instead (Swift 6.2, Xcode 26 or newer), and that build is signed ad hoc.
+- It installs the signed, universal app of the release, so it needs no Xcode. `brew install --HEAD g4rcez/tap/wm` builds `main` from source instead (Swift 6.2, Xcode 26 or newer), and that build is signed ad hoc.
 - It links `wm` and `wmd` in `$(brew --prefix)/bin`. The app stays at `$(brew --prefix)/opt/wm/wm.app`, a path that does not change between versions.
 
-To upgrade, and keep the permissions:
+You grant the permissions once, at the first start. To upgrade, and keep them:
 
 ```sh
 brew upgrade g4rcez/tap/wm
 wm daemon reload    # the running wm is the old build: this restarts it from the new one, and loads the new features and mappings
 ```
+
+If you installed wm with Homebrew before 0.5.0, or built it yourself, macOS holds a grant for the old signature. Clear it once with `tccutil reset Accessibility local.wm` (and `tccutil reset ScreenCapture local.wm` for Screen Recording), run `wm daemon reload` and grant again.
 
 If you used `make install` before, remove the old copy, so that only one wm.app has the permissions: `wm daemon stop; rm -rf /Applications/wm.app ~/.local/bin/wm`, then `brew install g4rcez/tap/wm` and `wm daemon start`. Grant the permissions once more. If macOS keeps a stale entry, `tccutil reset Accessibility local.wm` clears it.
 

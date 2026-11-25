@@ -214,8 +214,10 @@ macOS asks for **Accessibility** at the first start: wm cannot move windows with
 pictures) and **Automation** (browser tabs in the palette) are optional. The menu bar icon needs System Settings > Menu Bar >
 "Allow in the Menu Bar" > `wm`.
 
-Releases are signed with one certificate, so the Homebrew install keeps the permissions through upgrades. When you build it
-yourself, sign with a stable certificate: an ad-hoc signature changes with every build, and macOS asks for the permissions again. The [Getting started](https://wm.garcez.dev/docs/getting-started) page explains permissions, signing, the `PATH` link, shell
+Releases are signed with one certificate, so the Homebrew install keeps the permissions through upgrades (an install older than
+0.5.0 asks once more). When you build it yourself, sign with a stable certificate: an ad-hoc signature changes with every build,
+and macOS asks for the permissions again. The [Getting started](https://wm.garcez.dev/docs/getting-started) page explains
+permissions, signing, the `PATH` link, shell
 completion and start at login (`start_at_login = true`).
 
 ```sh

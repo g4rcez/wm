@@ -6,7 +6,7 @@ import CopyCommand from "../components/CopyCommand.astro";
 import CodeTabs from "../components/CodeTabs.astro";
 import HeroMosaic from "../components/HeroMosaic.astro";
 
-const install = "git clone https://github.com/g4rcez/wm.git && cd wm && ./build-app.sh";
+const install = "brew install g4rcez/tap/wm";
 
 const facts = ["macOS 14 or later", "Runs with SIP on", "Configured in Lua", "MIT license"];
 const layouts = ["Scrolling", "Tiling", "Master-stack", "Tile templates", "Rotate"];
@@ -171,9 +171,9 @@ wm notify 'build done' --seconds=3           # a message on screen`;
 
 const steps = [
   {
-    title: "Build",
-    text: "You need macOS 14 and the Swift 6.2 toolchain. The script builds wm.app, signs it and starts it.",
-    code: "./build-app.sh",
+    title: "Install",
+    text: "You need macOS 14. Homebrew installs the signed app, and wm daemon start runs it.",
+    code: "wm daemon start",
   },
   {
     title: "Grant Accessibility",
@@ -280,7 +280,7 @@ const steps = [
     <header class="head">
       <p class="eyebrow">Install</p>
       <h2>Three steps</h2>
-      <p>wm has no binary release yet. You build it from source.</p>
+      <p>Install with Homebrew. Upgrades keep the permissions that you granted.</p>
     </header>
     <ol class="steps">
       {
