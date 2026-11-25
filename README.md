@@ -65,6 +65,7 @@ wm has no default key bindings. Until you bind keys in `init.lua`, it only react
 | Monocle | One window fills the workspace. `focus next` and `focus prev` walk through the others, which wait out of sight. |
 | Tile templates | Ready-made arrangements (`2`, `3`, `2+1`, `2/3`, `center`, and more) with a picker. You can write your own. |
 | Rotate, maximize, floating | Rotate a layout, maximize, floating windows, snap to a part of the screen, native fullscreen and window marks. |
+| Undo and redo | `layout undo` takes back a swap, a resize, a tile pattern or a drag. `layout redo` does it again. |
 
 ### Workspaces and monitors
 

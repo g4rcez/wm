@@ -165,6 +165,25 @@ wm.config {
 
 `layout tile <name>` also takes a built-in name that your list leaves out. Shell completion lists only the built-in names.
 
+## Undo
+
+`layout undo` goes back to how the workspace was before its last change, and `layout redo` does the change again.
+
+```lua
+wm.bind("alt-z", "layout undo")
+wm.bind("alt-shift-z", "layout redo")
+```
+
+- **What counts.** A swap, a move, a resize, `balance`, a tile pattern, floating or tiling a window, maximize, fullscreen and
+  `layout set`, from a command, a key or the mouse. A `wm batch` and a drag count as one change. Scrolling a strip and moving the
+  focus do not count.
+- **Windows stay put.** Opening, closing or sending a window to another workspace is not a change, and undo never moves a window
+  between workspaces. A window that closed since is left out; a window that opened since stays.
+- **Limits.** wm keeps 50 steps for each workspace. They end when the daemon stops, and when a config reload changes the layout of
+  the workspace.
+
+`wm layout undo <workspace>` acts on another workspace.
+
 ## Special workspaces
 
 A scratchpad: one key shows a workspace over the others, the same key hides it.

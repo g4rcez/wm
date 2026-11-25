@@ -6,6 +6,11 @@ import Scripting
 
 extension WindowManager {
     func execute(_ args: [String], target: WindowID? = nil) -> ServerAnswer {
+        guard Self.layoutCommandNames.contains(args.first ?? "") else { return dispatch(args, target: target) }
+        return recordingLayout { dispatch(args, target: target) }
+    }
+
+    private func dispatch(_ args: [String], target: WindowID?) -> ServerAnswer {
         guard let command = args.first else { return fail("missing command", 2, hint: "run `wm help` to see the commands") }
         let rest = Array(args.dropFirst())
         let flags = Set(rest.filter { $0.hasPrefix("--") })
@@ -710,6 +715,9 @@ extension WindowManager {
         let value = words.dropFirst().first
         switch sub {
         case "set": return setLayout(value)
+        case "undo", "redo":
+            guard words.count <= 2 else { return fail("layout \(sub) takes one workspace", 2, usage: "layout \(sub)") }
+            return walkLayoutHistory(sub == "undo" ? .undo : .redo, workspace: value.map(resolveWorkspaceName))
         case "balance": return workspaceLayoutCommand(.balance, target: id, clearMaximized: true)
         case "master": return masterGroup(words, id)
         case "flip": return rotateLayout()

@@ -130,6 +130,8 @@ final class WindowManager {
     private var pendingRestore: SavedState?
     private var adopted: Set<WindowID> = []
     private var reboot: RebootRestore?
+    var isRestoringAfterReboot: Bool { reboot != nil }
+    var layoutHistory = LayoutHistory()
     private var rebootStarted = false
     private var spawnClaims = SpawnClaims<WindowRule>()
     private var swallowedAt: [WindowID: TimeInterval] = [:]
@@ -168,6 +170,7 @@ final class WindowManager {
     ) {
         let layoutChanged = new.layout != settings.layout
         let leavesNative = isNative && new.workspaceMode != .native
+        let previousKinds = workspaces.mapValues(\.kind)
         if leavesNative { gatherWindows() }
         settings = new
         if let saved = pendingRestore, saved.mode != new.workspaceMode.rawValue { pendingRestore = nil }
@@ -196,6 +199,8 @@ final class WindowManager {
             let target = workspace(name)
             if target.kind != kind { rebuild(target, as: kind) }
         }
+        // A layout that the config changed is not one to undo back to.
+        for (name, kind) in previousKinds where workspaces[name]?.kind != kind { layoutHistory.forget(name) }
         updateBackdrop()
         scheduleRefresh()
     }
@@ -469,7 +474,9 @@ final class WindowManager {
         events.emit("window_open", ["id": .number(Double(info.id)), "app": .string(info.bundleID), "title": .string(info.title), "workspace": .string(workspaceName)])
         var commands = rule?.commands ?? []
         if remembered?.strip == .vertical, !floating, target.kind == .scrolling { commands.append("window send strip vertical") }
-        for command in commands { runRuleCommand?(command.split(separator: " ").map(String.init), info.id) }
+        withoutLayoutHistory {
+            for command in commands { runRuleCommand?(command.split(separator: " ").map(String.init), info.id) }
+        }
         if let remembered {
             if remembered.sticky == true, floating {
                 windows[info.id]?.sticky = true
@@ -1966,6 +1973,8 @@ final class WindowManager {
     }
 
     private func applyMouseResize(_ frames: [WindowID: CGRect], _ baseline: [WindowID: CGRect]) {
+        beginLayoutChange()
+        defer { endLayoutChange() }
         let tolerance: CGFloat = 3
         var changed = false
         for (id, after) in frames {

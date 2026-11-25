@@ -197,6 +197,11 @@ public let commandSections: [CommandSection] = [
             "layout balance", "", "", "Give every window (or column) an equal share.",
             details: "It acts on the whole workspace, so no window has to be in focus (a floating window, or the desktop, is fine). It also ends maximize and fullscreen on that workspace, and a maximized scrolling column takes its share with the others. With no window in focus, scrolling balances both strips."),
         CommandSpec(
+            "layout undo", "[workspace]", "", "Go back to the layout before the last change.",
+            details: "A change is what a command or the mouse did to the arrangement of a workspace: a swap, a move, a resize, balance,\na tile pattern, floating a window, maximize, another layout. A `batch` and a drag count as one. Opening, closing and sending\na window to another workspace are not changes: undo never moves a window between workspaces. wm keeps 50 steps for each\nworkspace until it stops. Without a name it acts on the focused workspace.",
+            example: "wm layout undo"),
+        CommandSpec("layout redo", "[workspace]", "", "Do again what `layout undo` took back."),
+        CommandSpec(
             "layout rotate", "[cw|ccw]", "", "Move every window one slot around the layout.",
             details: "cw (the default) moves each window to the next slot, ccw to the previous one.",
             example: "wm layout rotate ccw"),

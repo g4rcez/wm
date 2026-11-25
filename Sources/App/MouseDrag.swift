@@ -70,6 +70,8 @@ extension WindowManager {
         focus(id, warpMouse: false)
         // The user moves the window: where it ends is its place, even if it just opened.
         openingHold[id] = nil
+        // The whole drag is one step for `layout undo`.
+        beginLayoutChange()
         modifierDrag = ModifierDrag(
             kind: event.button == .left ? .move : .resize, button: event.button, window: id, floating: managed.floating,
             startPointer: event.location, startFrame: frame,
@@ -124,5 +126,6 @@ extension WindowManager {
             if let other { _ = swapWindows(drag.window, other) }
         }
         relayout()
+        endLayoutChange()
     }
 }

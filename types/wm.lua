@@ -52,7 +52,7 @@
 ---| "layout master promote" | "layout master count +1" | "layout master count -1" | "layout master ratio +0.05" | "layout master ratio -0.05"
 ---| "layout master orientation" | "layout master orientation left" | "layout master orientation right" | "layout master orientation top"
 ---| "layout master orientation bottom" | "layout master orientation center"
----| "layout balance" | "layout flip" | "layout rotate cw" | "layout rotate ccw"
+---| "layout balance" | "layout flip" | "layout rotate cw" | "layout rotate ccw" | "layout undo" | "layout redo"
 ---| "layout split toggle" | "layout split swap"
 ---| "layout column width cycle" | "layout column match" | "layout column center" | "layout column center-visible"
 ---| "layout column move first" | "layout column move last" | "layout column expand"

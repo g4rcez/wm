@@ -24,6 +24,7 @@ WORKSPACES       workspace <name|back|next|prev|empty> | workspace special [name
                  workspace all <layout>
                  workspaces balance [count]
 LAYOUT           layout set <scrolling|tiling|master|monocle|floating> | balance | rotate | flip | tile | preselect <dir>
+                 layout <undo|redo> [workspace]
                  layout split <toggle|swap|root|ratio> | column <width|match|expand|center|center-visible>
                  layout stack <join|leave|tabs|equalize|height> | column move <first|last|n>
                  layout master <promote|count|ratio|orientation>

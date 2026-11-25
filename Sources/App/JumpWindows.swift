@@ -26,6 +26,8 @@ extension WindowManager {
         case .swap:
             guard let current = focused, current != id else { return }
             // Two tiled windows of one workspace trade slots; any other pair just moves the focus.
+            beginLayoutChange()
+            defer { endLayoutChange() }
             if let other = windows[current], !other.floating, !managed.floating, other.workspace == managed.workspace,
                swapWindows(current, id) {
                 workspace(managed.workspace).fullscreen = nil

@@ -436,6 +436,9 @@ final class AppController: HostBridge, @unchecked Sendable {
         let commands = splitBatch(text)
         guard !commands.isEmpty else { return fail("batch needs commands separated by ;", 2, usage: "batch") }
         var output = ""
+        // The whole batch is one step for `layout undo`.
+        onMain { manager.beginLayoutChange() }
+        defer { onMain { manager.endLayoutChange() } }
         for command in commands {
             let words = splitCommand(command)
             guard words.first != "batch" else { return fail("a batch cannot contain a batch", 2, usage: "batch") }
