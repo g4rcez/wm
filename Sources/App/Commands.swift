@@ -54,6 +54,7 @@ extension WindowManager {
         case "layout": return layoutGroup(words, flags, id)
         case "list", "query": return listCommand(words, flags, target: target)
         case "memory": return memoryCommand(words, flags)
+        case "session": return sessionCommand(words, flags)
         case "menubar":
             if let bad = unknownOption(flags, allowed: [], usage: "menubar") { return bad }
             switch words.first {

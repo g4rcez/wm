@@ -21,8 +21,8 @@ order: 2
   local here = wm.query("monitor")   -- the focused monitor: here.name, here.index, here.role
   ```
 - Events: `window_open`, `window_close`, `window_focus`, `window_title`, `window_floating`, `window_fullscreen`,
-  `window_moved`, `window_swallow`, `window_unswallow`, `window_urgent`, `workspace_changed`, `special_changed`, `monitor_changed`, `displays_changed`, `layout_changed`, `mode_changed` and
-  `config_reloaded`. `wm.on(event, [filter,] handler)` takes an optional table of fields that must match.
+  `window_moved`, `window_swallow`, `window_unswallow`, `window_urgent`, `workspace_changed`, `special_changed`, `monitor_changed`, `displays_changed`, `layout_changed`, `mode_changed`,
+  `session_open`, `session_done` and `config_reloaded`. `wm.on(event, [filter,] handler)` takes an optional table of fields that must match.
 - `idle` and `resume` follow the keyboard and the mouse, as hypridle does.
   - `wm.on("idle", { seconds = 300 }, handler)` runs once when there has been no input for 300 seconds.
   - `wm.on("resume", handler)` runs when input comes back after an `idle`.

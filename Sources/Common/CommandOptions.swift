@@ -56,6 +56,8 @@ public let commandOptions: [String: [CommandOption]] = [
         CommandOption("--title=<text>", "Remove the entry that has this exact title, not the entry of the whole app."),
         CommandOption("--all", "Remove every entry of the app, whatever its title."),
     ],
+    "session open": [CommandOption("--no-launch", "Do not start the apps that have no window.")],
+    "session list": [CommandOption("--json", "Print JSON for scripts.")],
     "pick": [CommandOption("--json", "Print one JSON object.")],
     "subscribe": [CommandOption("--snapshot", "Start with one line that holds the state of wm now.")],
     "logs": [

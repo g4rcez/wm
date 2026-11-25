@@ -350,6 +350,20 @@ public let commandSections: [CommandSection] = [
             details: "It forgets all the entries that `window remember` kept, for every app. It does not touch the places that floating windows keep\nin float-memory.json.",
             example: "wm memory clear"),
     ]),
+    CommandSection(title: "Sessions", specs: [
+        CommandSpec(
+            "session save", "<name>", "", "Save the open windows and their layouts under a name.",
+            details: "Keeps the app and title of every window, its workspace, layout, floating place, marks and sticky state, and which workspace\neach monitor shows. Saving a name again replaces it. Minimized, native fullscreen and swallowed windows are left out.\nThe name takes letters, digits, `.`, `_` and `-`. The files are in sessions/, next to state.json.",
+            example: "wm session save dev"),
+        CommandSpec(
+            "session open", "<name>", "[--no-launch]", "Put the windows back as the session saved them.",
+            details: "Open windows take their saved places, by app and title. wm starts the apps that have no window (--no-launch does not) and\nplaces their windows as they open, for 60 seconds. An app that already has a window is not asked for more. Windows that are\nnot in the session stay where they are.",
+            example: "wm session open dev"),
+        CommandSpec(
+            "session list", "", "[--json]", "List the saved sessions.",
+            details: "`wm session` alone does the same.", example: "wm session list --json"),
+        CommandSpec("session delete", "<name>", "", "Delete a saved session.", example: "wm session delete dev"),
+    ]),
     CommandSection(title: "Daemon", specs: [
         CommandSpec("daemon start", "", "", "Start wm in the background.", details: "When an older build already runs, it says so and points to `wm daemon reload`."),
         CommandSpec("daemon stop", "", "", "Stop wm. Hidden windows come back on screen."),
@@ -537,7 +551,7 @@ private func overviewHelp(style: HelpStyle) -> String {
     }
     lines += ["", style.heading("GLOBAL OPTIONS")] + optionLines(globalOptions, style: style)
     lines += ["", style.heading("URL SCHEME")] + rows(urlRows, paint: style.command)
-    lines.append("  " + style.dim("exec, key, daemon and subscribe are blocked for URLs, unless `url.allow` in the config lists them."))
+    lines.append("  " + style.dim("URLs cannot run exec, key, daemon, subscribe or session, unless `url.allow` lists them."))
     lines += ["", style.heading("EXIT CODES")] + rows(exitCodeRows, paint: style.command)
     lines += ["", style.heading("ENVIRONMENT")] + rows(environmentRows, paint: style.command)
     lines += ["", style.dim("Run `wm help <command>` for details and examples, for example `wm help window`."), style.dim("<dir> is left, right, up or down.")]

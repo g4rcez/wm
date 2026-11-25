@@ -42,5 +42,5 @@ public func defaultSocketPath() -> String {
 public let subscribableEvents = [
     "window_open", "window_close", "window_focus", "window_title", "window_floating", "window_fullscreen", "window_moved",
     "workspace_changed", "special_changed", "monitor_changed", "displays_changed", "layout_changed", "mode_changed", "config_reloaded",
-    "window_swallow", "window_unswallow", "window_urgent", "idle", "resume",
+    "window_swallow", "window_unswallow", "window_urgent", "idle", "resume", "session_open", "session_done",
 ]

@@ -51,8 +51,13 @@ struct Monitor {
     var isMain = false
 }
 
-private struct RebootRestore {
+/// Saved windows that wait for their windows to open, after a reboot or a `session open`.
+private struct PendingWindows {
     var waiting: [Int: SavedWindow]
+    /// The session that is opening, or `nil` after a reboot.
+    var session: String?
+    /// Tells a timeout whether this is still the restore that it was started for.
+    var serial: Int
 }
 
 @MainActor
@@ -129,8 +134,9 @@ final class WindowManager {
 
     private var pendingRestore: SavedState?
     private var adopted: Set<WindowID> = []
-    private var reboot: RebootRestore?
-    var isRestoringAfterReboot: Bool { reboot != nil }
+    private var restoring: PendingWindows?
+    private var restoreSerial = 0
+    var isRestoring: Bool { restoring != nil }
     var layoutHistory = LayoutHistory()
     private var rebootStarted = false
     private var spawnClaims = SpawnClaims<WindowRule>()
@@ -389,8 +395,8 @@ final class WindowManager {
             }
             return
         }
-        if let saved = rebootMatch(for: info) {
-            adoptAfterReboot(info, as: saved)
+        if let saved = restoreMatch(for: info) {
+            adoptRestored(info, as: saved)
             return
         }
         if let saved = activeRestore?.windows.first(where: { $0.id == info.id && $0.bundleID == info.bundleID }) {
@@ -589,27 +595,41 @@ final class WindowManager {
             space.fullscreen = savedSpace.fullscreen.flatMap { mapping[$0] }
             if let kind = workspaceLayouts[name], saved.configLayouts[name] != kind, kind != space.kind { rebuild(space, as: kind) }
         }
-        reboot = RebootRestore(waiting: Dictionary(uniqueKeysWithValues: saved.windows.enumerated().map { ($0.offset, $0.element) }))
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: UInt64(Self.rebootPatience * 1_000_000_000))
-            finishRebootRestore()
-        }
+        waitFor(saved.windows, session: nil, patience: Self.rebootPatience)
     }
 
     private static let rebootPatience: TimeInterval = 120
+    private static let sessionPatience: TimeInterval = 60
 
-    private func rebootMatch(for info: WindowInfo) -> SavedWindow? {
-        guard let waiting = reboot?.waiting else { return nil }
+    /// The windows of a session that are not open yet. Their layouts must hold a placeholder for each of them.
+    func beginSessionRestore(_ name: String, waiting: [SavedWindow]) {
+        waitFor(waiting, session: name, patience: Self.sessionPatience)
+        if waiting.isEmpty { finishRestoring() }
+    }
+
+    private func waitFor(_ saved: [SavedWindow], session: String?, patience: TimeInterval) {
+        restoreSerial += 1
+        let serial = restoreSerial
+        restoring = PendingWindows(
+            waiting: Dictionary(uniqueKeysWithValues: saved.enumerated().map { ($0.offset, $0.element) }), session: session, serial: serial)
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(patience * 1_000_000_000))
+            if restoring?.serial == serial { finishRestoring() }
+        }
+    }
+
+    private func restoreMatch(for info: WindowInfo) -> SavedWindow? {
+        guard let waiting = restoring?.waiting else { return nil }
         let candidates = waiting.map {
             RestoreCandidate(key: $0.key, bundleID: $0.value.bundleID, title: $0.value.title ?? "", order: $0.value.order ?? $0.key)
         }
         guard let best = bestRestoreMatch(bundleID: info.bundleID, title: info.title, among: candidates) else { return nil }
         let saved = waiting[best.key]
-        reboot?.waiting[best.key] = nil
+        restoring?.waiting[best.key] = nil
         return saved
     }
 
-    private func adoptAfterReboot(_ info: WindowInfo, as saved: SavedWindow) {
+    private func adoptRestored(_ info: WindowInfo, as saved: SavedWindow) {
         let placeholder = Placeholder.id(for: saved.id)
         windows[info.id] = ManagedWindow(
             info: info, workspace: saved.workspace, floating: saved.floating, minimized: info.isMinimized,
@@ -626,12 +646,16 @@ final class WindowManager {
             space.engine.insert(info.id, after: space.history.first { $0 != info.id && windows[$0] != nil })
         }
         animator.seed(info.id, at: info.frame)
-        if reboot?.waiting.isEmpty == true { finishRebootRestore() }
+        if restoring?.waiting.isEmpty == true { finishRestoring() }
     }
 
-    private func finishRebootRestore() {
-        guard reboot != nil else { return }
-        reboot = nil
+    private func finishRestoring() {
+        guard let finished = restoring else { return }
+        restoring = nil
+        if let session = finished.session {
+            let missing = Set(finished.waiting.values.map(\.bundleID)).sorted()
+            events.emit("session_done", ["name": .string(session), "missing": .string(missing.joined(separator: " "))])
+        }
         for space in workspaces.values {
             for id in space.engine.windows where Placeholder.isPlaceholder(id) { space.engine.remove(id) }
             space.history.removeAll { Placeholder.isPlaceholder($0) }
@@ -698,7 +722,7 @@ final class WindowManager {
     func saveState() {
         saveTimer?.invalidate()
         saveTimer = nil
-        guard pendingRestore == nil, reboot == nil, !windows.isEmpty else { return }
+        guard pendingRestore == nil, restoring == nil, !windows.isEmpty else { return }
         do {
             let data = try StateStore.encode(snapshot())
             guard data != lastSaved else { return }

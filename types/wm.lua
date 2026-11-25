@@ -52,6 +52,7 @@
 ---| "layout master promote" | "layout master count +1" | "layout master count -1" | "layout master ratio +0.05" | "layout master ratio -0.05"
 ---| "layout master orientation" | "layout master orientation left" | "layout master orientation right" | "layout master orientation top"
 ---| "layout master orientation bottom" | "layout master orientation center"
+---| "session list" | "session save dev" | "session open dev" | "session open dev --no-launch" | "session delete dev"
 ---| "layout balance" | "layout flip" | "layout rotate cw" | "layout rotate ccw" | "layout undo" | "layout redo"
 ---| "layout split toggle" | "layout split swap"
 ---| "layout column width cycle" | "layout column match" | "layout column center" | "layout column center-visible"
@@ -522,6 +523,8 @@
 ---| "window_urgent"
 ---| "idle"
 ---| "resume"
+---| "session_open"
+---| "session_done"
 ---| "workspace_changed"
 ---| "special_changed"
 ---| "monitor_changed"
@@ -535,6 +538,7 @@
 ---@field id? integer
 ---@field app? string
 ---@field title? string
+---@field name? string
 ---@field workspace? string
 ---@field previous? string
 ---@field monitor? integer
@@ -593,6 +597,15 @@
 ---@field id integer The window of the app that asks for attention.
 ---@field app string Bundle id.
 ---@field badge string The text of the badge on the Dock icon.
+
+---@class wm.SessionOpenEvent
+---@field name string The session that opens.
+---@field matched integer Windows that were open and took their saved places.
+---@field waiting integer Windows that wm waits for.
+
+---@class wm.SessionDoneEvent
+---@field name string
+---@field missing string Bundle ids still without a window, with spaces between them. Empty when every window was placed.
 
 ---@class wm.IdleEvent
 ---@field seconds number The threshold that the idle time passed.
@@ -807,6 +820,10 @@ function wm.workspace(name, spec) end
 ---@overload fun(event: "idle", filter: { seconds: number }, handler: fun(e: wm.IdleEvent))
 ---@overload fun(event: "resume", handler: fun(e: wm.ResumeEvent))
 ---@overload fun(event: "resume", filter: wm.EventFilter, handler: fun(e: wm.ResumeEvent))
+---@overload fun(event: "session_open", handler: fun(e: wm.SessionOpenEvent))
+---@overload fun(event: "session_open", filter: wm.EventFilter, handler: fun(e: wm.SessionOpenEvent))
+---@overload fun(event: "session_done", handler: fun(e: wm.SessionDoneEvent))
+---@overload fun(event: "session_done", filter: wm.EventFilter, handler: fun(e: wm.SessionDoneEvent))
 ---@overload fun(event: "workspace_changed", handler: fun(e: wm.WorkspaceChangedEvent))
 ---@overload fun(event: "workspace_changed", filter: wm.EventFilter, handler: fun(e: wm.WorkspaceChangedEvent))
 ---@overload fun(event: "special_changed", handler: fun(e: wm.SpecialChangedEvent))

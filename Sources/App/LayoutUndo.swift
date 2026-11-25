@@ -13,9 +13,9 @@ extension WindowManager {
             maximized: space.maximized, fullscreen: space.fullscreen)
     }
 
-    /// Nothing while a restart is restored: the layouts hold places for windows that have not opened yet.
+    /// Nothing while windows are restored: the layouts hold places for windows that have not opened yet.
     private func layoutSteps() -> [String: LayoutStep] {
-        isRestoringAfterReboot ? [:] : workspaces.mapValues { layoutStep(of: $0) }
+        isRestoring ? [:] : workspaces.mapValues { layoutStep(of: $0) }
     }
 
     func beginLayoutChange() {
@@ -40,7 +40,7 @@ extension WindowManager {
     }
 
     func walkLayoutHistory(_ direction: HistoryDirection, workspace name: String?) -> ServerAnswer {
-        guard !isRestoringAfterReboot else { return fail("wm is still restoring the windows after the restart") }
+        guard !isRestoring else { return fail("wm is still restoring windows", 1, hint: "try again in a moment") }
         guard let space = name.map({ workspaces[$0] }) ?? focusedWorkspace else {
             return fail(name.map { "there is no workspace '\($0)'" } ?? "there is no workspace", 1, hint: "see `wm list workspaces`")
         }

@@ -95,6 +95,7 @@ private let groupSummaries: [String: String] = [
     "menubar": "Set or reset the text of the menu bar icon.",
     "key": "Send a key to an app, or type one.",
     "memory": "Manage what `window remember` keeps.",
+    "session": "Save the windows and layouts under a name, and open them again.",
     "daemon": "Start, stop, check or reload the wm daemon.",
     "config": "Check the config without applying it.",
 ]

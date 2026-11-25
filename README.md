@@ -114,6 +114,8 @@ wm has no default key bindings. Until you bind keys in `init.lua`, it only react
 - **Window memory:** `window remember` gives the next window of an app the same workspace, monitor, size and place.
   Floating windows also remember where they closed. `wm memory list`, `forget` and `clear` manage the entries from the command line.
   See [Features](https://wm.garcez.dev/docs/features).
+- **Sessions:** `session save dev` keeps your windows and layouts under a name. `session open dev` puts them back and starts the
+  apps that are missing. See [Features](https://wm.garcez.dev/docs/features#sessions).
 
 ### Finding and switching windows
 

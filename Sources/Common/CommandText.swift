@@ -1,7 +1,7 @@
 import Foundation
 
 /// Commands that act outside wm (a shell, the keyboard of another app) or hold the connection open. A `wm://` URL may not run them unless the config lists them in `url.allow`: any app or web page can open a URL.
-public let urlBlockedCommands: Set<String> = ["exec", "daemon", "subscribe", "key"]
+public let urlBlockedCommands: Set<String> = ["exec", "daemon", "subscribe", "key", "session"]
 
 /// The first command of a URL request that the URL may not run, or `nil`. `batch` runs other commands, so each of its commands
 /// counts too: `wm://batch?args=exec ...` must not get around the list.

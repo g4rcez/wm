@@ -238,6 +238,35 @@ It does not touch a window that `window remember` knows, a window whose rule giv
 | --- | --- | --- |
 | `floating.remember_position` | `true` | floating windows keep their place |
 
+## Sessions
+
+A session is the windows and layouts of one task, saved under a name. Save it once, and one command brings it back.
+
+```lua
+wm.bind("alt-space>s", "session save dev")
+wm.bind("alt-space>o", "session open dev")
+```
+
+```sh
+wm session save dev
+wm session open dev [--no-launch]
+wm session list [--json]
+wm session delete dev
+```
+
+- **Saved:** for every window its app, title, workspace, floating state and place, marks and sticky state; the layout of each of
+  those workspaces; and which workspace each monitor shows. Not saved: zen, pseudotiled sizes, and windows that are
+  minimized, in native fullscreen or swallowed.
+- **Open windows** take the saved places first: same app and same title, else same app in saved order. Windows that are not in the
+  session stay where they are, after the saved ones on a shared workspace.
+- **Apps with no window** are started, unless you pass `--no-launch`. Their windows are placed as they open, with no rules and no
+  `window_open`, for 60 seconds. wm keeps their room in the layout meanwhile. An app that already has a window is not asked to open
+  more, and wm cannot reopen a document or a tab: that is up to the app.
+- **Events:** `session_open` (`name`, `matched`, `waiting`) and, when every window is placed or the 60 seconds end, `session_done`
+  (`name`, `missing`: the bundle ids still without a window).
+- A session saved with other `workspaces` mode (emulated or native) does not open. The files are in
+  `~/.local/state/wm/sessions/` (`$XDG_STATE_HOME/wm/sessions/`).
+
 ## Swallowing
 
 A program that you start in a terminal (`mpv movie.mkv`) takes the tile of the terminal window. The terminal comes back in the same place when the program's window closes. It is off until you turn it on.
@@ -298,7 +327,8 @@ wm subscribe workspace_changed window_focus window_open window_close | while rea
 
 `wm subscribe --snapshot` adds a first `snapshot` line with the state. For a bar that polls, read once: `wm list workspaces --json`.
 
-Events to follow: `workspace_changed` (`workspace`, `previous`, `monitor`), `window_open`, `window_close`, `window_moved`, `window_focus` (`id`, `app`, `title`), `window_title`, `mode_changed` (`mode`), `special_changed`, `layout_changed` (`workspace`, `layout`), `displays_changed` (`count`, `monitors`), `window_urgent` (`id`, `app`, `badge`), `window_swallow`, `window_unswallow` and `config_reloaded`.
+Events to follow: `workspace_changed` (`workspace`, `previous`, `monitor`), `window_open`, `window_close`, `window_moved`, `window_focus` (`id`, `app`, `title`), `window_title`, `mode_changed` (`mode`), `special_changed`, `layout_changed` (`workspace`, `layout`), `displays_changed` (`count`, `monitors`), `window_urgent` (`id`, `app`, `badge`), `window_swallow`, `window_unswallow`, `session_open` (`name`, `matched`, `waiting`),
+`session_done` (`name`, `missing`) and `config_reloaded`.
 
 `displays_changed` also fires once when wm starts. The same events reach `wm.on` in your config. A Lua handler that takes more than 2 seconds is stopped. See [CLI](/docs/cli) for the socket protocol.
 
