@@ -9,6 +9,7 @@
 # It needs, once on this Mac (see "Releases and signing" in the development docs):
 #   - a "Developer ID Application" certificate in the keychain, of the team that scripts/signing-team-id names;
 #   - notarytool credentials in the keychain profile `wm-notary` (NOTARY_PROFILE picks another).
+# It waits up to 2 hours for Apple (NOTARY_TIMEOUT, such as 30m or 4h, picks another limit).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -85,15 +86,24 @@ if LC_ALL=C grep -qaF "$HOME/" "$app/Contents/MacOS/"*; then die "the binaries n
 
 # Apple checks the app and issues a ticket; stapling puts it in the bundle, so Gatekeeper accepts the app without the network.
 ditto -c -k --keepParent "$app" "$work/notarize.zip"
-echo "notarizing (this takes a few minutes)..."
-xcrun notarytool submit "$work/notarize.zip" --keychain-profile "$notary_profile" --wait --timeout 30m \
+# Usually a few minutes, but Apple can take much longer, above all for the first submissions of an account.
+notary_timeout="${NOTARY_TIMEOUT:-2h}"
+echo "notarizing (usually a few minutes; waiting up to $notary_timeout)..."
+xcrun notarytool submit "$work/notarize.zip" --keychain-profile "$notary_profile" --wait --timeout "$notary_timeout" \
     --output-format json > "$work/notary.json" || true
 status="$(plutil -extract status raw -o - "$work/notary.json" 2>/dev/null || true)"
 if [ "$status" != "Accepted" ]; then
     cat "$work/notary.json" >&2
     submission="$(plutil -extract id raw -o - "$work/notary.json" 2>/dev/null || true)"
+    # No verdict is not a rejection: the wait ran out, or the connection failed.
+    case "$status" in
+        "" | "In Progress")
+            die "no answer from Apple (waited up to $notary_timeout), nothing was published. Ask later with:
+  xcrun notarytool info ${submission:-<id>} --keychain-profile $notary_profile
+then run the release again" ;;
+    esac
     [ -z "$submission" ] || xcrun notarytool log "$submission" --keychain-profile "$notary_profile" >&2 || true
-    die "Apple did not accept the app (status: ${status:-unknown})"
+    die "Apple did not accept the app (status: $status)"
 fi
 xcrun stapler staple "$app"
 

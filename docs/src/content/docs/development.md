@@ -33,7 +33,8 @@ Releases are made on the Mac that holds the Developer ID certificate, not in CI.
 2. runs the tests and bumps `Version.swift`;
 3. builds a universal `wm.app` with `build-app.sh` and signs it with the Developer ID certificate, the hardened runtime and a
    secure timestamp, without the debug symbols (they name your folders);
-4. checks the signature, sends the app to Apple to be notarized and staples the ticket to it;
+4. checks the signature, sends the app to Apple to be notarized and staples the ticket to it. It waits up to 2 hours for
+   Apple (`NOTARY_TIMEOUT=4h` waits longer); without an answer, nothing is published;
 5. packs the app and runs `scripts/verify-release.sh` on the archive, before anything is published;
 6. commits, tags, pushes and creates the GitHub release with `wm-<version>-macos.tar.gz` (and its `.sha256`);
 7. downloads the asset again, and only when it is the verified file writes `Formula/wm.rb` of `g4rcez/homebrew-tap` from
