@@ -51,8 +51,10 @@ class Wm < Formula
 
       macOS asks for Accessibility at the first start. Releases are signed with one certificate, so upgrades keep the
       permissions. If you come from a build older than 0.5.0 (or a --HEAD build), clear its stale grants once:
+        wm daemon stop
         tccutil reset Accessibility local.wm
         tccutil reset ScreenCapture local.wm
+        wm daemon start
 
       start_at_login uses this path, which stays the same through upgrades:
         #{opt_prefix}/wm.app
