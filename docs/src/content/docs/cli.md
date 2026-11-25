@@ -18,12 +18,14 @@ WINDOWS          window close | float [on|off] | center | fullscreen | native-fu
                  window place <pattern> <n> | move-to <x> <y>
                  window minimize | swipe <left|right|up|down>
                  window mark <name> | unmark [name] | remember [--title] | forget [--title]
+                 window pip [on|off|toggle] [--corner=<corner>] [--all]
                  window send workspace <name> | monitor <monitor> | strip <horizontal|vertical>
 WORKSPACES       workspace <name|back|next|prev|empty> | workspace special [name]
                  workspace move monitor <monitor> | workspace float-all [off|pattern]
                  workspace all <layout>
                  workspaces balance [count]
 LAYOUT           layout set <scrolling|tiling|master|monocle|floating> | balance | rotate | flip | tile | preselect <dir>
+                 layout <undo|redo> [workspace]
                  layout split <toggle|swap|root|ratio> | column <width|match|expand|center|center-visible>
                  layout stack <join|leave|tabs|equalize|height> | column move <first|last|n>
                  layout master <promote|count|ratio|orientation>
@@ -32,6 +34,7 @@ INTERFACE        switcher | overview | palette | cheatsheet [tui|gui|cli] | menu
                  exec [options] <command> | batch <commands> | set <key> <value> | animations [on|off] [kind] [--json] | menubar set <text> | menubar reset | notify <text> | key send <chord> | key press <chord>
 INSPECT          doctor [--json] | pick [--json] | list [windows|workspaces|monitors|keyboards|memory|binds] | query [what] | subscribe [--snapshot] [event ...] | logs [-n count] [-f] [-o otel|json]
 MEMORY           memory list | forget <app> [--title=<text>] [--all] | clear
+SESSIONS         session save <name> | open <name> [--no-launch] | list [--json] | delete <name>
 DAEMON           daemon start | stop | status | reload | version
 EDITOR           lsp [--write] [--force]
 CONFIG           init [template] [--mod=<alt|cmd|ctrl|hyper>] [--lua] [--force]
@@ -121,5 +124,5 @@ open "wm://window/close?window=app:Safari"
 
 Any app or web page can open a `wm://` URL, so a URL may only run commands that act on wm itself.
 
-- `exec`, `key`, `daemon` and `subscribe` are blocked, also inside a `batch`. To allow one on purpose: `url = { allow = { "exec" } }`.
+- `exec`, `key`, `daemon`, `subscribe` and `session` are blocked, also inside a `batch`. To allow one on purpose: `url = { allow = { "exec" } }`.
 - `?window=` takes an id, `focused`, `app:`, `mark:` or `pid:`. It does not take `title:`: that selector is a regular expression that runs on the main thread. Use `wm --window title:<regex>` on the command line.

@@ -18,6 +18,8 @@ struct ManagedWindow {
     var sticky = false
     var stickyMonitor: UInt32?
     var borderColors: [Color]?
+    /// Set by a rule; `nil` follows `dim.enabled`.
+    var dim: Bool?
 }
 
 final class Workspace {
@@ -51,8 +53,13 @@ struct Monitor {
     var isMain = false
 }
 
-private struct RebootRestore {
+/// Saved windows that wait for their windows to open, after a reboot or a `session open`.
+private struct PendingWindows {
     var waiting: [Int: SavedWindow]
+    /// The session that is opening, or `nil` after a reboot.
+    var session: String?
+    /// Tells a timeout whether this is still the restore that it was started for.
+    var serial: Int
 }
 
 @MainActor
@@ -118,18 +125,26 @@ final class WindowManager {
     private var drift = FrameDrift()
     private let border = BorderOverlay()
     private let backdrop = SpecialBackdrop()
+    private let dimOverlay = DimOverlay()
+    private var dimSettle: DispatchWorkItem?
+    lazy var pip = PipController(manager: self)
+    /// Whether the window shows on a monitor now: not on a hidden workspace, parked, minimized or swallowed.
+    func isOnScreen(_ id: WindowID) -> Bool { lastVisible.contains(id) && !lastParked.contains(id) }
     private let tabIndicator = TabIndicatorOverlay()
     private var clock: DisplayClock?
     private var lastTick = CACurrentMediaTime()
     private var refreshing = false
     private var refreshAgain = false
-    private var lastVisible: Set<WindowID> = []
-    private var lastParked: Set<WindowID> = []
+    private(set) var lastVisible: Set<WindowID> = []
+    private(set) var lastParked: Set<WindowID> = []
     private var lastShownFrame: [WindowID: CGRect] = [:]
 
     private var pendingRestore: SavedState?
     private var adopted: Set<WindowID> = []
-    private var reboot: RebootRestore?
+    private var restoring: PendingWindows?
+    private var restoreSerial = 0
+    var isRestoring: Bool { restoring != nil }
+    var layoutHistory = LayoutHistory()
     private var rebootStarted = false
     private var spawnClaims = SpawnClaims<WindowRule>()
     private var swallowedAt: [WindowID: TimeInterval] = [:]
@@ -139,7 +154,7 @@ final class WindowManager {
     private var badgeTimer: Timer?
     private var badgeInterval: Double = 0
     private var dynamicTracker = DynamicRuleTracker()
-    private var dynamicSaved: [WindowID: (floating: Bool, floatFrame: CGRect?, border: [Color]?)] = [:]
+    private var dynamicSaved: [WindowID: (floating: Bool, floatFrame: CGRect?, border: [Color]?, dim: Bool?)] = [:]
     private var refocusAfterOpen: WindowID?
     private var saveTimer: Timer?
     private var lastSaved: Data?
@@ -149,6 +164,8 @@ final class WindowManager {
     var openingHold: [WindowID: TimeInterval] = [:]
     private static let openingHoldSeconds: TimeInterval = 1.5
     private var skippedWindows: Set<WindowID> = []
+    /// Since when a managed window that the scan does not list has been on no Space.
+    private var goneSince: [WindowID: TimeInterval] = [:]
 
     init() {
         pendingRestore = StateStore.load()
@@ -168,6 +185,7 @@ final class WindowManager {
     ) {
         let layoutChanged = new.layout != settings.layout
         let leavesNative = isNative && new.workspaceMode != .native
+        let previousKinds = workspaces.mapValues(\.kind)
         if leavesNative { gatherWindows() }
         settings = new
         if let saved = pendingRestore, saved.mode != new.workspaceMode.rawValue { pendingRestore = nil }
@@ -196,6 +214,8 @@ final class WindowManager {
             let target = workspace(name)
             if target.kind != kind { rebuild(target, as: kind) }
         }
+        // A layout that the config changed is not one to undo back to.
+        for (name, kind) in previousKinds where workspaces[name]?.kind != kind { layoutHistory.forget(name) }
         updateBackdrop()
         scheduleRefresh()
     }
@@ -331,6 +351,7 @@ final class WindowManager {
         var seen: Set<WindowID> = []
         for info in infos {
             seen.insert(info.id)
+            goneSince[info.id] = nil
             if var managed = windows[info.id] {
                 let titleChanged = info.title != managed.info.title
                 if titleChanged {
@@ -339,10 +360,11 @@ final class WindowManager {
                 managed.info = info
                 if isNative { nativeObserve(info.id) }
                 if info.isMinimized != managed.minimized { setMinimized(info.id, info.isMinimized) }
-                if info.isFullscreen != managed.nativeFullscreen { setNativeFullscreen(info.id, info.isFullscreen) }
+                let fullscreenChanged = info.isFullscreen != managed.nativeFullscreen
+                if fullscreenChanged { setNativeFullscreen(info.id, info.isFullscreen) }
                 windows[info.id]?.info = managed.info
                 let parked = info.frame.minX >= hiddenCorner().x - 1 && info.frame.minY >= hiddenCorner().y - 1
-                if managed.floating, !managed.isOutOfLayout, !parked, managed.workspaceVisible(self),
+                if managed.floating, !fullscreenChanged, !managed.isOutOfLayout, !parked, managed.workspaceVisible(self),
                    workspace(managed.workspace).fullscreen != info.id {
                     if let until = openingHold[info.id], ProcessInfo.processInfo.systemUptime < until {
                         if let chosen = managed.floatFrame, !sameFrame(info.frame, chosen) { applier.forget(info.id) }
@@ -360,11 +382,25 @@ final class WindowManager {
         skippedWindows.formIntersection(seen)
         let missing = windows.keys.filter { !seen.contains($0) }
         let system = missing.isEmpty ? [] : Self.systemWindowIDs()
-        for id in missing {
-            let forgotten = shouldForgetMissingWindow(
-                appUnreadable: windows[id].map { unread.contains($0.info.pid) } ?? false,
-                inSystemList: system.contains(id), place: WindowSpace.place(of: id))
-            if forgotten { forget(id) }
+        for id in missing { reconcileMissing(id, unread: unread, inSystemList: system.contains(id)) }
+    }
+
+    private func reconcileMissing(_ id: WindowID, unread: Set<pid_t>, inSystemList: Bool) {
+        let place = WindowSpace.place(of: id)
+        let now = ProcessInfo.processInfo.systemUptime
+        let started = place == .gone && goneSince[id] == nil
+        goneSince[id] = place == .gone ? goneSince[id] ?? now : nil
+        let forgotten = shouldForgetMissingWindow(
+            appUnreadable: windows[id].map { unread.contains($0.info.pid) } ?? false,
+            inSystemList: inSystemList, place: place, goneFor: goneSince[id].map { now - $0 } ?? 0)
+        if forgotten {
+            Log.write(.debug, "window closed: id=\(id) place=\(place) inSystemList=\(inSystemList)", source: "window")
+            forget(id)
+        } else if started {
+            // No event may follow a real close, so look again when the grace is over.
+            DispatchQueue.main.asyncAfter(deadline: .now() + spaceTransitionGrace + 0.05) { [weak self] in
+                MainActor.assumeIsolated { self?.scheduleRefresh() }
+            }
         }
     }
 
@@ -374,7 +410,7 @@ final class WindowManager {
     }
 
     private func detect(_ info: WindowInfo) {
-        guard info.kind != .ignored, !info.isFullscreen else {
+        guard info.kind != .ignored else {
             if didFirstScan, skippedWindows.insert(info.id).inserted {
                 let app = info.bundleID.isEmpty ? "(no bundle id)" : info.bundleID
                 Log.write(
@@ -384,8 +420,8 @@ final class WindowManager {
             }
             return
         }
-        if let saved = rebootMatch(for: info) {
-            adoptAfterReboot(info, as: saved)
+        if let saved = restoreMatch(for: info) {
+            adoptRestored(info, as: saved)
             return
         }
         if let saved = activeRestore?.windows.first(where: { $0.id == info.id && $0.bundleID == info.bundleID }) {
@@ -433,15 +469,18 @@ final class WindowManager {
         if didFirstScan, floating, let frame = placed, let area = monitor?.workArea, let fitted = fittedFrame(frame, in: area) {
             placed = fitted
         }
-        windows[info.id] = ManagedWindow(info: info, workspace: workspaceName, floating: floating, minimized: info.isMinimized, floatFrame: placed)
+        windows[info.id] = ManagedWindow(
+            info: info, workspace: workspaceName, floating: floating, minimized: info.isMinimized, nativeFullscreen: info.isFullscreen,
+            floatFrame: info.isFullscreen ? nil : placed)
         if isNative { placedSpace[info.id] = NativeSpaces.space(of: info.id) }
-        if didFirstScan, floating, !info.isMinimized, let placed, !sameFrame(placed, info.frame) { holdOpeningPlace(of: info.id) }
+        if didFirstScan, floating, !info.isMinimized, !info.isFullscreen, let placed, !sameFrame(placed, info.frame) { holdOpeningPlace(of: info.id) }
         let dynamic = dynamicRuleIndices(for: info)
         if !dynamic.isEmpty {
             _ = dynamicTracker.update(window: info.id, matching: dynamic, now: ProcessInfo.processInfo.systemUptime)
-            dynamicSaved[info.id] = (floating: info.kind == .floating || floatsByDefault, floatFrame: nil, border: nil)
+            dynamicSaved[info.id] = (floating: info.kind == .floating || floatsByDefault, floatFrame: nil, border: nil, dim: nil)
         }
         windows[info.id]?.borderColors = rule?.border
+        windows[info.id]?.dim = rule?.dim
         pendingOnEmpty.remove(workspaceName)
         if didFirstScan {
             let app = info.bundleID.isEmpty ? "(no bundle id)" : info.bundleID
@@ -454,7 +493,7 @@ final class WindowManager {
         if let layout = rule?.layout, target.engine.windows.isEmpty { target.kind = layout; target.engine = makeEngine(layout, settings: settings(forWorkspace: workspaceName)) }
         if let host {
             swallow(host, by: info.id, in: target)
-        } else if !floating, !info.isMinimized {
+        } else if !floating, !info.isMinimized, !info.isFullscreen {
             let anchor = target.history.first { windows[$0]?.workspace == workspaceName && !(windows[$0]?.floating ?? true) }
             let split = presplit(target, anchor: anchor, new: info.id)
             target.engine.insert(info.id, after: split)
@@ -467,9 +506,12 @@ final class WindowManager {
         if remembered == nil, rule?.focus == false, let previous = focused, previous != info.id { refocusAfterOpen = previous }
         animator.seed(info.id, at: info.frame)
         events.emit("window_open", ["id": .number(Double(info.id)), "app": .string(info.bundleID), "title": .string(info.title), "workspace": .string(workspaceName)])
+        if info.isFullscreen { setNativeFullscreen(info.id, true) }
         var commands = rule?.commands ?? []
         if remembered?.strip == .vertical, !floating, target.kind == .scrolling { commands.append("window send strip vertical") }
-        for command in commands { runRuleCommand?(command.split(separator: " ").map(String.init), info.id) }
+        withoutLayoutHistory {
+            for command in commands { runRuleCommand?(command.split(separator: " ").map(String.init), info.id) }
+        }
         if let remembered {
             if remembered.sticky == true, floating {
                 windows[info.id]?.sticky = true
@@ -582,49 +624,68 @@ final class WindowManager {
             space.fullscreen = savedSpace.fullscreen.flatMap { mapping[$0] }
             if let kind = workspaceLayouts[name], saved.configLayouts[name] != kind, kind != space.kind { rebuild(space, as: kind) }
         }
-        reboot = RebootRestore(waiting: Dictionary(uniqueKeysWithValues: saved.windows.enumerated().map { ($0.offset, $0.element) }))
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: UInt64(Self.rebootPatience * 1_000_000_000))
-            finishRebootRestore()
-        }
+        waitFor(saved.windows, session: nil, patience: Self.rebootPatience)
     }
 
     private static let rebootPatience: TimeInterval = 120
+    private static let sessionPatience: TimeInterval = 60
 
-    private func rebootMatch(for info: WindowInfo) -> SavedWindow? {
-        guard let waiting = reboot?.waiting else { return nil }
+    /// The windows of a session that are not open yet. Their layouts must hold a placeholder for each of them.
+    func beginSessionRestore(_ name: String, waiting: [SavedWindow]) {
+        waitFor(waiting, session: name, patience: Self.sessionPatience)
+        if waiting.isEmpty { finishRestoring() }
+    }
+
+    private func waitFor(_ saved: [SavedWindow], session: String?, patience: TimeInterval) {
+        restoreSerial += 1
+        let serial = restoreSerial
+        restoring = PendingWindows(
+            waiting: Dictionary(uniqueKeysWithValues: saved.enumerated().map { ($0.offset, $0.element) }), session: session, serial: serial)
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(patience * 1_000_000_000))
+            if restoring?.serial == serial { finishRestoring() }
+        }
+    }
+
+    private func restoreMatch(for info: WindowInfo) -> SavedWindow? {
+        guard let waiting = restoring?.waiting else { return nil }
         let candidates = waiting.map {
             RestoreCandidate(key: $0.key, bundleID: $0.value.bundleID, title: $0.value.title ?? "", order: $0.value.order ?? $0.key)
         }
         guard let best = bestRestoreMatch(bundleID: info.bundleID, title: info.title, among: candidates) else { return nil }
         let saved = waiting[best.key]
-        reboot?.waiting[best.key] = nil
+        restoring?.waiting[best.key] = nil
         return saved
     }
 
-    private func adoptAfterReboot(_ info: WindowInfo, as saved: SavedWindow) {
+    private func adoptRestored(_ info: WindowInfo, as saved: SavedWindow) {
         let placeholder = Placeholder.id(for: saved.id)
         windows[info.id] = ManagedWindow(
             info: info, workspace: saved.workspace, floating: saved.floating, minimized: info.isMinimized,
-            floatFrame: saved.floatFrame ?? (saved.floating ? info.frame : nil), sticky: saved.sticky == true, stickyMonitor: saved.stickyMonitor)
+            nativeFullscreen: info.isFullscreen,
+            floatFrame: saved.floatFrame ?? (saved.floating && !info.isFullscreen ? info.frame : nil), sticky: saved.sticky == true, stickyMonitor: saved.stickyMonitor)
         for name in saved.marks ?? [] { marks[name] = info.id }
         let space = workspace(saved.workspace)
         space.engine.relabel([placeholder: info.id])
         space.history = space.history.map { $0 == placeholder ? info.id : $0 }
         if space.maximized.remove(placeholder) != nil { space.maximized.insert(info.id) }
         if space.fullscreen == placeholder { space.fullscreen = info.id }
-        if saved.floating || info.isMinimized {
+        if saved.floating || info.isMinimized || info.isFullscreen {
             space.engine.remove(info.id)
         } else if !space.engine.windows.contains(info.id) {
             space.engine.insert(info.id, after: space.history.first { $0 != info.id && windows[$0] != nil })
         }
         animator.seed(info.id, at: info.frame)
-        if reboot?.waiting.isEmpty == true { finishRebootRestore() }
+        if restoring?.waiting.isEmpty == true { finishRestoring() }
     }
 
-    private func finishRebootRestore() {
-        guard reboot != nil else { return }
-        reboot = nil
+    private func finishRestoring() {
+        guard let finished = restoring else { return }
+        restoring = nil
+        if let session = finished.session {
+            let missing = Set(finished.waiting.values.map(\.bundleID)).sorted()
+            events.emit("session_done", ["name": .string(session), "missing": .string(missing.joined(separator: " "))])
+        }
         for space in workspaces.values {
             for id in space.engine.windows where Placeholder.isPlaceholder(id) { space.engine.remove(id) }
             space.history.removeAll { Placeholder.isPlaceholder($0) }
@@ -638,7 +699,8 @@ final class WindowManager {
     private func adopt(_ info: WindowInfo, as saved: SavedWindow) {
         windows[info.id] = ManagedWindow(
             info: info, workspace: saved.workspace, floating: saved.floating, minimized: info.isMinimized,
-            floatFrame: saved.floatFrame ?? (saved.floating ? info.frame : nil), sticky: saved.sticky == true, stickyMonitor: saved.stickyMonitor)
+            nativeFullscreen: info.isFullscreen,
+            floatFrame: saved.floatFrame ?? (saved.floating && !info.isFullscreen ? info.frame : nil), sticky: saved.sticky == true, stickyMonitor: saved.stickyMonitor)
         for name in saved.marks ?? [] { marks[name] = info.id }
         _ = workspace(saved.workspace)
         adopted.insert(info.id)
@@ -691,7 +753,7 @@ final class WindowManager {
     func saveState() {
         saveTimer?.invalidate()
         saveTimer = nil
-        guard pendingRestore == nil, reboot == nil, !windows.isEmpty else { return }
+        guard pendingRestore == nil, restoring == nil, !windows.isEmpty else { return }
         do {
             let data = try StateStore.encode(snapshot())
             guard data != lastSaved else { return }
@@ -968,8 +1030,9 @@ final class WindowManager {
 
     private func applyDynamic(_ rule: WindowRule, to id: WindowID) {
         guard let managed = windows[id] else { return }
-        if dynamicSaved[id] == nil { dynamicSaved[id] = (floating: managed.floating, floatFrame: managed.floatFrame, border: managed.borderColors) }
+        if dynamicSaved[id] == nil { dynamicSaved[id] = (floating: managed.floating, floatFrame: managed.floatFrame, border: managed.borderColors, dim: managed.dim) }
         windows[id]?.borderColors = rule.border ?? dynamicSaved[id]?.border
+        windows[id]?.dim = rule.dim ?? dynamicSaved[id]?.dim
         Log.write(.debug, "dynamic rule applied: id=\(id) title=\(managed.info.title.debugDescription) rule=\(Self.describe(rule))", source: "window")
         let destination = rule.workspace ?? rule.monitor.flatMap(monitor(matching:)).map(activeWorkspace(of:))
         if let destination, destination != managed.workspace {
@@ -992,6 +1055,7 @@ final class WindowManager {
         if managed.floating != saved.floating { setFloating(id, saved.floating) }
         if saved.floating, let frame = saved.floatFrame { setFloatFrame(id, frame) }
         windows[id]?.borderColors = saved.border
+        windows[id]?.dim = saved.dim
         relayout()
     }
 
@@ -1027,6 +1091,7 @@ final class WindowManager {
         let wasFocused = focused == id
         let returning = giveBackTerminal(of: id, managed)
         swallowedAt[id] = nil
+        goneSince[id] = nil
         dynamicTracker.forget(id)
         dynamicSaved[id] = nil
         openingHold[id] = nil
@@ -1682,6 +1747,7 @@ final class WindowManager {
         applier.send(animator.frames, windows: windows)
         startClockIfNeeded()
         updateBorder()
+        updateDim()
         updateTabIndicator()
         publishStatus()
         onWorkspacesShown?(Dictionary(uniqueKeysWithValues: monitors.map { ($0.id, (workspace: $0.workspace, special: specials[$0.id])) }))
@@ -1777,6 +1843,7 @@ final class WindowManager {
         lastTick = now
         applier.send(changed.filter { windows[$0.key] != nil }, windows: windows)
         updateBorder()
+        updateDim(reorder: false)
         updateTabIndicator()
         if animator.isSettled {
             clock?.stop()
@@ -1801,6 +1868,26 @@ final class WindowManager {
             return
         }
         tabIndicator.show(on: frame, count: count, selected: index, settings.tabIndicator)
+    }
+
+    /// `reorder` is false for the frames of an animation: the layers only move. After a change they are ordered again
+    /// a moment later, when the windows that were raised are in place.
+    func updateDim(reorder: Bool = true) {
+        dimOverlay.show(dimTargets(actual: false), reorder: reorder)
+        if reorder { settleDim() }
+    }
+
+    private func settleDim() {
+        dimSettle?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                guard self.animator.isSettled else { return self.settleDim() }
+                self.dimOverlay.show(self.dimTargets(actual: true), reorder: true)
+            }
+        }
+        dimSettle = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
     }
 
     func updateBorder() {
@@ -1966,6 +2053,8 @@ final class WindowManager {
     }
 
     private func applyMouseResize(_ frames: [WindowID: CGRect], _ baseline: [WindowID: CGRect]) {
+        beginLayoutChange()
+        defer { endLayoutChange() }
         let tolerance: CGFloat = 3
         var changed = false
         for (id, after) in frames {

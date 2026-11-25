@@ -6,6 +6,11 @@ import Scripting
 
 extension WindowManager {
     func execute(_ args: [String], target: WindowID? = nil) -> ServerAnswer {
+        guard Self.layoutCommandNames.contains(args.first ?? "") else { return dispatch(args, target: target) }
+        return recordingLayout { dispatch(args, target: target) }
+    }
+
+    private func dispatch(_ args: [String], target: WindowID?) -> ServerAnswer {
         guard let command = args.first else { return fail("missing command", 2, hint: "run `wm help` to see the commands") }
         let rest = Array(args.dropFirst())
         let flags = Set(rest.filter { $0.hasPrefix("--") })
@@ -49,6 +54,7 @@ extension WindowManager {
         case "layout": return layoutGroup(words, flags, id)
         case "list", "query": return listCommand(words, flags, target: target)
         case "memory": return memoryCommand(words, flags)
+        case "session": return sessionCommand(words, flags)
         case "menubar":
             if let bad = unknownOption(flags, allowed: [], usage: "menubar") { return bad }
             switch words.first {
@@ -358,6 +364,7 @@ extension WindowManager {
     private func windowCommand(_ words: [String], _ flags: Set<String>, _ id: WindowID?) -> ServerAnswer {
         guard let sub = words.first else { return fail("window needs a command", 2, usage: "window") }
         if sub == "send" { return sendCommand(Array(words.dropFirst()), flags, id) }
+        if sub == "pip" { return pip.command(Array(words.dropFirst()), flags, id) }
         if let bad = unknownOption(flags, allowed: sub == "remember" || sub == "forget" ? ["--title"] : [], usage: "window " + sub) { return bad }
         guard let id, let managed = windows[id] else {
             guard id != nil else { return fail("there is no focused window") }
@@ -710,6 +717,9 @@ extension WindowManager {
         let value = words.dropFirst().first
         switch sub {
         case "set": return setLayout(value)
+        case "undo", "redo":
+            guard words.count <= 2 else { return fail("layout \(sub) takes one workspace", 2, usage: "layout \(sub)") }
+            return walkLayoutHistory(sub == "undo" ? .undo : .redo, workspace: value.map(resolveWorkspaceName))
         case "balance": return workspaceLayoutCommand(.balance, target: id, clearMaximized: true)
         case "master": return masterGroup(words, id)
         case "flip": return rotateLayout()

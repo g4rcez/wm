@@ -44,7 +44,7 @@ public func renderSkill() -> String {
         "",
         "- `wm batch 'workspace 2; layout set tiling'` runs commands in order and stops at the first error.",
         "- `wm subscribe --snapshot window_focus workspace_changed` prints one JSON event per line, for a script that reacts to wm. `wm help subscribe` lists the events.",
-        "- `open \"wm://workspace/2\"` runs a command as a URL; `exec`, `key`, `daemon` and `subscribe` are blocked there unless the config allows them.",
+        "- `open \"wm://workspace/2\"` runs a command as a URL; `exec`, `key`, `daemon`, `subscribe` and `session` are blocked there unless the config allows them.",
         "",
         "## Examples",
         "",

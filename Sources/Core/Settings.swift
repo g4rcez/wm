@@ -145,6 +145,16 @@ public struct BorderSettings: Sendable, Equatable {
     public init() {}
 }
 
+/// The layer over the windows that do not have the focus. Off until the config asks for it.
+public struct DimSettings: Sendable, Equatable {
+    public static let maxAmount = 0.9
+    public var enabled = false
+    /// How dark: 0 is not at all, `maxAmount` is nearly the color alone.
+    public var amount = 0.25
+    public var color = Color(red: 0, green: 0, blue: 0)
+    public init() {}
+}
+
 public struct SwallowSettings: Sendable, Equatable {
     public var enabled = false
     public var terminals: [String] = SwallowSettings.defaultTerminals
@@ -396,6 +406,8 @@ public struct Settings: Sendable, Equatable {
     public var gaps = Gaps(inner: 8, outer: 8)
     public var animations = AnimationSettings()
     public var border = BorderSettings()
+    public var dim = DimSettings()
+    public var pip = PipSettings()
     public var swallow = SwallowSettings()
     public var urgent = UrgentSettings()
     public var tabIndicator = TabIndicatorSettings()

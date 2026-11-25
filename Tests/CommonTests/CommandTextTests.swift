@@ -43,7 +43,7 @@ struct CommandTextTests {
     }
 
     @Test func dangerousCommandsAreBlockedForUrls() {
-        #expect(urlBlockedCommands == ["exec", "daemon", "subscribe", "key"])
+        #expect(urlBlockedCommands == ["exec", "daemon", "subscribe", "key", "session"])
     }
 
     @Test func aBatchCannotCarryABlockedCommandForUrls() {

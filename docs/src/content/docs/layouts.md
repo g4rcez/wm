@@ -112,7 +112,7 @@ One window at a time fills the workspace inside the gaps; the others wait out of
 | `workspace float-all [off\|<pattern>]` | Floats every window of the workspace in place. `off` tiles them. With a tile template (`2+1`, `2/3`, `corner-tl`, your own) they float into its cells. Minimized and macOS fullscreen windows are left alone. |
 | `window mark <name>`, `window unmark [name]` | Name a window (one window per name), or remove the name. `focus mark <name>` focuses it and `--window mark:<name>` acts on it. Marks last until the window closes. |
 
-`window maximize` keeps a scrolling window in its place in the strip and elsewhere fills the work area inside the outer gaps. `window fullscreen` fills the work area with no gaps and no border. `window native-fullscreen` enters or leaves macOS fullscreen; wm leaves that window out of the layout. A window sent to an empty workspace arrives maximized; otherwise it joins the layout and `balance` runs (`--tile` joins without either). `layout balance` works in every layout, needs no tiled window in focus, and ends maximize and fullscreen on the workspace, so the result is always visible. `move`, `swap`, `window snap` and `window place` on a tiled window do the same: they rearrange the layout and end maximize and fullscreen, so nothing stays hidden.
+`window maximize` keeps a scrolling window in its place in the strip and elsewhere fills the work area inside the outer gaps. `window fullscreen` fills the work area with no gaps and no border. `window native-fullscreen` enters or leaves macOS fullscreen; wm leaves that window out of the layout until it leaves fullscreen. Fullscreen that the app starts itself (the green button, a video player) works the same way: wm keeps managing the window, and it joins the layout again on its workspace. A window that is on no Space for up to 2 seconds, as during that animation, is not treated as closed. A window sent to an empty workspace arrives maximized; otherwise it joins the layout and `balance` runs (`--tile` joins without either). `layout balance` works in every layout, needs no tiled window in focus, and ends maximize and fullscreen on the workspace, so the result is always visible. `move`, `swap`, `window snap` and `window place` on a tiled window do the same: they rearrange the layout and end maximize and fullscreen, so nothing stays hidden.
 
 ## Templates and tile patterns
 
@@ -164,6 +164,25 @@ wm.config {
 | `area` | Optional. The part of the screen the cells fill. One cell `{ 0, 0, 1, 1 }` with a smaller `area` is a frame like `center` (tiling only). |
 
 `layout tile <name>` also takes a built-in name that your list leaves out. Shell completion lists only the built-in names.
+
+## Undo
+
+`layout undo` goes back to how the workspace was before its last change, and `layout redo` does the change again.
+
+```lua
+wm.bind("alt-z", "layout undo")
+wm.bind("alt-shift-z", "layout redo")
+```
+
+- **What counts.** A swap, a move, a resize, `balance`, a tile pattern, floating or tiling a window, maximize, fullscreen and
+  `layout set`, from a command, a key or the mouse. A `wm batch` and a drag count as one change. Scrolling a strip and moving the
+  focus do not count.
+- **Windows stay put.** Opening, closing or sending a window to another workspace is not a change, and undo never moves a window
+  between workspaces. A window that closed since is left out; a window that opened since stays.
+- **Limits.** wm keeps 50 steps for each workspace. They end when the daemon stops, and when a config reload changes the layout of
+  the workspace.
+
+`wm layout undo <workspace>` acts on another workspace.
 
 ## Special workspaces
 

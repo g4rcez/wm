@@ -202,6 +202,60 @@ wm.config { mouse = { move_modifier = "alt", resize_modifier = "alt" } }
 
 Both are off until you set them, because Option-click means something in Finder and in many editors.
 
+## Picture in picture
+
+`window pip` shows a small live copy of a window in a corner, on every workspace. Watch a build, a log or a call while you work
+somewhere else.
+
+```lua
+wm.bind("alt-space>p", "window pip", { description = "Picture in picture" })
+wm.bind("alt-space>shift-p", "window pip off --all")
+```
+
+`wm window pip [on|off|toggle] [--corner=<corner>]` acts on the focused window, or on `--window`. `off --all` closes every picture.
+
+| Mouse | Effect |
+| --- | --- |
+| click | focus the window |
+| drag | move the picture to the nearest corner, also on another monitor |
+| right click | close the picture |
+
+| Config key | Default | Meaning |
+| --- | --- | --- |
+| `pip.corner` | `"bottom-right"` | `top-left`, `top-right`, `bottom-left` or `bottom-right` |
+| `pip.size` | `0.25` | width of a picture, as a fraction of the work area (0.1 to 0.6) |
+| `pip.fps` | `30` | frames per second (5 to 60); a change applies to new pictures and resizes |
+| `pip.hide_when_visible` | `true` | hide a picture while its window is on screen |
+
+- It needs the Screen Recording permission. macOS shows its own sign that the screen is recorded while a picture is open.
+- Up to 4 pictures at once. Pictures in one corner stack. A picture closes with its window, and all end when wm stops.
+- wm hides the windows of other workspaces at the edge of the screen, and their pictures stay live. Some apps stop drawing a
+  window that cannot be seen; its picture then holds the last frame.
+- A minimized window has no picture to show.
+
+## Dim
+
+Darkens every window that does not have the focus, so the one you work in stands out. It is off until you turn it on.
+
+```lua
+wm.config { dim = { enabled = true, amount = 0.25 } }
+wm.workspace("media", { dim = false })              -- a workspace where nothing is dimmed
+wm.rule { app = "org.videolan.vlc", dim = false }   -- a window that stays bright
+```
+
+| Config key | Default | Meaning |
+| --- | --- | --- |
+| `dim.enabled` | `false` | turn dimming on |
+| `dim.amount` | `0.25` | how dark, 0 to 0.9 |
+| `dim.color` | `"#000000"` | the color laid over the windows (its alpha is not used) |
+
+`wm set dim.enabled true` turns it on until the next reload. It needs no new permission.
+
+- wm lays a click-through layer directly over each dimmed window. A window in front of it, floating or fullscreen, stays bright.
+- Not dimmed: the focused window, windows that wm does not manage, special workspaces, a workspace in zen, and the desktop.
+- The corners of the layer use `border.radius`. Screenshots of the whole screen and screen recordings show the dimming.
+- A window that an app raises on its own can stay bright for a moment.
+
 ## Run or raise
 
 One key: focus the app if it runs, start it if it does not.
@@ -225,7 +279,7 @@ wm.bind("alt-space>shift-r", "window forget", { description = "Forget this windo
 - **Kept:** workspace and monitor, floating or tiled, the place and size of a floating window, maximized, pseudotiled size, scrolling column width and strip, and the marks.
 - **Matching:** by the app (bundle id). `window remember --title` also keeps the exact title. A window with that title uses its entry. Any other window of the app uses the entry without a title. Remembering again replaces the entry.
 - **When it applies:** only to windows that open while wm runs. It wins over `wm.rule` for the same window.
-- **Managed windows only:** standard windows and dialogs, not native fullscreen. `wm logs` has a `window skipped` line for each new window that wm left alone.
+- **Managed windows only:** standard windows and dialogs, not one that is in native fullscreen. `wm logs` has a `window skipped` line for each new window that wm left alone.
 - The entries are in `~/.local/state/wm/memory.json` (`$XDG_STATE_HOME/wm/memory.json`). `wm list memory` (`--json`) shows them. `wm.query("memory")` returns them to the config.
 
 **Manage the entries.** `wm memory list`, `wm memory forget <app> [--title=<text>|--all]` and `wm memory clear` (see `wm help memory`). They need the daemon, which owns the file: editing `memory.json` by hand while wm runs is overwritten. Windows that are open stay where they are.
@@ -237,6 +291,35 @@ It does not touch a window that `window remember` knows, a window whose rule giv
 | Config key | Default | Meaning |
 | --- | --- | --- |
 | `floating.remember_position` | `true` | floating windows keep their place |
+
+## Sessions
+
+A session is the windows and layouts of one task, saved under a name. Save it once, and one command brings it back.
+
+```lua
+wm.bind("alt-space>s", "session save dev")
+wm.bind("alt-space>o", "session open dev")
+```
+
+```sh
+wm session save dev
+wm session open dev [--no-launch]
+wm session list [--json]
+wm session delete dev
+```
+
+- **Saved:** for every window its app, title, workspace, floating state and place, marks and sticky state; the layout of each of
+  those workspaces; and which workspace each monitor shows. Not saved: zen, pseudotiled sizes, and windows that are
+  minimized, in native fullscreen or swallowed.
+- **Open windows** take the saved places first: same app and same title, else same app in saved order. Windows that are not in the
+  session stay where they are, after the saved ones on a shared workspace.
+- **Apps with no window** are started, unless you pass `--no-launch`. Their windows are placed as they open, with no rules and no
+  `window_open`, for 60 seconds. wm keeps their room in the layout meanwhile. An app that already has a window is not asked to open
+  more, and wm cannot reopen a document or a tab: that is up to the app.
+- **Events:** `session_open` (`name`, `matched`, `waiting`) and, when every window is placed or the 60 seconds end, `session_done`
+  (`name`, `missing`: the bundle ids still without a window).
+- A session saved with other `workspaces` mode (emulated or native) does not open. The files are in
+  `~/.local/state/wm/sessions/` (`$XDG_STATE_HOME/wm/sessions/`).
 
 ## Swallowing
 
@@ -298,7 +381,8 @@ wm subscribe workspace_changed window_focus window_open window_close | while rea
 
 `wm subscribe --snapshot` adds a first `snapshot` line with the state. For a bar that polls, read once: `wm list workspaces --json`.
 
-Events to follow: `workspace_changed` (`workspace`, `previous`, `monitor`), `window_open`, `window_close`, `window_moved`, `window_focus` (`id`, `app`, `title`), `window_title`, `mode_changed` (`mode`), `special_changed`, `layout_changed` (`workspace`, `layout`), `displays_changed` (`count`, `monitors`), `window_urgent` (`id`, `app`, `badge`), `window_swallow`, `window_unswallow` and `config_reloaded`.
+Events to follow: `workspace_changed` (`workspace`, `previous`, `monitor`), `window_open`, `window_close`, `window_moved`, `window_focus` (`id`, `app`, `title`), `window_title`, `mode_changed` (`mode`), `special_changed`, `layout_changed` (`workspace`, `layout`), `displays_changed` (`count`, `monitors`), `window_urgent` (`id`, `app`, `badge`), `window_swallow`, `window_unswallow`, `session_open` (`name`, `matched`, `waiting`),
+`session_done` (`name`, `missing`) and `config_reloaded`.
 
 `displays_changed` also fires once when wm starts. The same events reach `wm.on` in your config. A Lua handler that takes more than 2 seconds is stopped. See [CLI](/docs/cli) for the socket protocol.
 

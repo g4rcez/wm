@@ -21,6 +21,8 @@ wm reads `init.lua` and `shortcuts.toml` from `~/.config/wm/`. The Lua functions
 | `gaps` | `{ inner = 8, outer = 8, smart = false }` | `outer` can be `{ top=, right=, bottom=, left= }`. `smart`: no gaps around a lone tiled window. |
 | `animations` | `{ enabled = true, fps = 120, rate = 16 }` | Every animation of wm, with a master switch. `fps`: 30 to 240, capped by the display. `rate`: spring stiffness. Sub-tables `windows`, `workspaces`, `special`, `overlays` (see Animations below). |
 | `border` | `{ enabled = true, width = 2, radius = 10, active = "#89b4fa", inactive = "#00000000" }` | `active` can be `{ "#89b4fa", "#cba6f7" }` for a gradient (`angle = 45`). |
+| `dim` | `{ enabled = false, amount = 0.25, color = "#000000" }` | Darkens the windows without the focus. See [Features](/docs/features#dim). |
+| `pip` | `{ corner = "bottom-right", size = 0.25, fps = 30, hide_when_visible = true }` | The live pictures of `window pip`. See [Features](/docs/features#picture-in-picture). |
 | `focus_follows_mouse` | `false` | Or `{ enabled = true, only_fully_visible = true }`. |
 | `workspaces` | none | The mode, the limit, or both. `"emulated"` (the mode, default) hides the windows of other workspaces at a screen corner; `"native"` makes each workspace a macOS desktop (see [Native workspaces](#native-workspaces)). A number is the most workspaces there can be: `workspace 7` with `workspaces = 6` is an error, and `wm workspaces balance` spreads the windows over that many. A table has both: `{ mode = "native", max = 6 }`. Names that are not numbers are free. |
 | `mouse_follows_focus` | `false` | Moves the cursor to the center of a window that a command focuses. Switching workspaces never moves it. |
@@ -252,6 +254,7 @@ wm.config { trackpad = { title_bar = true, title_bar_height = 40, pinch = true }
 | `run` | A command or a list of commands to run after the other actions. |
 | `stop = false` | Let later rules add to this one. By default the first match is the last. |
 | `border` | The focus border color of the window: `"#f38ba8"`, or `{ "#f38ba8", "#fab387" }`. Needs `border.enabled`. |
+| `dim` | `false` keeps the window bright (a video player); `true` dims it even when `dim.enabled` is off. |
 | `dynamic = true` | Check the rule again when the title of the window changes. |
 | `name` | A label for `wm logs` and `wm.floating.disable`. It matches nothing. |
 
@@ -262,7 +265,7 @@ wm.rule { app = "com.apple.Notes", subrole = "AXDialog", float = true }
 wm.rule { app = "org.mozilla.firefox", title = "^Picture-in-Picture$", float = true, dynamic = true }
 ```
 
-- With `dynamic = true`, a window that starts to match gets `float`, `size`, `center`, `workspace`, `monitor` and `border`; `run`, `layout`, `width`, `maximize` and `focus` apply only when it opens. A window that changes more than 4 times in a second is left alone for that second.
+- With `dynamic = true`, a window that starts to match gets `float`, `size`, `center`, `workspace`, `monitor`, `border` and `dim`; `run`, `layout`, `width`, `maximize` and `focus` apply only when it opens. A window that changes more than 4 times in a second is left alone for that second.
 - `wm.exec(cmd, options)` and `wm exec` give the window that a command opens the same actions as a rule, once (`timeout` in seconds, 15 by default). See the [Lua API](/docs/lua-api) and [CLI](/docs/cli).
 
 wm adds default rules after yours: browser popups and picture-in-picture, Finder, Preview, Calculator, Activity Monitor, Archive Utility, QuickTime Player, System Settings and the Raycast settings start floating and centered. `wm.floating.disable("finder", "preview")` tiles those again (names such as `finder`, `preview`, `calculator`, `system-settings`), `wm.floating.enabled = false` removes them all, and a rule of yours wins.
@@ -288,7 +291,7 @@ wm adds default rules after yours: browser popups and picture-in-picture, Finder
 | `layout` | `scrolling`, `tiling`, `master`, `monocle` or `floating`. |
 | `monitor` | Bind the workspace to a monitor (a role, a number or part of its name). |
 | `default` | With `monitor`: the monitor starts with this workspace. |
-| `gaps`, `border` | Settings for this workspace only. `border = false` turns the border off. |
+| `gaps`, `border`, `dim` | Settings for this workspace only. `border = false` turns the border off; `dim` turns dimming on or off. |
 | `on_empty` | A command that runs when the workspace is shown with no window: `"ghostty"`, or `{ cmd = "open -a Notes", app = "Notes", float = true }`. |
 | `space` | With `workspaces = "native"`: the number of the desktop that this workspace is (1 is the first desktop of the leftmost display). Ignored with emulated workspaces. |
 | `persistent` | The workspace exists with no window: the menu bar lists it, and `workspace next` and `workspace prev` stop there. |

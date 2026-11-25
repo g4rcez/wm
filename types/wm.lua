@@ -38,6 +38,7 @@
 ---| "workspaces balance" | "workspaces balance 2" | "workspaces balance 3" | "workspaces balance 4" | "workspaces balance 5" | "workspaces balance 6"
 ---| "workspace move monitor left" | "workspace move monitor right" | "workspace move monitor up" | "workspace move monitor down" | "workspace move monitor next" | "workspace move monitor prev" | "workspace move monitor last"
 ---| "window close" | "window float" | "window float on" | "window float off" | "window center" | "window fullscreen" | "window maximize" | "window native-fullscreen"
+---| "window pip" | "window pip on" | "window pip off" | "window pip off --all" | "window pip --corner=top-right"
 ---| "window sticky" | "zen" | "zen on" | "zen off"
 ---| "window place 2 1" | "window place 2 2" | "window place 2+1 1" | "window place 2+1 2" | "window place 2+1 3" | "window move-to 0 0" | "window move-to 50% 50%"
 ---| "window snap left" | "window snap right" | "window snap top" | "window snap bottom" | "window snap center"
@@ -52,7 +53,8 @@
 ---| "layout master promote" | "layout master count +1" | "layout master count -1" | "layout master ratio +0.05" | "layout master ratio -0.05"
 ---| "layout master orientation" | "layout master orientation left" | "layout master orientation right" | "layout master orientation top"
 ---| "layout master orientation bottom" | "layout master orientation center"
----| "layout balance" | "layout flip" | "layout rotate cw" | "layout rotate ccw"
+---| "session list" | "session save dev" | "session open dev" | "session open dev --no-launch" | "session delete dev"
+---| "layout balance" | "layout flip" | "layout rotate cw" | "layout rotate ccw" | "layout undo" | "layout redo"
 ---| "layout split toggle" | "layout split swap"
 ---| "layout column width cycle" | "layout column match" | "layout column center" | "layout column center-visible"
 ---| "layout column move first" | "layout column move last" | "layout column expand"
@@ -136,6 +138,11 @@
 ---@field special? wm.WorkspaceAnimation Windows that a special workspace toggle shows.
 ---@field fps? number Frames per second, 30 to 240; the display caps it (a 60 Hz screen ticks at 60). Default 120.
 ---@field rate? number Spring stiffness, >= 0.1; higher is faster. A long move ends in about 10 / rate seconds. Default 16.
+
+---@class (exact) wm.Dim
+---@field enabled? boolean Darken the windows that do not have the focus. Default false.
+---@field amount? number How dark, 0 to 0.9. Default 0.25.
+---@field color? wm.Color The color laid over them; its alpha is not used. Default "#000000".
 
 ---@class (exact) wm.Border
 ---@field enabled? boolean Default false.
@@ -247,6 +254,12 @@
 ---@field count? integer How many windows are masters. Default 1.
 ---@field orientation? "left"|"right"|"top"|"bottom"|"center" Where the master area is. `center`: in the middle, with the stack on both sides. Default "left".
 ---@field new_window? "stack"|"master" Where a new window goes: the top of the stack (default) or the master.
+
+---@class (exact) wm.PipConfig
+---@field corner? "top-left"|"top-right"|"bottom-left"|"bottom-right" Where a picture of `window pip` shows. Default "bottom-right".
+---@field size? number Width of a picture as a fraction of the work area, 0.1 to 0.6. Default 0.25.
+---@field fps? integer Frames per second, 5 to 60. Default 30.
+---@field hide_when_visible? boolean Hide a picture while its window is on screen. Default true.
 
 ---@class (exact) wm.ZenConfig
 ---@field width? number Width of the window in the zen mode (`wm zen`), as a fraction of the work area: 0.3 to 1. Default 0.7.
@@ -402,6 +415,7 @@
 ---@field gaps? wm.Gaps
 ---@field animations? wm.Animations
 ---@field border? wm.Border
+---@field dim? wm.Dim Darken the windows without the focus. Off by default.
 ---@field focus_follows_mouse? boolean|wm.FocusFollowsMouse Default false. A table can limit it to windows that are fully on screen.
 ---@field mouse_follows_focus? boolean Moves the cursor to the center of a window that a command focuses. Switching workspaces never moves it. Default false.
 ---@field start_at_login? boolean Only when running as wm.app. Default false.
@@ -416,6 +430,7 @@
 ---@field prefix? wm.PrefixConfig Key sequences such as `ctrl-p>h`.
 ---@field menubar? wm.MenuBarConfig What the menu bar icon shows: the workspaces with windows, as `T:1 2 5` (the one in focus on a background).
 ---@field binds? wm.BindsConfig
+---@field pip? wm.PipConfig The live pictures of `window pip`.
 ---@field zen? wm.ZenConfig The zen mode: the focused window alone, centered.
 ---@field floating? wm.FloatingConfig Floating windows: whether they open where the last one closed.
 ---@field keyboards? wm.KeyboardsConfig Which keyboards wm manages: `{ default = true, ["Keyboard name"] = false, ["046d:c52b"] = true }`. See `wm query keyboards`.
@@ -452,7 +467,8 @@
 ---@field run? wm.Command|wm.Command[] Commands that run after the other actions.
 ---@field stop? boolean `false` lets later rules add to this one. Default true.
 ---@field border? wm.Color|wm.Color[] The color of the focus border of the window: one color, or a list of two or more for a gradient (`border.angle` in `wm.config` sets the direction). Not the `border = false` of `wm.workspace`.
----@field dynamic? boolean Check the rule again when the title of the window changes: the window gets `float`, `size`, `center`, `workspace`, `monitor` and `border` when it starts to match, and floats or tiles as before when it stops. Default false.
+---@field dim? boolean `false` keeps the window bright; `true` dims it even when `dim.enabled` is off.
+---@field dynamic? boolean Check the rule again when the title of the window changes: the window gets `float`, `size`, `center`, `workspace`, `monitor`, `border` and `dim` when it starts to match, and floats or tiles as before when it stops. Default false.
 
 --- The actions of `wm.Rule` for the window that a command opens, plus how to find the window. `timeout` and `app` need at least one action.
 ---@class (exact) wm.ExecOptions
@@ -476,6 +492,7 @@
 ---@field default? boolean With `monitor`: the monitor starts with this workspace.
 ---@field gaps? wm.Gaps Gaps of this workspace only.
 ---@field border? boolean `false` hides the focus border on this workspace.
+---@field dim? boolean Dim the windows without the focus on this workspace, or not. Default: `dim.enabled`.
 ---@field layout_options? wm.LayoutOptions Tiling and scrolling options of this workspace only.
 ---@field on_empty? string|wm.OnEmpty A command that runs when the workspace is shown with no window on it. The window that it opens goes to this workspace.
 ---@field wallpaper? string An image (an absolute path, or `~/...`) that the monitor shows while it shows this workspace. The other workspaces keep the picture that the monitor had. See the limits in the docs: it changes the desktop of the current Space only.
@@ -522,6 +539,8 @@
 ---| "window_urgent"
 ---| "idle"
 ---| "resume"
+---| "session_open"
+---| "session_done"
 ---| "workspace_changed"
 ---| "special_changed"
 ---| "monitor_changed"
@@ -535,6 +554,7 @@
 ---@field id? integer
 ---@field app? string
 ---@field title? string
+---@field name? string
 ---@field workspace? string
 ---@field previous? string
 ---@field monitor? integer
@@ -593,6 +613,15 @@
 ---@field id integer The window of the app that asks for attention.
 ---@field app string Bundle id.
 ---@field badge string The text of the badge on the Dock icon.
+
+---@class wm.SessionOpenEvent
+---@field name string The session that opens.
+---@field matched integer Windows that were open and took their saved places.
+---@field waiting integer Windows that wm waits for.
+
+---@class wm.SessionDoneEvent
+---@field name string
+---@field missing string Bundle ids still without a window, with spaces between them. Empty when every window was placed.
 
 ---@class wm.IdleEvent
 ---@field seconds number The threshold that the idle time passed.
@@ -807,6 +836,10 @@ function wm.workspace(name, spec) end
 ---@overload fun(event: "idle", filter: { seconds: number }, handler: fun(e: wm.IdleEvent))
 ---@overload fun(event: "resume", handler: fun(e: wm.ResumeEvent))
 ---@overload fun(event: "resume", filter: wm.EventFilter, handler: fun(e: wm.ResumeEvent))
+---@overload fun(event: "session_open", handler: fun(e: wm.SessionOpenEvent))
+---@overload fun(event: "session_open", filter: wm.EventFilter, handler: fun(e: wm.SessionOpenEvent))
+---@overload fun(event: "session_done", handler: fun(e: wm.SessionDoneEvent))
+---@overload fun(event: "session_done", filter: wm.EventFilter, handler: fun(e: wm.SessionDoneEvent))
 ---@overload fun(event: "workspace_changed", handler: fun(e: wm.WorkspaceChangedEvent))
 ---@overload fun(event: "workspace_changed", filter: wm.EventFilter, handler: fun(e: wm.WorkspaceChangedEvent))
 ---@overload fun(event: "special_changed", handler: fun(e: wm.SpecialChangedEvent))

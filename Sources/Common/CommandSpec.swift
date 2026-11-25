@@ -101,6 +101,10 @@ public let commandSections: [CommandSection] = [
             details: "A tiled window floats first. The window follows the workspace that the monitor shows (also a special workspace). Again\nto end it; the window then stays floating on the workspace that it is on. `window remember` keeps it.",
             example: "wm window sticky"),
         CommandSpec(
+            "window pip", "[on|off|toggle]", "[--corner=<corner>] [--all]", "Show a small live picture of the window.",
+            details: "The picture floats on every workspace. By default it hides while the window itself is on screen (`pip.hide_when_visible`).\nDrag it to another corner, click it to focus the window, right-click it to close it. `corner` is top-left, top-right,\nbottom-left or bottom-right. It closes with its window. Up to 4 at once. Needs the Screen Recording permission.",
+            example: "wm window pip --corner=top-right"),
+        CommandSpec(
             "window snap", "<place>", "", "Float the window into a part of the screen.",
             details: "`place` is left, right, top, bottom, top-left, top-right, bottom-left, bottom-right, top-center, bottom-center or center. A floating window fills that part of the work area inside the gaps. A tiled window\nstays tiled: it moves one slot toward that side (`center` does nothing), like `move`. The same place again goes on to the next size: half, a third, two thirds\n(center: 60%, 80%, 40%).",
             example: "wm window snap left"),
@@ -196,6 +200,11 @@ public let commandSections: [CommandSection] = [
         CommandSpec(
             "layout balance", "", "", "Give every window (or column) an equal share.",
             details: "It acts on the whole workspace, so no window has to be in focus (a floating window, or the desktop, is fine). It also ends maximize and fullscreen on that workspace, and a maximized scrolling column takes its share with the others. With no window in focus, scrolling balances both strips."),
+        CommandSpec(
+            "layout undo", "[workspace]", "", "Go back to the layout before the last change.",
+            details: "A change is what a command or the mouse did to the arrangement of a workspace: a swap, a move, a resize, balance,\na tile pattern, floating a window, maximize, another layout. A `batch` and a drag count as one. Opening, closing and sending\na window to another workspace are not changes: undo never moves a window between workspaces. wm keeps 50 steps for each\nworkspace until it stops. Without a name it acts on the focused workspace.",
+            example: "wm layout undo"),
+        CommandSpec("layout redo", "[workspace]", "", "Do again what `layout undo` took back."),
         CommandSpec(
             "layout rotate", "[cw|ccw]", "", "Move every window one slot around the layout.",
             details: "cw (the default) moves each window to the next slot, ccw to the previous one.",
@@ -344,6 +353,20 @@ public let commandSections: [CommandSection] = [
             "memory clear", "", "", "Remove every entry.",
             details: "It forgets all the entries that `window remember` kept, for every app. It does not touch the places that floating windows keep\nin float-memory.json.",
             example: "wm memory clear"),
+    ]),
+    CommandSection(title: "Sessions", specs: [
+        CommandSpec(
+            "session save", "<name>", "", "Save the open windows and their layouts under a name.",
+            details: "Keeps the app and title of every window, its workspace, layout, floating place, marks and sticky state, and which workspace\neach monitor shows. Saving a name again replaces it. Minimized, native fullscreen and swallowed windows are left out.\nThe name takes letters, digits, `.`, `_` and `-`. The files are in sessions/, next to state.json.",
+            example: "wm session save dev"),
+        CommandSpec(
+            "session open", "<name>", "[--no-launch]", "Put the windows back as the session saved them.",
+            details: "Open windows take their saved places, by app and title. wm starts the apps that have no window (--no-launch does not) and\nplaces their windows as they open, for 60 seconds. An app that already has a window is not asked for more. Windows that are\nnot in the session stay where they are.",
+            example: "wm session open dev"),
+        CommandSpec(
+            "session list", "", "[--json]", "List the saved sessions.",
+            details: "`wm session` alone does the same.", example: "wm session list --json"),
+        CommandSpec("session delete", "<name>", "", "Delete a saved session.", example: "wm session delete dev"),
     ]),
     CommandSection(title: "Daemon", specs: [
         CommandSpec("daemon start", "", "", "Start wm in the background.", details: "When an older build already runs, it says so and points to `wm daemon reload`."),
@@ -532,7 +555,7 @@ private func overviewHelp(style: HelpStyle) -> String {
     }
     lines += ["", style.heading("GLOBAL OPTIONS")] + optionLines(globalOptions, style: style)
     lines += ["", style.heading("URL SCHEME")] + rows(urlRows, paint: style.command)
-    lines.append("  " + style.dim("exec, key, daemon and subscribe are blocked for URLs, unless `url.allow` in the config lists them."))
+    lines.append("  " + style.dim("URLs cannot run exec, key, daemon, subscribe or session, unless `url.allow` lists them."))
     lines += ["", style.heading("EXIT CODES")] + rows(exitCodeRows, paint: style.command)
     lines += ["", style.heading("ENVIRONMENT")] + rows(environmentRows, paint: style.command)
     lines += ["", style.dim("Run `wm help <command>` for details and examples, for example `wm help window`."), style.dim("<dir> is left, right, up or down.")]

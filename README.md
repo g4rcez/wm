@@ -65,6 +65,7 @@ wm has no default key bindings. Until you bind keys in `init.lua`, it only react
 | Monocle | One window fills the workspace. `focus next` and `focus prev` walk through the others, which wait out of sight. |
 | Tile templates | Ready-made arrangements (`2`, `3`, `2+1`, `2/3`, `center`, and more) with a picker. You can write your own. |
 | Rotate, maximize, floating | Rotate a layout, maximize, floating windows, snap to a part of the screen, native fullscreen and window marks. |
+| Undo and redo | `layout undo` takes back a swap, a resize, a tile pattern or a drag. `layout redo` does it again. |
 
 ### Workspaces and monitors
 
@@ -78,6 +79,9 @@ wm has no default key bindings. Until you bind keys in `init.lua`, it only react
 - **Special workspaces** (scratchpads, like Hyprland). One key shows one over the others and the same key hides it.
   See [Layouts](https://wm.garcez.dev/docs/layouts).
 - Gaps, animated moves and resizes, and a focus border. See the [Configuration](https://wm.garcez.dev/docs/config).
+- **Picture in picture:** `window pip` keeps a small live copy of a window on every workspace.
+  See [Features](https://wm.garcez.dev/docs/features#picture-in-picture).
+- **Dim** (opt in): the windows without the focus are darkened. See [Features](https://wm.garcez.dev/docs/features#dim).
 
 ### Keys, modes and the key panel
 
@@ -113,6 +117,8 @@ wm has no default key bindings. Until you bind keys in `init.lua`, it only react
 - **Window memory:** `window remember` gives the next window of an app the same workspace, monitor, size and place.
   Floating windows also remember where they closed. `wm memory list`, `forget` and `clear` manage the entries from the command line.
   See [Features](https://wm.garcez.dev/docs/features).
+- **Sessions:** `session save dev` keeps your windows and layouts under a name. `session open dev` puts them back and starts the
+  apps that are missing. See [Features](https://wm.garcez.dev/docs/features#sessions).
 
 ### Finding and switching windows
 

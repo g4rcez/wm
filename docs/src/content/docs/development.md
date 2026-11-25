@@ -12,6 +12,9 @@ timeout 300 swift test      # unit tests: layout engines, geometry, Lua host, IP
 The app icon is `assets/icon-windows.svg`. `assets/make-icns.sh` makes `bundle/wm.icns` from it. It needs `rsvg-convert`,
 `magick` and `iconutil`. `build-app.sh` copies the icns into the app. Run the script again when the SVG changes.
 
+A compiler warning is an error in every target, the tests too (`treatAllWarnings` in `Package.swift`). Only the vendored Lua is
+left out. A newer Swift or Xcode can add warnings: fix them, so that CI and a build from source keep passing.
+
 | Target | Role |
 |---|---|
 | `CLua` | Vendored Lua 5.4.9 |
