@@ -212,7 +212,8 @@ make install CODESIGN_IDENTITY="<name>"    # build, sign, copy to /Applications/
 
 macOS asks for **Accessibility** at the first start: wm cannot move windows without it. **Screen Recording** (window
 pictures) and **Automation** (browser tabs in the palette) are optional. The menu bar icon needs System Settings > Menu Bar >
-"Allow in the Menu Bar" > `wm`.
+"Allow in the Menu Bar" > `wm`. When Accessibility is removed while wm runs, wm stops listening for keys and starts again when you grant it
+([Troubleshooting](https://wm.garcez.dev/docs/troubleshooting)).
 
 Releases are signed with one certificate, so the Homebrew install keeps the permissions through upgrades (an install older than
 0.5.0 asks once more). When you build it yourself, sign with a stable certificate: an ad-hoc signature changes with every build,

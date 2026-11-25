@@ -49,9 +49,9 @@ brew upgrade g4rcez/tap/wm
 wm daemon reload    # the running wm is the old build: this restarts it from the new one, and loads the new features and mappings
 ```
 
-If you installed wm with Homebrew before 0.5.0, or built it yourself, macOS holds a grant for the old signature. Clear it once with `tccutil reset Accessibility local.wm` (and `tccutil reset ScreenCapture local.wm` for Screen Recording), run `wm daemon reload` and grant again.
+If you installed wm with Homebrew before 0.5.0, or built it yourself, macOS holds a grant for the old signature. Clear it once: stop wm with `wm daemon stop`, run `tccutil reset Accessibility local.wm` (and `tccutil reset ScreenCapture local.wm` for Screen Recording), then `wm daemon start` and grant again. Stop wm first: a wm older than this fix that loses the permission while it runs can block the keyboard and the mouse.
 
-If you used `make install` before, remove the old copy, so that only one wm.app has the permissions: `wm daemon stop; rm -rf /Applications/wm.app ~/.local/bin/wm`, then `brew install g4rcez/tap/wm` and `wm daemon start`. Grant the permissions once more. If macOS keeps a stale entry, `tccutil reset Accessibility local.wm` clears it.
+If you used `make install` before, remove the old copy, so that only one wm.app has the permissions: `wm daemon stop; rm -rf /Applications/wm.app ~/.local/bin/wm`, then `brew install g4rcez/tap/wm` and `wm daemon start`. Grant the permissions once more. If macOS keeps a stale entry, `wm daemon stop`, then `tccutil reset Accessibility local.wm` clears it, and `wm daemon start` asks again.
 
 ### Build from source
 
@@ -88,6 +88,8 @@ The first time wm starts, it opens a **setup window**. It moves no window until 
 | Accessibility | Required | Moving windows. System Settings > Privacy & Security > Accessibility. |
 | Screen Recording | Optional | Window pictures in the Alt+Tab switcher and the overview (otherwise the app icon and title), and `wm select` on windows that draw their own text. |
 | Automation | Optional | The palette reads and selects browser tabs (and brings Rex to the front). macOS asks once for each app. System Settings > Privacy & Security > Automation > `wm`. |
+
+wm checks Accessibility for as long as it runs. When you remove it, wm stops listening for keys and gives macOS back Cmd+Tab and CapsLock; when you grant it again, wm listens again without a restart.
 
 The menu bar icon needs one more switch: System Settings > Menu Bar > "Allow in the Menu Bar" > `wm`.
 
