@@ -25,3 +25,9 @@ let package = Package(
         .testTarget(name: "ScriptingTests", dependencies: ["Scripting", "Core", "Common"]),
     ]
 )
+
+// A compiler warning is an error, in the sources and in the tests. Vendored Lua is not ours to change.
+for target in package.targets where target.name != "CLua" {
+    target.swiftSettings = (target.swiftSettings ?? []) + [.treatAllWarnings(as: .error)]
+    target.cSettings = (target.cSettings ?? []) + [.treatAllWarnings(as: .error)]
+}

@@ -1,5 +1,11 @@
 # wm
 
+## Build
+
+A task is not done while the code has a compile warning or error. `Package.swift` makes every warning an error (except in the
+vendored Lua). Before you finish, run `swift build` and `timeout 600 swift test` and see both pass. Fix a warning at its cause; do
+not turn the setting off.
+
 ## Documentation
 
 A new or changed feature is not done until its docs are done. In the same change, update every place that describes it:
