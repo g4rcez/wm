@@ -4,10 +4,11 @@ CONFIG ?= release
 # Where `make install` puts the app and the `wm` link. The app has to stay in a fixed place for start_at_login.
 APP_DIR ?= /Applications
 BIN_DIR ?= $(HOME)/.local/bin
-# The certificate that signs the app: a name or a SHA-1 hash from `make identities`. Without it, the first
-# "Apple Development" certificate of the keychain. A stable signature keeps the Accessibility permission between builds.
+# The certificate that signs the app: a name or a SHA-1 hash from `make identities`. Without it, the one that
+# scripts/signing-identity.sh picks: the release certificate, else an "Apple Development" one. A stable signature keeps the
+# Accessibility permission between builds.
 CODESIGN_IDENTITY ?=
-IDENTITY = $(or $(CODESIGN_IDENTITY),$(shell security find-identity -v -p codesigning 2>/dev/null | awk '/Apple Development/ { print $$2; exit }'))
+IDENTITY = $(or $(CODESIGN_IDENTITY),$(shell scripts/signing-identity.sh))
 # Tests that hang must not hold the terminal: use timeout (or gtimeout) when there is one.
 TIMEOUT := $(shell command -v timeout || command -v gtimeout)
 

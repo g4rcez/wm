@@ -5,6 +5,7 @@
 # NO_START=1 builds without starting it. NO_STOP=1 does not stop a running wm (the Homebrew formula builds in a temporary folder).
 # STRIP=1 removes the debug symbols from the binaries (a release).
 # SWIFT_BUILD_FLAGS adds flags to `swift build` (the formula passes --disable-sandbox).
+# TIMESTAMP=1 asks Apple for a secure timestamp, which notarization needs (a release). It needs the network.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -33,13 +34,13 @@ cp "$bin/wm" "$staging/Contents/MacOS/wm"
 
 # macOS keeps the Accessibility and Screen Recording grants of an app by its "designated requirement". An ad-hoc
 # signature makes that requirement the hash of this exact build, so every rebuild loses the grants. A real signing
-# identity makes it "this bundle id, signed by this certificate", which does not change between builds.
+# identity makes it "this bundle id, signed by this team or certificate", which does not change between builds.
 #
-# CODESIGN_IDENTITY (a certificate name or its SHA-1 hash) picks the identity; without it the first
-# "Apple Development" certificate in the keychain is used; without that the signature is ad hoc.
+# CODESIGN_IDENTITY (a certificate name or its SHA-1 hash) picks the identity; without it scripts/signing-identity.sh does
+# (the release certificate, else an "Apple Development" one); without any the signature is ad hoc.
 identity="${CODESIGN_IDENTITY:-}"
 if [ -z "$identity" ]; then
-    identity="$(security find-identity -v -p codesigning 2>/dev/null | awk '/Apple Development/ { print $2; exit }')"
+    identity="$(scripts/signing-identity.sh)"
 fi
 if [ -z "$identity" ]; then
     echo "warning: no code-signing identity found; signing ad hoc." >&2
@@ -50,8 +51,15 @@ fi
 # The debug symbols name the folders of the machine that built the app: a release must not publish them. Before the signing.
 if [ -n "${STRIP:-}" ]; then strip -S "$staging/Contents/MacOS/wm" "$staging/Contents/MacOS/wmd"; fi
 
-codesign --force --sign "$identity" "$staging/Contents/MacOS/wm"
-codesign --force --sign "$identity" "$staging"
+# A release build has the hardened runtime, which notarization needs. The entitlements give back what wm uses: Apple events
+# (browser tabs, through osascript) and Lua C modules signed by others. A debug build has none of it, so that lldb can attach.
+sign_flags=(--force --sign "$identity")
+if [ "$configuration" = "release" ]; then sign_flags+=(--options runtime --entitlements bundle/wm.entitlements); fi
+# Only a release asks for the timestamp: a local build must also work without the network.
+if [ -n "${TIMESTAMP:-}" ]; then sign_flags+=(--timestamp); else sign_flags+=(--timestamp=none); fi
+
+codesign "${sign_flags[@]}" "$staging/Contents/MacOS/wm"
+codesign "${sign_flags[@]}" "$staging"
 
 requirement="$(codesign -dr - "$staging" 2>&1 | grep 'designated =>' || true)"
 case "$requirement" in
