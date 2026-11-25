@@ -1,1 +1,1 @@
-public let wmVersion = "0.5.0"
+public let wmVersion = "0.5.1"
