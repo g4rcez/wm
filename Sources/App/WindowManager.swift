@@ -127,6 +127,9 @@ final class WindowManager {
     private let backdrop = SpecialBackdrop()
     private let dimOverlay = DimOverlay()
     private var dimSettle: DispatchWorkItem?
+    lazy var pip = PipController(manager: self)
+    /// Whether the window shows on a monitor now: not on a hidden workspace, parked, minimized or swallowed.
+    func isOnScreen(_ id: WindowID) -> Bool { lastVisible.contains(id) && !lastParked.contains(id) }
     private let tabIndicator = TabIndicatorOverlay()
     private var clock: DisplayClock?
     private var lastTick = CACurrentMediaTime()

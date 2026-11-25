@@ -407,6 +407,7 @@ public struct Settings: Sendable, Equatable {
     public var animations = AnimationSettings()
     public var border = BorderSettings()
     public var dim = DimSettings()
+    public var pip = PipSettings()
     public var swallow = SwallowSettings()
     public var urgent = UrgentSettings()
     public var tabIndicator = TabIndicatorSettings()

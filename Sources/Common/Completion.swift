@@ -71,6 +71,7 @@ private let extraValues: [String: [String]] = [
     "resize": ["width", "height", "smart", "left", "right", "up", "down"],
     "window place": ["2", "3", "4", "5", "6", "2+1", "1+2", "2/3", "3/4", "1/4", "center"],
     "workspace float-all": ["on", "off", "2", "3", "4", "5", "6", "2+1", "1+2", "2/3", "3/4", "1/4"],
+    "window pip": ["on", "off", "toggle"],
     "window snap": ["left", "right", "top", "bottom", "top-left", "top-right", "bottom-left", "bottom-right", "top-center", "bottom-center", "center"],
     "workspace": ["next", "prev", "empty"],
     "workspaces": ["balance"],

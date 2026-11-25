@@ -38,6 +38,7 @@
 ---| "workspaces balance" | "workspaces balance 2" | "workspaces balance 3" | "workspaces balance 4" | "workspaces balance 5" | "workspaces balance 6"
 ---| "workspace move monitor left" | "workspace move monitor right" | "workspace move monitor up" | "workspace move monitor down" | "workspace move monitor next" | "workspace move monitor prev" | "workspace move monitor last"
 ---| "window close" | "window float" | "window float on" | "window float off" | "window center" | "window fullscreen" | "window maximize" | "window native-fullscreen"
+---| "window pip" | "window pip on" | "window pip off" | "window pip off --all" | "window pip --corner=top-right"
 ---| "window sticky" | "zen" | "zen on" | "zen off"
 ---| "window place 2 1" | "window place 2 2" | "window place 2+1 1" | "window place 2+1 2" | "window place 2+1 3" | "window move-to 0 0" | "window move-to 50% 50%"
 ---| "window snap left" | "window snap right" | "window snap top" | "window snap bottom" | "window snap center"
@@ -254,6 +255,12 @@
 ---@field orientation? "left"|"right"|"top"|"bottom"|"center" Where the master area is. `center`: in the middle, with the stack on both sides. Default "left".
 ---@field new_window? "stack"|"master" Where a new window goes: the top of the stack (default) or the master.
 
+---@class (exact) wm.PipConfig
+---@field corner? "top-left"|"top-right"|"bottom-left"|"bottom-right" Where a picture of `window pip` shows. Default "bottom-right".
+---@field size? number Width of a picture as a fraction of the work area, 0.1 to 0.6. Default 0.25.
+---@field fps? integer Frames per second, 5 to 60. Default 30.
+---@field hide_when_visible? boolean Hide a picture while its window is on screen. Default true.
+
 ---@class (exact) wm.ZenConfig
 ---@field width? number Width of the window in the zen mode (`wm zen`), as a fraction of the work area: 0.3 to 1. Default 0.7.
 
@@ -423,6 +430,7 @@
 ---@field prefix? wm.PrefixConfig Key sequences such as `ctrl-p>h`.
 ---@field menubar? wm.MenuBarConfig What the menu bar icon shows: the workspaces with windows, as `T:1 2 5` (the one in focus on a background).
 ---@field binds? wm.BindsConfig
+---@field pip? wm.PipConfig The live pictures of `window pip`.
 ---@field zen? wm.ZenConfig The zen mode: the focused window alone, centered.
 ---@field floating? wm.FloatingConfig Floating windows: whether they open where the last one closed.
 ---@field keyboards? wm.KeyboardsConfig Which keyboards wm manages: `{ default = true, ["Keyboard name"] = false, ["046d:c52b"] = true }`. See `wm query keyboards`.

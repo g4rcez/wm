@@ -200,7 +200,7 @@ private func selectChords(_ value: LuaValue, action: SelectAction) throws -> [St
 }
 
 let topLevelConfigKeys = [
-    "layout", "workspaces", "gaps", "animations", "border", "dim", "focus_follows_mouse", "mouse_follows_focus",
+    "layout", "workspaces", "gaps", "animations", "border", "dim", "pip", "focus_follows_mouse", "mouse_follows_focus",
     "start_at_login", "wrap_focus", "mouse", "trackpad", "workspace_back_and_forth", "tiling", "scrolling", "switcher", "prefix", "url",
     "tab_indicator", "binds", "zen", "special", "overview", "hints", "select", "keyboards", "floating", "master",
     "commands", "menubar", "swallow", "urgent", "appearance",
@@ -357,6 +357,13 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
         if let flag = try dim.bool("enabled") { settings.dim.enabled = flag }
         if let amount = try dim.number("amount", min: 0, max: DimSettings.maxAmount) { settings.dim.amount = amount }
         if let value = try color(dim, "color") { settings.dim.color = value }
+    }
+    if let pip = try top.table("pip", allowed: ["corner", "size", "fps", "hide_when_visible"]) {
+        if let corner = try pip.choice("corner", PipCorner.self) { settings.pip.corner = corner }
+        if let size = try pip.number("size", min: PipSettings.sizeRange.lowerBound, max: PipSettings.sizeRange.upperBound) { settings.pip.size = size }
+        let fps = PipSettings.fpsRange
+        if let value = try pip.integer("fps", min: fps.lowerBound, max: fps.upperBound) { settings.pip.fps = value }
+        if let flag = try pip.bool("hide_when_visible") { settings.pip.hideWhenVisible = flag }
     }
     if let border = try top.table("border", allowed: ["enabled", "width", "radius", "active", "inactive", "angle"]) {
         if let flag = try border.bool("enabled") { settings.border.enabled = flag }

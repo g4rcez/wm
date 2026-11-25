@@ -22,6 +22,7 @@ wm reads `init.lua` and `shortcuts.toml` from `~/.config/wm/`. The Lua functions
 | `animations` | `{ enabled = true, fps = 120, rate = 16 }` | Every animation of wm, with a master switch. `fps`: 30 to 240, capped by the display. `rate`: spring stiffness. Sub-tables `windows`, `workspaces`, `special`, `overlays` (see Animations below). |
 | `border` | `{ enabled = true, width = 2, radius = 10, active = "#89b4fa", inactive = "#00000000" }` | `active` can be `{ "#89b4fa", "#cba6f7" }` for a gradient (`angle = 45`). |
 | `dim` | `{ enabled = false, amount = 0.25, color = "#000000" }` | Darkens the windows without the focus. See [Features](/docs/features#dim). |
+| `pip` | `{ corner = "bottom-right", size = 0.25, fps = 30, hide_when_visible = true }` | The live pictures of `window pip`. See [Features](/docs/features#picture-in-picture). |
 | `focus_follows_mouse` | `false` | Or `{ enabled = true, only_fully_visible = true }`. |
 | `workspaces` | none | The mode, the limit, or both. `"emulated"` (the mode, default) hides the windows of other workspaces at a screen corner; `"native"` makes each workspace a macOS desktop (see [Native workspaces](#native-workspaces)). A number is the most workspaces there can be: `workspace 7` with `workspaces = 6` is an error, and `wm workspaces balance` spreads the windows over that many. A table has both: `{ mode = "native", max = 6 }`. Names that are not numbers are free. |
 | `mouse_follows_focus` | `false` | Moves the cursor to the center of a window that a command focuses. Switching workspaces never moves it. |

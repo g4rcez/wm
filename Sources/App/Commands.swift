@@ -364,6 +364,7 @@ extension WindowManager {
     private func windowCommand(_ words: [String], _ flags: Set<String>, _ id: WindowID?) -> ServerAnswer {
         guard let sub = words.first else { return fail("window needs a command", 2, usage: "window") }
         if sub == "send" { return sendCommand(Array(words.dropFirst()), flags, id) }
+        if sub == "pip" { return pip.command(Array(words.dropFirst()), flags, id) }
         if let bad = unknownOption(flags, allowed: sub == "remember" || sub == "forget" ? ["--title"] : [], usage: "window " + sub) { return bad }
         guard let id, let managed = windows[id] else {
             guard id != nil else { return fail("there is no focused window") }

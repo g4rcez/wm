@@ -56,6 +56,10 @@ public let commandOptions: [String: [CommandOption]] = [
         CommandOption("--title=<text>", "Remove the entry that has this exact title, not the entry of the whole app."),
         CommandOption("--all", "Remove every entry of the app, whatever its title."),
     ],
+    "window pip": [
+        CommandOption("--corner=<corner>", "The corner of the picture: top-left, top-right, bottom-left or bottom-right."),
+        CommandOption("--all", "With off, close every picture."),
+    ],
     "session open": [CommandOption("--no-launch", "Do not start the apps that have no window.")],
     "session list": [CommandOption("--json", "Print JSON for scripts.")],
     "pick": [CommandOption("--json", "Print one JSON object.")],

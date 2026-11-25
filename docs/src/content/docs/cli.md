@@ -18,6 +18,7 @@ WINDOWS          window close | float [on|off] | center | fullscreen | native-fu
                  window place <pattern> <n> | move-to <x> <y>
                  window minimize | swipe <left|right|up|down>
                  window mark <name> | unmark [name] | remember [--title] | forget [--title]
+                 window pip [on|off|toggle] [--corner=<corner>] [--all]
                  window send workspace <name> | monitor <monitor> | strip <horizontal|vertical>
 WORKSPACES       workspace <name|back|next|prev|empty> | workspace special [name]
                  workspace move monitor <monitor> | workspace float-all [off|pattern]

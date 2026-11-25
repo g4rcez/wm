@@ -101,6 +101,10 @@ public let commandSections: [CommandSection] = [
             details: "A tiled window floats first. The window follows the workspace that the monitor shows (also a special workspace). Again\nto end it; the window then stays floating on the workspace that it is on. `window remember` keeps it.",
             example: "wm window sticky"),
         CommandSpec(
+            "window pip", "[on|off|toggle]", "[--corner=<corner>] [--all]", "Show a small live picture of the window.",
+            details: "The picture floats on every workspace. By default it hides while the window itself is on screen (`pip.hide_when_visible`).\nDrag it to another corner, click it to focus the window, right-click it to close it. `corner` is top-left, top-right,\nbottom-left or bottom-right. It closes with its window. Up to 4 at once. Needs the Screen Recording permission.",
+            example: "wm window pip --corner=top-right"),
+        CommandSpec(
             "window snap", "<place>", "", "Float the window into a part of the screen.",
             details: "`place` is left, right, top, bottom, top-left, top-right, bottom-left, bottom-right, top-center, bottom-center or center. A floating window fills that part of the work area inside the gaps. A tiled window\nstays tiled: it moves one slot toward that side (`center` does nothing), like `move`. The same place again goes on to the next size: half, a third, two thirds\n(center: 60%, 80%, 40%).",
             example: "wm window snap left"),

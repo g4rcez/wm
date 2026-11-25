@@ -202,6 +202,37 @@ wm.config { mouse = { move_modifier = "alt", resize_modifier = "alt" } }
 
 Both are off until you set them, because Option-click means something in Finder and in many editors.
 
+## Picture in picture
+
+`window pip` shows a small live copy of a window in a corner, on every workspace. Watch a build, a log or a call while you work
+somewhere else.
+
+```lua
+wm.bind("alt-space>p", "window pip", { description = "Picture in picture" })
+wm.bind("alt-space>shift-p", "window pip off --all")
+```
+
+`wm window pip [on|off|toggle] [--corner=<corner>]` acts on the focused window, or on `--window`. `off --all` closes every picture.
+
+| Mouse | Effect |
+| --- | --- |
+| click | focus the window |
+| drag | move the picture to the nearest corner, also on another monitor |
+| right click | close the picture |
+
+| Config key | Default | Meaning |
+| --- | --- | --- |
+| `pip.corner` | `"bottom-right"` | `top-left`, `top-right`, `bottom-left` or `bottom-right` |
+| `pip.size` | `0.25` | width of a picture, as a fraction of the work area (0.1 to 0.6) |
+| `pip.fps` | `30` | frames per second (5 to 60); a change applies to new pictures and resizes |
+| `pip.hide_when_visible` | `true` | hide a picture while its window is on screen |
+
+- It needs the Screen Recording permission. macOS shows its own sign that the screen is recorded while a picture is open.
+- Up to 4 pictures at once. Pictures in one corner stack. A picture closes with its window, and all end when wm stops.
+- wm hides the windows of other workspaces at the edge of the screen, and their pictures stay live. Some apps stop drawing a
+  window that cannot be seen; its picture then holds the last frame.
+- A minimized window has no picture to show.
+
 ## Dim
 
 Darkens every window that does not have the focus, so the one you work in stands out. It is off until you turn it on.

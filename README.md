@@ -79,6 +79,8 @@ wm has no default key bindings. Until you bind keys in `init.lua`, it only react
 - **Special workspaces** (scratchpads, like Hyprland). One key shows one over the others and the same key hides it.
   See [Layouts](https://wm.garcez.dev/docs/layouts).
 - Gaps, animated moves and resizes, and a focus border. See the [Configuration](https://wm.garcez.dev/docs/config).
+- **Picture in picture:** `window pip` keeps a small live copy of a window on every workspace.
+  See [Features](https://wm.garcez.dev/docs/features#picture-in-picture).
 - **Dim** (opt in): the windows without the focus are darkened. See [Features](https://wm.garcez.dev/docs/features#dim).
 
 ### Keys, modes and the key panel
