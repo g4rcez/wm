@@ -279,7 +279,7 @@ wm.bind("alt-space>shift-r", "window forget", { description = "Forget this windo
 - **Kept:** workspace and monitor, floating or tiled, the place and size of a floating window, maximized, pseudotiled size, scrolling column width and strip, and the marks.
 - **Matching:** by the app (bundle id). `window remember --title` also keeps the exact title. A window with that title uses its entry. Any other window of the app uses the entry without a title. Remembering again replaces the entry.
 - **When it applies:** only to windows that open while wm runs. It wins over `wm.rule` for the same window.
-- **Managed windows only:** standard windows and dialogs, not native fullscreen. `wm logs` has a `window skipped` line for each new window that wm left alone.
+- **Managed windows only:** standard windows and dialogs, not one that is in native fullscreen. `wm logs` has a `window skipped` line for each new window that wm left alone.
 - The entries are in `~/.local/state/wm/memory.json` (`$XDG_STATE_HOME/wm/memory.json`). `wm list memory` (`--json`) shows them. `wm.query("memory")` returns them to the config.
 
 **Manage the entries.** `wm memory list`, `wm memory forget <app> [--title=<text>|--all]` and `wm memory clear` (see `wm help memory`). They need the daemon, which owns the file: editing `memory.json` by hand while wm runs is overwritten. Windows that are open stay where they are.
