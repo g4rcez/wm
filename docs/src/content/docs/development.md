@@ -33,11 +33,28 @@ Releases are made on the Mac that holds the Developer ID certificate, not in CI.
 2. runs the tests and bumps `Version.swift`;
 3. builds a universal `wm.app` with `build-app.sh` and signs it with the Developer ID certificate, the hardened runtime and a
    secure timestamp, without the debug symbols (they name your folders);
-4. checks the signature, sends the app to Apple to be notarized, staples the ticket to it and asks Gatekeeper to assess it;
-5. commits, tags, pushes and creates the GitHub release with `wm-<version>-macos.tar.gz` (and its `.sha256`);
-6. writes `Formula/wm.rb` of `g4rcez/homebrew-tap` from `scripts/wm.rb.in`. Change the formula there, not in the tap.
+4. checks the signature, sends the app to Apple to be notarized and staples the ticket to it;
+5. packs the app and runs `scripts/verify-release.sh` on the archive, before anything is published;
+6. commits, tags, pushes and creates the GitHub release with `wm-<version>-macos.tar.gz` (and its `.sha256`);
+7. downloads the asset again, and only when it is the verified file writes `Formula/wm.rb` of `g4rcez/homebrew-tap` from
+   `scripts/wm.rb.in`. Change the formula there, not in the tap.
 
 `--dry-run` stops after the checks of step 1.
+
+### What a release asserts
+
+`scripts/verify-release.sh <archive>` fails, and so does the release, unless:
+
+- `wm.app` has exactly the designated requirement of `scripts/designated-requirement`;
+- the signature is intact, Gatekeeper sees a notarized Developer ID app and the ticket is stapled;
+- the owners in the archive are `root:wheel`, and it contains no home folder, user name or computer name of the release Mac.
+
+`brew test wm` checks the installed app: the signature is intact, it is of the pinned team and the notarization ticket is
+there. Gatekeeper does not run in the sandbox of the test. To ask it, run
+`spctl --assess --type execute --verbose "$(brew --prefix)/opt/wm/wm.app"`.
+
+A Developer ID signature is public: every copy of the app carries the name on the certificate (for an individual membership,
+your legal name), the country and the Team ID.
 
 ### Set up a release Mac
 
@@ -62,8 +79,9 @@ run step 3 again. Keep that `.p12` and its password somewhere safe, and never co
 
 macOS keeps the Accessibility and Screen Recording grants of an app by its designated requirement. For a Developer ID signature it
 names the bundle id and the Team ID. It is the same for every release, also after the certificate is renewed: users grant the
-permissions once, and `brew upgrade wm` plus `wm daemon reload` is all an update needs. `scripts/signing-team-id` pins the team,
-and the release stops when the build has another signature. Another team makes every user grant the permissions again.
+permissions once, and `brew upgrade wm` plus `wm daemon reload` is all an update needs. `scripts/signing-team-id` picks the
+certificate, `scripts/designated-requirement` pins the requirement, and the release stops when the app has another one. A new
+team or bundle id makes every user grant the permissions again: change the pin only when you mean that.
 
 ### Signing of local builds
 

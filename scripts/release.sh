@@ -75,15 +75,13 @@ CODESIGN_IDENTITY="$identity" TIMESTAMP=1 STRIP=1 NO_START=1 NO_STOP=1 SWIFT_BUI
 app=.build/wm.app
 codesign -dr - "$app" 2>&1 | grep 'designated =>'
 codesign --verify --deep --strict "$app"
-codesign --verify -R "=anchor apple generic and certificate leaf[field.1.2.840.113635.100.6.1.13] exists \
-and certificate leaf[subject.OU] = \"$team\"" "$app" || die "the signature is not a Developer ID signature of team $team"
 for arch in arm64 x86_64; do
     lipo "$app/Contents/MacOS/wmd" -verify_arch "$arch" || die "the app has no $arch slice"
 done
 [ "$("$app/Contents/MacOS/wm" --version)" = "wm $next" ] || die "the built app is not version $next"
 
 # The asset is public: no folder of this machine goes in it.
-if cat "$app/Contents/MacOS/"* | LC_ALL=C grep -qaF "$HOME/"; then die "the binaries name folders under your home"; fi
+if LC_ALL=C grep -qaF "$HOME/" "$app/Contents/MacOS/"*; then die "the binaries name folders under your home"; fi
 
 # Apple checks the app and issues a ticket; stapling puts it in the bundle, so Gatekeeper accepts the app without the network.
 ditto -c -k --keepParent "$app" "$work/notarize.zip"
@@ -98,13 +96,16 @@ if [ "$status" != "Accepted" ]; then
     die "Apple did not accept the app (status: ${status:-unknown})"
 fi
 xcrun stapler staple "$app"
-spctl --assess --type execute --verbose "$app"
 
 asset="wm-$next-macos.tar.gz"
 mkdir "$work/pack"
 ditto "$app" "$work/pack/wm.app"
 cp LICENSE "$work/pack/"
-COPYFILE_DISABLE=1 tar -C "$work/pack" -czf "$work/$asset" wm.app LICENSE
+# The owners, extended attributes and Mac metadata of the files would put your user name and local data in the public archive.
+COPYFILE_DISABLE=1 tar --uid 0 --gid 0 --uname root --gname wheel --no-xattrs --no-mac-metadata \
+    -C "$work/pack" -czf "$work/$asset" wm.app LICENSE
+# Nothing is committed or published unless the archive passes: notarized, the same requirement, nothing personal.
+scripts/verify-release.sh "$work/$asset"
 sha="$(shasum -a 256 "$work/$asset" | cut -d' ' -f1)"
 echo "$sha" > "$work/$asset.sha256"
 
@@ -116,9 +117,14 @@ git push origin main "$tag"
 
 gh release create "$tag" "$work/$asset" "$work/$asset.sha256" --title "wm $next" --generate-notes --verify-tag
 
+# brew downloads from the release: the tap moves only when it serves the file that passed the checks.
+gh release download "$tag" -p "$asset" -D "$work/published"
+[ "$(shasum -a 256 "$work/published/$asset" | cut -d' ' -f1)" = "$sha" ] \
+    || die "the published $asset is not the verified one: the tap was not changed"
+
 url="https://github.com/g4rcez/wm/releases/download/$tag/$asset"
 git clone --quiet git@github.com:g4rcez/homebrew-tap.git "$work/tap"
-sed -e "s#@URL@#$url#" -e "s#@SHA256@#$sha#" scripts/wm.rb.in > "$work/tap/Formula/wm.rb"
+sed -e "s#@URL@#$url#" -e "s#@SHA256@#$sha#" -e "s#@TEAM@#$team#" scripts/wm.rb.in > "$work/tap/Formula/wm.rb"
 git -C "$work/tap" add Formula/wm.rb
 git -C "$work/tap" commit --quiet -m "wm $next"
 git -C "$work/tap" push --quiet origin HEAD:main

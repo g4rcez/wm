@@ -63,5 +63,15 @@ class Wm < Formula
 
   test do
     assert_match "wm", shell_output("#{bin}/wm --help")
+
+    # A release must arrive as it was signed and notarized, or macOS asks for the permissions again.
+    unless build.head?
+      app = prefix/"wm.app"
+      system "/usr/bin/codesign", "--verify", "--deep", "--strict", app
+      assert_match "subject.OU] = @TEAM@", shell_output("/usr/bin/codesign -dr - #{app} 2>&1")
+      # The sandbox of the test stops Gatekeeper, so this checks that the ticket of the notarization is stapled to the app.
+      # scripts/verify-release.sh asks Gatekeeper before the release is published.
+      assert_path_exists app/"Contents/CodeResources"
+    end
   end
 end
