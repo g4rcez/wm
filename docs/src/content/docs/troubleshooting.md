@@ -28,6 +28,7 @@ Run `wm doctor` first. It checks the config, `shortcuts.toml`, the daemon and th
 - **`workspace N` says the workspace has no desktop (`workspaces = "native"`).** wm makes the desktop on macOS 27 and later, so either this macOS is older (add desktops in Mission Control), macOS refused (the limit is 16 desktops for each display), or the name is not a number and has no `space` in its `wm.workspace` rule. `wm doctor` lists the workspaces without a desktop.
 - **Workspace 2 is not desktop 2 any more (`workspaces = "native"`).** macOS reordered the desktops. Turn off *Automatically rearrange Spaces based on most recent use* in System Settings > Desktop & Dock > Mission Control.
 - **The cursor jumps to the other display for a moment when I switch workspaces (`workspaces = "native"`).** The Dock swipes the display under the cursor, so wm puts the cursor on the target display while it posts the swipe, and back.
+- **`wm daemon start` fails with `error -600`, or says to grant Accessibility although it is granted.** wm 1.0.0 and older reported `wm daemon stop` and went on while wm was still quitting, so a `start` or a `reload` right after it could fail, and wm stayed stopped. The permissions are not lost: run `wm daemon start` again.
 - **wm and another window manager fight.** Quit the other one. Quitting wm puts every hidden window back on screen.
 
 ## Limits

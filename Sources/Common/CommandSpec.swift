@@ -370,7 +370,9 @@ public let commandSections: [CommandSection] = [
     ]),
     CommandSection(title: "Daemon", specs: [
         CommandSpec("daemon start", "", "", "Start wm in the background.", details: "When an older build already runs, it says so and points to `wm daemon reload`."),
-        CommandSpec("daemon stop", "", "", "Stop wm. Hidden windows come back on screen."),
+        CommandSpec(
+            "daemon stop", "", "", "Stop wm. Hidden windows come back on screen.",
+            details: "It returns when wm has quit, so `wm daemon stop && wm daemon start` restarts it. It fails when wm does not quit within 10 seconds."),
         CommandSpec(
             "daemon status", "", "[--json]", "Show whether wm runs and its state (exit 1 if not).",
             details: "The exit code tells a script whether wm runs: 0 when it does, 1 when it does not.",

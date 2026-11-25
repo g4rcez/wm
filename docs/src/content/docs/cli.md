@@ -56,6 +56,7 @@ Options for every command:
 - `wm config check [path]` loads a config file in a new Lua state without applying it. It prints the first error with its line, and a `warn:` line for each bind that `init.lua` and `shortcuts.toml` both make. Inside it, `wm.exec` and `wm.dispatch` do nothing and `wm.query` finds nothing.
 - `wm skills` prints a `SKILL.md` that teaches an AI agent to use wm, built from the same table as `wm help`: `mkdir -p ~/.claude/skills/wm && wm skills > ~/.claude/skills/wm/SKILL.md`.
 - `wm daemon reload` loads the config again. When the running wm is another build than this `wm` (after `brew upgrade wm`), it stops it and starts the new one instead, then prints `wm restarted: <old> -> <new>`. The release is signed with the same certificate, so the permissions stay. `wm daemon start` on a stale wm says so and points to `reload`.
+- `wm daemon stop` returns when wm has quit, after it has put the windows back, so `wm daemon stop && wm daemon start` restarts it. It fails when wm does not quit within 10 seconds. `wm daemon start` tries again for a few seconds when macOS cannot open wm yet.
 - `doctor`, `config check`, `lsp`, `init`, `skills` and `completion` need no daemon.
 
 ## Output

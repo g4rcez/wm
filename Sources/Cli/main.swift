@@ -384,16 +384,46 @@ func startDaemon() {
     guard let bundle = appBundle() else {
         die("cannot find wm.app", hint: "run `wm` from inside wm.app, or install wm.app in /Applications")
     }
-    let open = Process()
-    open.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-    open.arguments = ["-g", bundle.path]
-    do { try open.run() } catch { die("cannot start \(bundle.path): \(error)") }
-    open.waitUntilExit()
-    for _ in 0..<50 {
-        if (try? sendRequest(ClientRequest(args: ["version"]))) != nil { return }
-        usleep(100_000)
+    // `open` fails (error -600) while an old wm still quits, because macOS thinks that the app runs: try again.
+    var failure = ""
+    let opened = retry(timeoutSeconds: 10, intervalSeconds: 0.3) {
+        let open = Process()
+        let errors = Pipe()
+        open.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        open.arguments = ["-g", bundle.path]
+        open.standardError = errors
+        do { try open.run() } catch { die("cannot start \(bundle.path): \(error)") }
+        failure = String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        open.waitUntilExit()
+        return open.terminationStatus == 0
     }
-    die("started \(bundle.path) but it did not answer within 5 seconds", hint: "grant Accessibility to wm when macOS asks, then run `wm daemon status`")
+    guard opened else { die("macOS could not open \(bundle.path): \(failure)", hint: "run `wm daemon start` again") }
+    // The daemon answers with or without the permissions, so no answer means that it did not stay up.
+    guard retry(timeoutSeconds: 10, { (try? sendRequest(ClientRequest(args: ["version"]), timeoutSeconds: 1)) != nil }) else {
+        die("started \(bundle.path) but it did not answer within 10 seconds", hint: "`wm logs` shows why; then run `wm daemon start` again")
+    }
+}
+
+/// Quits the running daemon, whatever its version, and starts the one of this `wm`.
+func replaceDaemon() {
+    // A daemon that does not quit when asked gets a signal, which also lets it put the windows back.
+    if case .stillRunning(let pid) = stopDaemon() {
+        kill(pid, SIGTERM)
+        guard waitForExit(pid, timeoutSeconds: 5) else {
+            die("the old wm did not quit (process \(pid))", hint: "run `pkill -9 -x wmd`, then `wm daemon start`")
+        }
+    }
+    startDaemon()
+}
+
+/// Quits the running daemon and returns when its process has ended. Exits when it does not end.
+func quitDaemon() -> DaemonStop {
+    let result = stopDaemon()
+    if case .stillRunning(let pid) = result {
+        die("wm did not quit within 10 seconds (process \(pid))", hint: "run `pkill -x wmd`, then `wm daemon start`")
+    }
+    return result
 }
 
 if arguments == ["daemon", "start"] {
@@ -410,13 +440,7 @@ if arguments == ["daemon", "reload"] {
     // After `brew upgrade` the daemon still runs the old build: reload then replaces it, so the new features and mappings load.
     // The permissions stay: the signature of every release is the same.
     if let running = runningDaemon(), isStale(running) {
-        _ = try? sendRequest(ClientRequest(args: ["daemon", "stop"]))
-        for _ in 0..<50 {
-            if (try? sendRequest(ClientRequest(args: ["version"]), timeoutSeconds: 1)) == nil { break }
-            usleep(100_000)
-        }
-        if runningDaemon() != nil { _ = try? Process.run(URL(fileURLWithPath: "/usr/bin/pkill"), arguments: ["-x", "wmd"]); sleep(1) }
-        startDaemon()
+        replaceDaemon()
         print("wm restarted: \(running.version) -> \(wmVersion)")
         exit(0)
     }
@@ -431,12 +455,7 @@ if arguments == ["daemon", "reload"] {
 }
 
 if arguments == ["daemon", "stop"] {
-    do {
-        _ = try sendRequest(ClientRequest(args: ["daemon", "stop"]))
-        print("wm stopped")
-    } catch {
-        print("wm is not running")
-    }
+    print(quitDaemon() == .stopped ? "wm stopped" : "wm is not running")
     exit(0)
 }
 
