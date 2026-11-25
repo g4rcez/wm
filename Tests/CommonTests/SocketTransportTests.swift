@@ -4,6 +4,9 @@ import Testing
 
 @Suite(.serialized)
 struct SocketTransportTests {
+    /// Longer than the default: on a small CI machine, tests that run at the same time can delay the server for several seconds.
+    private let patience = 60
+
     private func temporarySocketPath() -> String {
         "/tmp/wm-test-\(UUID().uuidString.prefix(8)).sock"
     }
@@ -51,7 +54,7 @@ struct SocketTransportTests {
         }
         defer { server.stop() }
 
-        let answer = try sendRequest(ClientRequest(args: ["focus", "left"]), socketPath: path)
+        let answer = try sendRequest(ClientRequest(args: ["focus", "left"]), socketPath: path, timeoutSeconds: patience)
 
         #expect(answer == ServerAnswer(exitCode: 3, stdout: "focus left", stderr: "warn"))
     }
@@ -61,7 +64,7 @@ struct SocketTransportTests {
         let server = try SocketServer(path: path) { _ in ServerAnswer(exitCode: 0) }
         defer { server.stop() }
 
-        let connection = try connectToServer(path: path)
+        let connection = try connectToServer(path: path, timeoutSeconds: patience)
         defer { close(connection) }
         try writeFrame(connection, Data("not json".utf8))
         let answer = try JSONDecoder().decode(ServerAnswer.self, from: readFrame(connection))
@@ -86,7 +89,7 @@ struct SocketTransportTests {
         let server = try SocketServer(path: path) { _ in ServerAnswer(exitCode: 0, stdout: "alive") }
         defer { server.stop() }
 
-        #expect(try sendRequest(ClientRequest(args: ["ping"]), socketPath: path).stdout == "alive")
+        #expect(try sendRequest(ClientRequest(args: ["ping"]), socketPath: path, timeoutSeconds: patience).stdout == "alive")
     }
 
     @Test func clientWithoutServerFailsToConnect() {

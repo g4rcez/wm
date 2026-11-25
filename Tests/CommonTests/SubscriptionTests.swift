@@ -44,7 +44,8 @@ struct SubscriptionTests {
         }) { _ in ServerAnswer(exitCode: 0) }
         defer { server.stop() }
 
-        let connection = try connectToServer(path: path)
+        // A long timeout: on a small CI machine, tests that run at the same time can delay the server for several seconds.
+        let connection = try connectToServer(path: path, timeoutSeconds: 60)
         defer { close(connection) }
         try writeFrame(connection, JSONEncoder().encode(ClientRequest(args: ["subscribe", "--snapshot", "window_focus"])))
         _ = try readFrame(connection)
