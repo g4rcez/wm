@@ -347,6 +347,14 @@ final class WindowManager {
         applier.resend(info.id, pid: info.pid)
     }
 
+    /// Makes the next relayout write the size and the position of every tiled window of the workspace, also when wm thinks that
+    /// the window is already there.
+    func resendLaidOut(onWorkspace name: String) {
+        for (id, managed) in windows where managed.workspace == name && !managed.floating && !managed.isOutOfLayout {
+            applier.resend(id, pid: managed.info.pid)
+        }
+    }
+
     private func reconcile(_ infos: [WindowInfo], unread: Set<pid_t>) {
         var seen: Set<WindowID> = []
         for info in infos {
@@ -2063,7 +2071,7 @@ final class WindowManager {
             let moved = hypot(after.minX - before.minX, after.minY - before.minY) > tolerance
             guard resized || moved else { continue }
             changed = true
-            applier.forget(id)
+            applier.resend(id, pid: managed.info.pid)
             if isPinnedToArea(id) { continue }
             guard isTiledAndShown(id) else { continue }
             animator.place(id, at: after)

@@ -667,7 +667,8 @@ extension WindowManager {
     /// The window is passed to the layout only when it is a tiled window of that workspace.
     /// `clearMaximized` ends maximize and fullscreen there, which would hide the result.
     private func workspaceLayoutCommand(
-        _ command: LayoutCommand, target id: WindowID?, needs kind: LayoutKind? = nil, name: String = "", clearMaximized: Bool = false
+        _ command: LayoutCommand, target id: WindowID?, needs kind: LayoutKind? = nil, name: String = "", clearMaximized: Bool = false,
+        resend: Bool = false
     ) -> ServerAnswer {
         guard let workspace = targetWorkspace(id) else { return fail("there is no workspace") }
         if let kind, workspace.kind != kind {
@@ -681,6 +682,7 @@ extension WindowManager {
         }
         let tiledFocus = id.flatMap { id in windows[id].flatMap { $0.workspace == workspace.name && !$0.floating ? id : nil } }
         _ = workspace.engine.perform(command, focused: tiledFocus, in: layoutContext(forWorkspace: workspace.name))
+        if resend { resendLaidOut(onWorkspace: workspace.name) }
         relayout()
         return ok()
     }
@@ -720,7 +722,7 @@ extension WindowManager {
         case "undo", "redo":
             guard words.count <= 2 else { return fail("layout \(sub) takes one workspace", 2, usage: "layout \(sub)") }
             return walkLayoutHistory(sub == "undo" ? .undo : .redo, workspace: value.map(resolveWorkspaceName))
-        case "balance": return workspaceLayoutCommand(.balance, target: id, clearMaximized: true)
+        case "balance": return workspaceLayoutCommand(.balance, target: id, clearMaximized: true, resend: true)
         case "master": return masterGroup(words, id)
         case "flip": return rotateLayout()
         case "tile": return tile(value, target: id)
