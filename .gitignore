@@ -13,6 +13,8 @@ DerivedData/
 .DS_Store
 
 # Local secrets and environment
+wm-signing/
+*.p12
 .env
 .env.*
 

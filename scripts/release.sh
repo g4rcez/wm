@@ -1,26 +1,36 @@
 #!/usr/bin/env bash
-# Releases wm: bumps Version.swift, commits, tags and pushes, then bumps Formula/wm.rb in the Homebrew tap
-# (g4rcez/homebrew-tap) with your own git access. The release workflow tests the tag, builds and signs the app and creates
-# the GitHub release; the formula installs that signed app.
+# Releases wm from this Mac: tests, bumps Version.swift, builds a universal wm.app signed with the release certificate, then
+# commits, tags, pushes, creates the GitHub release with the app attached and writes Formula/wm.rb of the Homebrew tap
+# (g4rcez/homebrew-tap) from scripts/wm.rb.in. It uses your own keychain, `gh` login and git access: CI holds no secret.
 #
 #   scripts/release.sh patch|minor|major|X.Y.Z [--dry-run]
+#
+# The certificate comes from scripts/make-signing-cert.sh; scripts/signing-cert.sha1 pins it.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 usage() { echo "usage: scripts/release.sh patch|minor|major|X.Y.Z [--dry-run]" >&2; exit 2; }
+die() { echo "error: $*" >&2; exit 1; }
 
 bump="${1:-}"; [ -n "$bump" ] || usage
 dry=0; [ "${2:-}" = "--dry-run" ] && dry=1
 file=Sources/Common/Version.swift
 
-[ "$(git branch --show-current)" = "main" ] || { echo "error: release from main" >&2; exit 1; }
-[ -z "$(git status --porcelain)" ] || { echo "error: the working tree is not clean" >&2; exit 1; }
+[ "$(git branch --show-current)" = "main" ] || die "release from main"
+[ -z "$(git status --porcelain)" ] || die "the working tree is not clean"
 git fetch --quiet origin main --tags
-[ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || { echo "error: main is not in sync with origin/main" >&2; exit 1; }
+[ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || die "main is not in sync with origin/main"
+
+# The same certificate for every release, or macOS asks every user for the permissions again.
+identity="$(tr -d '[:space:]' < scripts/signing-cert.sha1 2>/dev/null || true)"
+[[ "$identity" =~ ^[0-9A-F]{40}$ ]] || die "no certificate pinned in scripts/signing-cert.sha1: run scripts/make-signing-cert.sh"
+security find-identity -p codesigning | grep -q "$identity" \
+    || die "the release certificate $identity is not in your keychain: import its backup (see the development docs)"
+gh auth status >/dev/null 2>&1 || die "gh is not logged in: run gh auth login"
 
 current="$(sed -n 's/.*wmVersion = "\(.*\)".*/\1/p' "$file")"
-[ -n "$current" ] || { echo "error: no wmVersion in $file" >&2; exit 1; }
+[ -n "$current" ] || die "no wmVersion in $file"
 IFS=. read -r major minor patch <<<"$current"
 
 case "$bump" in
@@ -31,9 +41,9 @@ case "$bump" in
 esac
 tag="v$next"
 
-git rev-parse -q --verify "refs/tags/$tag" >/dev/null && { echo "error: tag $tag already exists" >&2; exit 1; }
+git rev-parse -q --verify "refs/tags/$tag" >/dev/null && die "tag $tag already exists"
 [ "$(printf '%s\n%s\n' "$current" "$next" | sort -V | tail -1)" = "$next" ] && [ "$current" != "$next" ] \
-  || { echo "error: $next is not newer than $current" >&2; exit 1; }
+  || die "$next is not newer than $current"
 
 echo "release: $current -> $next ($tag)"
 [ "$dry" = 1 ] && { echo "dry run: nothing changed"; exit 0; }
@@ -42,31 +52,45 @@ echo "release: $current -> $next ($tag)"
 timeout_cmd="$(command -v timeout || command -v gtimeout || true)"
 ${timeout_cmd:+$timeout_cmd 600} swift test
 
-sed -i '' "s/wmVersion = \"$current\"/wmVersion = \"$next\"/" "$file" 2>/dev/null \
-  || sed -i "s/wmVersion = \"$current\"/wmVersion = \"$next\"/" "$file"
+# Until the commit, a failure puts the version back.
+work="$(mktemp -d)"
+committed=0
+cleanup() { [ "$committed" = 1 ] || git checkout --quiet -- "$file"; rm -rf "$work"; }
+trap cleanup EXIT
+
+sed -i '' "s/wmVersion = \"$current\"/wmVersion = \"$next\"/" "$file"
+
+# A universal binary: the package supports Intel Macs too.
+CODESIGN_IDENTITY="$identity" NO_START=1 NO_STOP=1 SWIFT_BUILD_FLAGS="--arch arm64 --arch x86_64" ./build-app.sh release
+
+app=.build/wm.app
+requirement="$(codesign -dr - "$app" 2>&1 | grep 'designated =>')"
+echo "$requirement"
+echo "$requirement" | grep -qi "H\"$identity\"" || die "the signature does not name the release certificate"
+codesign --verify --deep --strict "$app"
+lipo "$app/Contents/MacOS/wmd" -verify_arch arm64 x86_64 || die "the app is not universal"
+[ "$("$app/Contents/MacOS/wm" --version)" = "wm $next" ] || die "the built app is not version $next"
+
+asset="wm-$next-macos.tar.gz"
+mkdir "$work/pack"
+ditto "$app" "$work/pack/wm.app"
+cp LICENSE "$work/pack/"
+COPYFILE_DISABLE=1 tar -C "$work/pack" -czf "$work/$asset" wm.app LICENSE
+sha="$(shasum -a 256 "$work/$asset" | cut -d' ' -f1)"
+echo "$sha" > "$work/$asset.sha256"
+
 git add "$file"
-git commit -m "chore(release): $tag" -m "- Bump the version so \`wm version\` matches the tag the release workflow builds."
+git commit -m "chore(release): $tag" -m "- Bump the version so \`wm version\` matches the tag and the app of the release."
+committed=1
 git tag -a "$tag" -m "wm $next"
 git push origin main "$tag"
 
-echo "pushed $tag: follow the release at https://github.com/g4rcez/wm/actions"
+gh release create "$tag" "$work/$asset" "$work/$asset.sha256" --title "wm $next" --generate-notes --verify-tag
 
-# The tap: the formula installs the signed app that the release workflow attaches to the release. Wait for it.
-asset="wm-$next-macos.tar.gz"
 url="https://github.com/g4rcez/wm/releases/download/$tag/$asset"
-echo "waiting for the release workflow to attach $asset (up to 30 minutes)..."
-sha=""
-for _ in $(seq 1 180); do
-  sha="$(curl -fsSL "$url.sha256" 2>/dev/null | tr -d '[:space:]')" && [[ "$sha" =~ ^[0-9a-f]{64}$ ]] && break
-  sha=""; sleep 10
-done
-[ -n "$sha" ] || { echo "error: $asset is not on the release; check https://github.com/g4rcez/wm/actions and bump the tap by hand" >&2; exit 1; }
-
-tap="$(mktemp -d)"
-trap 'rm -rf "$tap"' EXIT
-git clone --quiet git@github.com:g4rcez/homebrew-tap.git "$tap"
-sed -i '' -e "s#^  url \".*\"#  url \"$url\"#" -e "s#^  sha256 \".*\"#  sha256 \"$sha\"#" "$tap/Formula/wm.rb"
-git -C "$tap" add Formula/wm.rb
-git -C "$tap" commit --quiet -m "wm $next"
-git -C "$tap" push --quiet origin HEAD:main
-echo "tap: Formula/wm.rb is at $next; run: brew upgrade g4rcez/tap/wm"
+git clone --quiet git@github.com:g4rcez/homebrew-tap.git "$work/tap"
+sed -e "s#@URL@#$url#" -e "s#@SHA256@#$sha#" scripts/wm.rb.in > "$work/tap/Formula/wm.rb"
+git -C "$work/tap" add Formula/wm.rb
+git -C "$work/tap" commit --quiet -m "wm $next"
+git -C "$work/tap" push --quiet origin HEAD:main
+echo "tap: Formula/wm.rb is at $next; run: brew update && brew upgrade g4rcez/tap/wm"
