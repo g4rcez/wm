@@ -60,7 +60,7 @@ public final class LiveCapture: NSObject, SCStreamOutput, SCStreamDelegate, @unc
         // A buffer without an image says that nothing changed.
         guard type == .screen, let image = CMSampleBufferGetImageBuffer(buffer),
               let surface = CVPixelBufferGetIOSurface(image)?.takeUnretainedValue() else { return }
-        nonisolated(unsafe) let frame = unsafeBitCast(surface, to: IOSurface.self)
+        let frame = unsafeBitCast(surface, to: IOSurface.self)
         MainActor.assumeIsolated { onFrame(frame) }
     }
 

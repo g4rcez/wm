@@ -1001,7 +1001,7 @@ struct LuaHostTests {
     }
 
     @Test func everyFunctionOfTheWmTableHasATypeStub() throws {
-        try host.load(configURL: dir.write("init.lua", """
+        _ = try host.load(configURL: dir.write("init.lua", """
         local names = {}
         for key in pairs(wm) do names[#names + 1] = key end
         table.sort(names)
