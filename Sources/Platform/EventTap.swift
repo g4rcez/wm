@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import Core
 @preconcurrency import CoreGraphics
 import Foundation
@@ -53,6 +54,7 @@ public final class EventTap: @unchecked Sendable {
     /// wait for this process. It is a normal tap, not listen-only: that kind could need Input Monitoring permission.
     private var pointerPort: CFMachPort?
     private var pointerWanted = false
+    private var sources: [CFRunLoopSource] = []
 
     /// Types a key: a press and a release. The events carry `ownEventTag`, so this tap does not treat them as hotkeys.
     public static func post(keyCode: Int, flags: CGEventFlags) {
@@ -115,13 +117,25 @@ public final class EventTap: @unchecked Sendable {
         let changed = level != wantedLevel
         wantedLevel = level
         guard changed, port != nil else { return port != nil }
-        for old in [port, pointerPort] { if let old { CFMachPortInvalidate(old) } }
-        port = nil
-        pointerPort = nil
         return start(level: level)
     }
 
+    /// Removes the taps. An active tap of a process that lost the Accessibility permission blocks all input of the Mac, so the
+    /// app calls this as soon as the permission goes away. `start()` installs the taps again.
+    @MainActor public func stop() {
+        for old in [port, pointerPort] {
+            guard let old else { continue }
+            CGEvent.tapEnable(tap: old, enable: false)
+            CFMachPortInvalidate(old)
+        }
+        for source in sources { CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes) }
+        sources = []
+        port = nil
+        pointerPort = nil
+    }
+
     @MainActor private func start(level wanted: EventLevel) -> Bool {
+        stop()
         let mask: CGEventMask = (1 << CGEventType.keyDown.rawValue)
             | (1 << CGEventType.keyUp.rawValue)
             | (1 << CGEventType.scrollWheel.rawValue)
@@ -146,8 +160,12 @@ public final class EventTap: @unchecked Sendable {
                 callback: callback,
                 userInfo: Unmanaged.passUnretained(self).toOpaque()
             ) else { return nil }
-            let source = CFMachPortCreateRunLoopSource(nil, created, 0)
+            guard let source = CFMachPortCreateRunLoopSource(nil, created, 0) else {
+                CFMachPortInvalidate(created)
+                return nil
+            }
             CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+            sources.append(source)
             return created
         }
         var location: CGEventTapLocation = wanted == .hid ? .cghidEventTap : .cgSessionEventTap
@@ -167,6 +185,7 @@ public final class EventTap: @unchecked Sendable {
 
     /// Turns the taps on again, in case macOS switched them off without a word.
     @MainActor public func reenable() {
+        guard AXIsProcessTrusted() else { return }
         if let port { CGEvent.tapEnable(tap: port, enable: true) }
         if let pointerPort, pointerWanted { CGEvent.tapEnable(tap: pointerPort, enable: true) }
     }
@@ -186,6 +205,8 @@ public final class EventTap: @unchecked Sendable {
                 let reason = type == .tapDisabledByTimeout ? "timeout" : "user input"
                 FileHandle.standardError.write(Data("wm: the event tap was disabled by macOS (\(reason))\n".utf8))
             }
+            // Without the permission, a tap that is turned on again blocks all input: the app removes it.
+            guard AXIsProcessTrusted() else { return pass }
             if let port { CGEvent.tapEnable(tap: port, enable: true) }
             if let pointerPort, pointerWanted { CGEvent.tapEnable(tap: pointerPort, enable: true) }
             onReenabled?()

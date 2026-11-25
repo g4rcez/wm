@@ -641,6 +641,29 @@ final class AppController: HostBridge, @unchecked Sendable {
         keyboardWatcher.start()
     }
 
+    /// Installs the key taps, then takes over the system shortcuts that the config asks for. `false` when macOS refuses the taps.
+    @MainActor func startListening() -> Bool {
+        keyTapRunning = input.start()
+        guard keyTapRunning else { return false }
+        input.tap.setPointerTracking(manager.settings.focusFollowsMouse.enabled)
+        applySystemShortcuts()
+        return true
+    }
+
+    /// Removes the key taps and gives macOS its shortcuts back.
+    @MainActor func stopListening() {
+        input.stop()
+        keyTapRunning = false
+        restoreSystemShortcuts()
+    }
+
+    /// Cmd+Tab and CapsLock change only while wm listens for keys: without the taps nothing would answer them.
+    @MainActor private func applySystemShortcuts() {
+        guard keyTapRunning else { return }
+        setSystemCmdTab(disabled: manager.settings.binds.disableSystemCmdTab)
+        setCapsLockHyper(manager.settings.binds.capsLockHyper)
+    }
+
     @MainActor func restoreSystemShortcuts() {
         setSystemCmdTab(disabled: false)
         setCapsLockHyper(false)
@@ -659,9 +682,7 @@ final class AppController: HostBridge, @unchecked Sendable {
         input.releaseBinds = loaded.releaseBinds
         input.longPressBinds = loaded.longPressBinds
         input.holdBinds = loaded.holdBinds
-        setSystemCmdTab(disabled: loaded.settings.binds.disableSystemCmdTab)
         keyboardSettings = loaded.settings.keyboards
-        setCapsLockHyper(loaded.settings.binds.capsLockHyper)
         input.noRepeat = loaded.noRepeat
         EventTap.outputLevel = loaded.settings.binds.eventLevel
         if input.tap.restart(level: loaded.settings.binds.eventLevel), input.tap.level != loaded.settings.binds.eventLevel {
@@ -679,6 +700,7 @@ final class AppController: HostBridge, @unchecked Sendable {
         manager.apply(
             settings: loaded.settings, rules: loaded.rules, workspaceLayouts: loaded.workspaceLayouts,
             workspaceRules: loaded.workspaceRules)
+        applySystemShortcuts()
         input.tap.setPointerTracking(loaded.settings.focusFollowsMouse.enabled)
         updateTrackpad(loaded.settings.trackpad)
         updateStartAtLogin(loaded.settings.startAtLogin)

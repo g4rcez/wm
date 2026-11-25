@@ -13,7 +13,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menu: MenuBar!
     private let secureInput = SecureInputWatcher()
     private var watcher: ConfigWatcher?
-    private var permissionTimer: Timer?
+    private var accessibility: AccessibilityWatcher?
+    private var windowControlStarted = false
+    /// macOS refused the taps although the permission is there: wm tries again, and says so once.
+    private var keyTapRefused = false
     private var setup: OnboardingWindow?
     private var shortcutsWindow: ShortcutsWindow?
     private let prefixLabel = PrefixLabel()
@@ -147,24 +150,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for url in urls { controller.handle(url: url) }
     }
 
-    /// Hotkeys and window control need the Accessibility permission. Ask, then start as soon as it is granted.
+    /// Hotkeys and window control need the Accessibility permission. Ask, then follow it for as long as wm runs: start when it
+    /// is granted, and let go of the keys when it is removed.
     private func awaitAccessibility() {
+        guard accessibility == nil else { return }
         let prompt = "AXTrustedCheckOptionPrompt"
-        if AXIsProcessTrustedWithOptions([prompt: true] as CFDictionary) {
-            startWindowControl()
-            return
+        if !AXIsProcessTrustedWithOptions([prompt: true] as CFDictionary) {
+            menu.setError("Grant Accessibility permission to wm")
         }
-        menu.setError("Grant Accessibility permission to wm")
-        permissionTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard AXIsProcessTrusted() else { return }
-                self?.permissionTimer?.invalidate()
-                self?.menu.setError(nil)
-                self?.startWindowControl()
-            }
+        let watcher = AccessibilityWatcher { [weak self] trusted in self?.accessibilityChecked(trusted: trusted) }
+        accessibility = watcher
+        watcher.start()
+    }
+
+    private func accessibilityChecked(trusted: Bool) {
+        switch KeyTapAccess.action(trusted: trusted, listening: controller.keyTapRunning) {
+        case .start: startListening()
+        case .stop:
+            controller.stopListening()
+            menu.setError("Accessibility permission was removed: wm stopped listening for keys")
+            Log.write(.warn, "Accessibility permission was removed: wm stopped listening for keys", source: "input", prefix: "wmd")
+        // A tap that macOS disabled while the permission was away for a moment listens again.
+        case .keep: if trusted { controller.input.tap.reenable() }
         }
     }
 
+    private func startListening() {
+        if !windowControlStarted {
+            windowControlStarted = true
+            startWindowControl()
+        }
+        guard controller.startListening() else {
+            if !keyTapRefused { menu.setError("Cannot listen for keys: check Accessibility permission") }
+            keyTapRefused = true
+            return
+        }
+        keyTapRefused = false
+        menu.setError(nil)
+        manager.scheduleRefresh()
+    }
+
+    /// What runs once, with the first grant.
     private func startWindowControl() {
         // After sleep the keyboards may be set up again, and the CapsLock mapping with them.
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
@@ -183,10 +209,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         secureInput.start()
         manager.start()
-        controller.keyTapRunning = controller.input.start()
-        if !controller.keyTapRunning {
-            menu.setError("Cannot listen for keys: check Accessibility permission")
-        }
     }
 }
 

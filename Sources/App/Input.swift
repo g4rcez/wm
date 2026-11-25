@@ -137,6 +137,19 @@ final class InputRouter {
         return tap.start()
     }
 
+    /// Stops listening for keys and the mouse, and forgets what was in progress. `start()` listens again.
+    func stop() {
+        tap.stop()
+        resetHeldKeys()
+        cancelSequence()
+        modeTimer?.invalidate()
+        modeTimer = nil
+        pickButton = nil
+        let pick = pickDone
+        pickDone = nil
+        pick?(nil)
+    }
+
     /// Arms `wm pick`. `done` runs on the main actor once: with the click location, or with `nil` when the pick is cancelled.
     /// Returns `false` when another pick is waiting already.
     func beginPick(_ done: @escaping (CGPoint?) -> Void) -> Bool {
