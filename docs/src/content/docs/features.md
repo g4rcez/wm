@@ -202,6 +202,29 @@ wm.config { mouse = { move_modifier = "alt", resize_modifier = "alt" } }
 
 Both are off until you set them, because Option-click means something in Finder and in many editors.
 
+## Dim
+
+Darkens every window that does not have the focus, so the one you work in stands out. It is off until you turn it on.
+
+```lua
+wm.config { dim = { enabled = true, amount = 0.25 } }
+wm.workspace("media", { dim = false })              -- a workspace where nothing is dimmed
+wm.rule { app = "org.videolan.vlc", dim = false }   -- a window that stays bright
+```
+
+| Config key | Default | Meaning |
+| --- | --- | --- |
+| `dim.enabled` | `false` | turn dimming on |
+| `dim.amount` | `0.25` | how dark, 0 to 0.9 |
+| `dim.color` | `"#000000"` | the color laid over the windows (its alpha is not used) |
+
+`wm set dim.enabled true` turns it on until the next reload. It needs no new permission.
+
+- wm lays a click-through layer directly over each dimmed window. A window in front of it, floating or fullscreen, stays bright.
+- Not dimmed: the focused window, windows that wm does not manage, special workspaces, a workspace in zen, and the desktop.
+- The corners of the layer use `border.radius`. Screenshots of the whole screen and screen recordings show the dimming.
+- A window that an app raises on its own can stay bright for a moment.
+
 ## Run or raise
 
 One key: focus the app if it runs, start it if it does not.

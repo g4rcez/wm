@@ -138,6 +138,11 @@
 ---@field fps? number Frames per second, 30 to 240; the display caps it (a 60 Hz screen ticks at 60). Default 120.
 ---@field rate? number Spring stiffness, >= 0.1; higher is faster. A long move ends in about 10 / rate seconds. Default 16.
 
+---@class (exact) wm.Dim
+---@field enabled? boolean Darken the windows that do not have the focus. Default false.
+---@field amount? number How dark, 0 to 0.9. Default 0.25.
+---@field color? wm.Color The color laid over them; its alpha is not used. Default "#000000".
+
 ---@class (exact) wm.Border
 ---@field enabled? boolean Default false.
 ---@field width? number Points, >= 0. Default 2.
@@ -403,6 +408,7 @@
 ---@field gaps? wm.Gaps
 ---@field animations? wm.Animations
 ---@field border? wm.Border
+---@field dim? wm.Dim Darken the windows without the focus. Off by default.
 ---@field focus_follows_mouse? boolean|wm.FocusFollowsMouse Default false. A table can limit it to windows that are fully on screen.
 ---@field mouse_follows_focus? boolean Moves the cursor to the center of a window that a command focuses. Switching workspaces never moves it. Default false.
 ---@field start_at_login? boolean Only when running as wm.app. Default false.
@@ -453,7 +459,8 @@
 ---@field run? wm.Command|wm.Command[] Commands that run after the other actions.
 ---@field stop? boolean `false` lets later rules add to this one. Default true.
 ---@field border? wm.Color|wm.Color[] The color of the focus border of the window: one color, or a list of two or more for a gradient (`border.angle` in `wm.config` sets the direction). Not the `border = false` of `wm.workspace`.
----@field dynamic? boolean Check the rule again when the title of the window changes: the window gets `float`, `size`, `center`, `workspace`, `monitor` and `border` when it starts to match, and floats or tiles as before when it stops. Default false.
+---@field dim? boolean `false` keeps the window bright; `true` dims it even when `dim.enabled` is off.
+---@field dynamic? boolean Check the rule again when the title of the window changes: the window gets `float`, `size`, `center`, `workspace`, `monitor`, `border` and `dim` when it starts to match, and floats or tiles as before when it stops. Default false.
 
 --- The actions of `wm.Rule` for the window that a command opens, plus how to find the window. `timeout` and `app` need at least one action.
 ---@class (exact) wm.ExecOptions
@@ -477,6 +484,7 @@
 ---@field default? boolean With `monitor`: the monitor starts with this workspace.
 ---@field gaps? wm.Gaps Gaps of this workspace only.
 ---@field border? boolean `false` hides the focus border on this workspace.
+---@field dim? boolean Dim the windows without the focus on this workspace, or not. Default: `dim.enabled`.
 ---@field layout_options? wm.LayoutOptions Tiling and scrolling options of this workspace only.
 ---@field on_empty? string|wm.OnEmpty A command that runs when the workspace is shown with no window on it. The window that it opens goes to this workspace.
 ---@field wallpaper? string An image (an absolute path, or `~/...`) that the monitor shows while it shows this workspace. The other workspaces keep the picture that the monitor had. See the limits in the docs: it changes the desktop of the current Space only.

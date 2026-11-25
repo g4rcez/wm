@@ -18,6 +18,8 @@ struct ManagedWindow {
     var sticky = false
     var stickyMonitor: UInt32?
     var borderColors: [Color]?
+    /// Set by a rule; `nil` follows `dim.enabled`.
+    var dim: Bool?
 }
 
 final class Workspace {
@@ -123,13 +125,15 @@ final class WindowManager {
     private var drift = FrameDrift()
     private let border = BorderOverlay()
     private let backdrop = SpecialBackdrop()
+    private let dimOverlay = DimOverlay()
+    private var dimSettle: DispatchWorkItem?
     private let tabIndicator = TabIndicatorOverlay()
     private var clock: DisplayClock?
     private var lastTick = CACurrentMediaTime()
     private var refreshing = false
     private var refreshAgain = false
-    private var lastVisible: Set<WindowID> = []
-    private var lastParked: Set<WindowID> = []
+    private(set) var lastVisible: Set<WindowID> = []
+    private(set) var lastParked: Set<WindowID> = []
     private var lastShownFrame: [WindowID: CGRect] = [:]
 
     private var pendingRestore: SavedState?
@@ -147,7 +151,7 @@ final class WindowManager {
     private var badgeTimer: Timer?
     private var badgeInterval: Double = 0
     private var dynamicTracker = DynamicRuleTracker()
-    private var dynamicSaved: [WindowID: (floating: Bool, floatFrame: CGRect?, border: [Color]?)] = [:]
+    private var dynamicSaved: [WindowID: (floating: Bool, floatFrame: CGRect?, border: [Color]?, dim: Bool?)] = [:]
     private var refocusAfterOpen: WindowID?
     private var saveTimer: Timer?
     private var lastSaved: Data?
@@ -450,9 +454,10 @@ final class WindowManager {
         let dynamic = dynamicRuleIndices(for: info)
         if !dynamic.isEmpty {
             _ = dynamicTracker.update(window: info.id, matching: dynamic, now: ProcessInfo.processInfo.systemUptime)
-            dynamicSaved[info.id] = (floating: info.kind == .floating || floatsByDefault, floatFrame: nil, border: nil)
+            dynamicSaved[info.id] = (floating: info.kind == .floating || floatsByDefault, floatFrame: nil, border: nil, dim: nil)
         }
         windows[info.id]?.borderColors = rule?.border
+        windows[info.id]?.dim = rule?.dim
         pendingOnEmpty.remove(workspaceName)
         if didFirstScan {
             let app = info.bundleID.isEmpty ? "(no bundle id)" : info.bundleID
@@ -999,8 +1004,9 @@ final class WindowManager {
 
     private func applyDynamic(_ rule: WindowRule, to id: WindowID) {
         guard let managed = windows[id] else { return }
-        if dynamicSaved[id] == nil { dynamicSaved[id] = (floating: managed.floating, floatFrame: managed.floatFrame, border: managed.borderColors) }
+        if dynamicSaved[id] == nil { dynamicSaved[id] = (floating: managed.floating, floatFrame: managed.floatFrame, border: managed.borderColors, dim: managed.dim) }
         windows[id]?.borderColors = rule.border ?? dynamicSaved[id]?.border
+        windows[id]?.dim = rule.dim ?? dynamicSaved[id]?.dim
         Log.write(.debug, "dynamic rule applied: id=\(id) title=\(managed.info.title.debugDescription) rule=\(Self.describe(rule))", source: "window")
         let destination = rule.workspace ?? rule.monitor.flatMap(monitor(matching:)).map(activeWorkspace(of:))
         if let destination, destination != managed.workspace {
@@ -1023,6 +1029,7 @@ final class WindowManager {
         if managed.floating != saved.floating { setFloating(id, saved.floating) }
         if saved.floating, let frame = saved.floatFrame { setFloatFrame(id, frame) }
         windows[id]?.borderColors = saved.border
+        windows[id]?.dim = saved.dim
         relayout()
     }
 
@@ -1713,6 +1720,7 @@ final class WindowManager {
         applier.send(animator.frames, windows: windows)
         startClockIfNeeded()
         updateBorder()
+        updateDim()
         updateTabIndicator()
         publishStatus()
         onWorkspacesShown?(Dictionary(uniqueKeysWithValues: monitors.map { ($0.id, (workspace: $0.workspace, special: specials[$0.id])) }))
@@ -1808,6 +1816,7 @@ final class WindowManager {
         lastTick = now
         applier.send(changed.filter { windows[$0.key] != nil }, windows: windows)
         updateBorder()
+        updateDim(reorder: false)
         updateTabIndicator()
         if animator.isSettled {
             clock?.stop()
@@ -1832,6 +1841,26 @@ final class WindowManager {
             return
         }
         tabIndicator.show(on: frame, count: count, selected: index, settings.tabIndicator)
+    }
+
+    /// `reorder` is false for the frames of an animation: the layers only move. After a change they are ordered again
+    /// a moment later, when the windows that were raised are in place.
+    func updateDim(reorder: Bool = true) {
+        dimOverlay.show(dimTargets(actual: false), reorder: reorder)
+        if reorder { settleDim() }
+    }
+
+    private func settleDim() {
+        dimSettle?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                guard self.animator.isSettled else { return self.settleDim() }
+                self.dimOverlay.show(self.dimTargets(actual: true), reorder: true)
+            }
+        }
+        dimSettle = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
     }
 
     func updateBorder() {

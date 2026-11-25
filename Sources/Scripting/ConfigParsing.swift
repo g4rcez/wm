@@ -200,7 +200,7 @@ private func selectChords(_ value: LuaValue, action: SelectAction) throws -> [St
 }
 
 let topLevelConfigKeys = [
-    "layout", "workspaces", "gaps", "animations", "border", "focus_follows_mouse", "mouse_follows_focus",
+    "layout", "workspaces", "gaps", "animations", "border", "dim", "focus_follows_mouse", "mouse_follows_focus",
     "start_at_login", "wrap_focus", "mouse", "trackpad", "workspace_back_and_forth", "tiling", "scrolling", "switcher", "prefix", "url",
     "tab_indicator", "binds", "zen", "special", "overview", "hints", "select", "keyboards", "floating", "master",
     "commands", "menubar", "swallow", "urgent", "appearance",
@@ -353,6 +353,11 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
         }
     }
 
+    if let dim = try top.table("dim", allowed: ["enabled", "amount", "color"]) {
+        if let flag = try dim.bool("enabled") { settings.dim.enabled = flag }
+        if let amount = try dim.number("amount", min: 0, max: DimSettings.maxAmount) { settings.dim.amount = amount }
+        if let value = try color(dim, "color") { settings.dim.color = value }
+    }
     if let border = try top.table("border", allowed: ["enabled", "width", "radius", "active", "inactive", "angle"]) {
         if let flag = try border.bool("enabled") { settings.border.enabled = flag }
         if let width = try border.number("width", min: 0) { settings.border.width = CGFloat(width) }
@@ -632,7 +637,7 @@ private func parseOnEmpty(_ fields: Fields, workspace: String) throws -> ExecReq
 
 func parseWorkspaceRule(name: String, _ value: LuaValue) throws -> WorkspaceRule {
     let fields = try Fields(
-        value, owner: "wm.workspace", allowed: ["layout", "monitor", "default", "gaps", "border", "layout_options", "on_empty", "persistent", "wallpaper", "space"])
+        value, owner: "wm.workspace", allowed: ["layout", "monitor", "default", "gaps", "border", "dim", "layout_options", "on_empty", "persistent", "wallpaper", "space"])
     guard !fields.values.isEmpty else { throw ConfigError(message: "wm.workspace: '\(name)' needs at least one option") }
     var rule = WorkspaceRule()
     if let layout = try fields.choice("layout", LayoutKind.self) { rule.layout = layout }
@@ -655,6 +660,7 @@ func parseWorkspaceRule(name: String, _ value: LuaValue) throws -> WorkspaceRule
     var overrides: [String: LuaValue] = [:]
     if let gaps = fields.values["gaps"] { overrides["gaps"] = gaps }
     if let border = try fields.bool("border") { overrides["border"] = .table(["enabled": .bool(border)]) }
+    if let dim = try fields.bool("dim") { overrides["dim"] = .table(["enabled": .bool(dim)]) }
     if let options = try fields.table("layout_options", allowed: Array(tilingOptionKeys.union(scrollingOptionKeys).union(masterOptionKeys))) {
         var tiling: [String: LuaValue] = [:], scrolling: [String: LuaValue] = [:], master: [String: LuaValue] = [:]
         for (key, option) in options.values {
@@ -683,7 +689,7 @@ func parseWorkspaceRule(name: String, _ value: LuaValue) throws -> WorkspaceRule
 func parseRule(_ value: LuaValue) throws -> WindowRule {
     let fields = try Fields(value, owner: "wm.rule", allowed: [
         "name", "app", "title", "role", "subrole", "identifier", "float", "workspace", "layout", "size", "center", "run", "stop",
-        "maximize", "width", "monitor", "focus", "dynamic", "border",
+        "maximize", "width", "monitor", "focus", "dynamic", "border", "dim",
     ])
     var rule = WindowRule()
     rule.name = try fields.string("name")
@@ -705,6 +711,7 @@ func parseRule(_ value: LuaValue) throws -> WindowRule {
     rule.stop = try fields.bool("stop") ?? true
     rule.dynamic = try fields.bool("dynamic") ?? false
     rule.border = try colorList(fields, "border")
+    rule.dim = try fields.bool("dim")
     return rule
 }
 

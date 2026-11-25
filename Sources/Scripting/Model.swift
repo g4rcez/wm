@@ -146,6 +146,8 @@ public struct WindowRule: Sendable, Equatable {
     public var monitor: String?
     public var focus: Bool?
     public var border: [Color]?
+    /// `false` keeps the window bright, `true` dims it even when `dim.enabled` is off.
+    public var dim: Bool?
     public var commands: [String]
     public var stop: Bool
     public var dynamic: Bool
@@ -203,6 +205,7 @@ public extension WindowRule {
         result.monitor = later.monitor ?? result.monitor
         result.focus = later.focus ?? result.focus
         result.border = later.border ?? result.border
+        result.dim = later.dim ?? result.dim
         result.commands += later.commands
         return result
     }
