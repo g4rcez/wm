@@ -31,7 +31,7 @@ Releases are made on the Mac that holds the release certificate, not in CI. `scr
 
 1. checks that `main` is clean and in sync, that the certificate is in your keychain and that `gh` is logged in;
 2. runs the tests and bumps `Version.swift`;
-3. builds a universal `wm.app` with `build-app.sh` and signs it with the release certificate;
+3. builds a universal `wm.app` with `build-app.sh` and signs it with the release certificate, without the debug symbols (they name your folders);
 4. checks the signature, then commits, tags, pushes and creates the GitHub release with `wm-<version>-macos.tar.gz` (and its
    `.sha256`);
 5. writes `Formula/wm.rb` of `g4rcez/homebrew-tap` from `scripts/wm.rb.in`. Change the formula there, not in the tap.

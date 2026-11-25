@@ -61,7 +61,7 @@ trap cleanup EXIT
 sed -i '' "s/wmVersion = \"$current\"/wmVersion = \"$next\"/" "$file"
 
 # A universal binary: the package supports Intel Macs too.
-CODESIGN_IDENTITY="$identity" NO_START=1 NO_STOP=1 SWIFT_BUILD_FLAGS="--arch arm64 --arch x86_64" ./build-app.sh release
+CODESIGN_IDENTITY="$identity" STRIP=1 NO_START=1 NO_STOP=1 SWIFT_BUILD_FLAGS="--arch arm64 --arch x86_64" ./build-app.sh release
 
 app=.build/wm.app
 requirement="$(codesign -dr - "$app" 2>&1 | grep 'designated =>')"
@@ -72,6 +72,9 @@ for arch in arm64 x86_64; do
     lipo "$app/Contents/MacOS/wmd" -verify_arch "$arch" || die "the app has no $arch slice"
 done
 [ "$("$app/Contents/MacOS/wm" --version)" = "wm $next" ] || die "the built app is not version $next"
+
+# The asset is public: no folder of this machine goes in it.
+if cat "$app/Contents/MacOS/"* | LC_ALL=C grep -qaF "$HOME/"; then die "the binaries name folders under your home"; fi
 
 asset="wm-$next-macos.tar.gz"
 mkdir "$work/pack"

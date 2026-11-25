@@ -3,6 +3,7 @@
 # Usage: ./build-app.sh [debug|release]   (default: release)
 # It stops a running wm just before it replaces the bundle, and starts the new build when it is done.
 # NO_START=1 builds without starting it. NO_STOP=1 does not stop a running wm (the Homebrew formula builds in a temporary folder).
+# STRIP=1 removes the debug symbols from the binaries (a release).
 # SWIFT_BUILD_FLAGS adds flags to `swift build` (the formula passes --disable-sandbox).
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -45,6 +46,9 @@ if [ -z "$identity" ]; then
     echo "         macOS will ask for Accessibility (and Screen Recording) again after every build." >&2
     identity="-"
 fi
+
+# The debug symbols name the folders of the machine that built the app: a release must not publish them. Before the signing.
+if [ -n "${STRIP:-}" ]; then strip -S "$staging/Contents/MacOS/wm" "$staging/Contents/MacOS/wmd"; fi
 
 codesign --force --sign "$identity" "$staging/Contents/MacOS/wm"
 codesign --force --sign "$identity" "$staging"
