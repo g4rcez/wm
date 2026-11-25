@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var keyTapRefused = false
     private var setup: OnboardingWindow?
     private var shortcutsWindow: ShortcutsWindow?
+    private var doctorWindow: DoctorWindow?
     private let prefixLabel = PrefixLabel()
     /// The steps of a sequence that waits for its next key; the label lists the keys that can follow while it waits.
     private var pendingSteps: [Chord]?
@@ -34,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             reload: { [controller] in Task.detached { _ = controller!.reload() } },
             setup: { [weak self] in self?.showSetup() },
             shortcuts: { [weak self] in self?.showShortcuts() },
+            doctor: { [weak self] in self?.showDoctor() },
             templates: { [manager] in manager.templates(of: manager.focused) },
             tile: { [controller] name in Task.detached { _ = controller!.run(["layout", "tile", name]) } }
         )
@@ -51,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             refreshLabel()
         }
         controller.onConfigError = { [menu] message in menu?.setError(message) }
+        controller.onShowDoctor = { [weak self] in self?.showDoctor() }
         controller.onNotify = { [weak self] text, seconds in
             guard let self else { return }
             noticeTimer?.invalidate()
@@ -86,6 +89,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.setError("Finish the setup: wm moves no window yet")
             showSetup()
         }
+    }
+
+    private func showDoctor() {
+        if doctorWindow == nil { doctorWindow = DoctorWindow() }
+        doctorWindow?.show()
     }
 
     private func showShortcuts() {

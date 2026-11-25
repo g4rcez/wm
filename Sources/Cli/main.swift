@@ -312,55 +312,30 @@ if arguments.first == "config" {
 }
 
 if arguments.first == "doctor" {
+    if arguments == ["doctor", "show"] { showDoctorWindow() }
+    if arguments.dropFirst().first == "fix" {
+        let usage = "usage: wm doctor fix [--dry-run [--json]] [--show]"
+        let flags = Set(arguments.dropFirst(2))
+        if let unknown = flags.subtracting(["--dry-run", "--json", "--show"]).sorted().first {
+            die("unknown option \(unknown)", hint: usage, code: 2)
+        }
+        if flags.contains("--json"), !flags.contains("--dry-run") { die("--json goes with --dry-run", hint: usage, code: 2) }
+        doctorFix(dryRun: flags.contains("--dry-run"), json: flags.contains("--json"), show: flags.contains("--show"))
+    }
     let flags = Set(arguments.dropFirst())
     if let unknown = flags.subtracting(["--json"]).sorted().first {
         die("unknown option \(unknown)", hint: "usage: wm doctor [--json]", code: 2)
     }
-    var checks: [DoctorCheck] = []
-    let config = defaultConfigURL()
-    var summary = ConfigSummary(binds: 0)
-    if !FileManager.default.fileExists(atPath: config.path) {
-        checks.append(DoctorCheck("config", .warn, "no config at \(config.path): wm has no key binds", hint: "run `wm init <osx|windows|i3|hyprland|niri>`"))
-    } else {
-        switch checkConfig(at: config) {
-        case .success(let result):
-            summary = result
-            checks.append(DoctorCheck("config", .ok, "\(config.path) (\(result.binds) binds)"))
-        case .failure(let error): checks.append(DoctorCheck("config", .fail, error.message, hint: "fix the line, then save: wm loads the file again"))
-        }
-    }
-    let shortcutsFile = shortcutsURL(for: config)
-    var shortcutCount = 0
-    var shortcutProblem: String?
-    do { shortcutCount = try readShortcuts(at: shortcutsFile).count } catch { shortcutProblem = "\(error)" }
-    checks.append(shortcutsCheck(
-        fileExists: FileManager.default.fileExists(atPath: shortcutsFile.path), imported: summary.shortcutsImported,
-        count: shortcutCount, problem: shortcutProblem, overrides: summary.overrides.map(\.description)))
-    if let answer = try? sendRequest(ClientRequest(args: ["version"]), timeoutSeconds: 2), answer.exitCode == 0 {
-        // "wm 0.1.0 (Lua 5.4)": the daemon may be an older build than this `wm`.
-        let running = answer.stdout.split(separator: " ").dropFirst().first.map(String.init) ?? "?"
-        checks.append(
-            running == wmVersion
-                ? DoctorCheck("daemon", .ok, "runs, version \(running)")
-                : DoctorCheck("daemon", .warn, "runs version \(running), and this wm is \(wmVersion)", hint: "run `wm daemon reload`"))
-        if let facts = try? sendRequest(ClientRequest(args: ["doctor"]), timeoutSeconds: 2),
-           let decoded = try? JSONDecoder().decode(DoctorFacts.self, from: Data(facts.stdout.utf8)) {
-            checks += daemonChecks(decoded)
-        } else {
-            checks.append(DoctorCheck("permissions", .warn, "the daemon did not answer the checks", hint: "it may be older than this wm: run `wm daemon stop`, then `wm daemon start`"))
-        }
-    } else {
-        checks.append(DoctorCheck("daemon", .fail, "wm does not run", hint: "run `wm daemon start`"))
-        checks.append(DoctorCheck("permissions", .skip, "they need the daemon"))
-    }
+    let diagnosis = diagnose()
     if flags.contains("--json") {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        print(String(decoding: (try? encoder.encode(checks)) ?? Data("[]".utf8), as: UTF8.self))
+        print(String(decoding: (try? encoder.encode(diagnosis.checks)) ?? Data("[]".utf8), as: UTF8.self))
     } else {
-        print(renderDoctor(checks), terminator: "")
+        print(renderDoctor(diagnosis.checks), terminator: "")
+        if !doctorFixes(diagnosis.state).isEmpty { print("\nrun `wm doctor fix` to repair what wm can repair by itself") }
     }
-    exit(doctorExitCode(checks))
+    exit(doctorExitCode(diagnosis.checks))
 }
 
 /// What the running daemon says about itself (`daemon status --json`): nil when none answers.

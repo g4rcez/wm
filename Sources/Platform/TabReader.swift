@@ -4,8 +4,9 @@ import Foundation
 /// Runs a program and gives what it printed.
 public enum Subprocess {
     /// The standard output of the program, or `nil` when it cannot start, ends with an error, or is not done after `timeout`
-    /// seconds (it is stopped then). The daemon has the short `PATH` of launchd, so `path` is absolute.
-    public static func output(_ path: String, _ arguments: [String], timeout: TimeInterval = 2) async -> String? {
+    /// seconds (it is stopped then). The daemon has the short `PATH` of launchd, so `path` is absolute. `anyExit` also gives
+    /// the output of a program that ends with an error.
+    public static func output(_ path: String, _ arguments: [String], timeout: TimeInterval = 2, anyExit: Bool = false) async -> String? {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let process = Process()
@@ -22,7 +23,8 @@ public enum Subprocess {
                 let data = pipe.fileHandleForReading.readDataToEndOfFile()
                 process.waitUntilExit()
                 stop.cancel()
-                continuation.resume(returning: process.terminationStatus == 0 ? String(decoding: data, as: UTF8.self) : nil)
+                let succeeded = anyExit ? process.terminationReason == .exit : process.terminationStatus == 0
+                continuation.resume(returning: succeeded ? String(decoding: data, as: UTF8.self) : nil)
             }
         }
     }

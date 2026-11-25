@@ -16,6 +16,32 @@ struct DoctorTests {
         #expect(doctorExitCode(checks) == 0)
     }
 
+    @Test func aHiddenMenuBarIconIsAWarning() {
+        var facts = healthy
+        facts.menuBarShown = false
+        #expect(daemonChecks(facts).first { $0.name == "menu bar" }?.status == .warn)
+        facts.menuBarShown = true
+        #expect(daemonChecks(facts).contains { $0.name == "menu bar" } == false)
+    }
+
+    @Test func aCopyWithAnotherSignatureIsAWarningThatNamesIt() {
+        let own = AppCopy(path: "/Applications/wm.app", requirement: "team A")
+        let same = AppCopy(path: "/opt/homebrew/opt/wm/wm.app", requirement: "team A")
+        let other = AppCopy(path: "/Volumes/wm 0.2.0/wm.app", requirement: "cdhash", diskImage: "/Volumes/wm 0.2.0")
+
+        #expect(copiesCheck(own: own, others: [same]).status == .ok)
+        let check = copiesCheck(own: own, others: [same, other])
+        #expect(check.status == .warn)
+        #expect(check.detail.hasSuffix("/Volumes/wm 0.2.0/wm.app"))
+        #expect(check.hint == "`wm doctor fix` ejects the disk images")
+        #expect(copiesCheck(own: nil, others: [other]).status == .skip)
+    }
+
+    @Test func anotherWindowManagerIsAWarning() {
+        #expect(windowManagersCheck(running: []) == nil)
+        #expect(windowManagersCheck(running: ["AeroSpace"])?.hint == "quit AeroSpace")
+    }
+
     @Test func secureInputIsAWarningThatNamesTheApp() {
         var facts = healthy
         facts.secureInput = "Terminal"

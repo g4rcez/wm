@@ -72,6 +72,11 @@ public let commandOptions: [String: [CommandOption]] = [
     "daemon status": [CommandOption("--json", "Print JSON for scripts.")],
     "animations": [CommandOption("--json", "Print the animations and their state as JSON for scripts.")],
     "doctor": [CommandOption("--json", "Print the checks as JSON for scripts.")],
+    "doctor fix": [
+        CommandOption("--dry-run", "Say what it would repair, and change nothing."),
+        CommandOption("--json", "With --dry-run, print the checks and the repairs as JSON."),
+        CommandOption("--show", "Open the Doctor window when done, unless a permission was reset (the window uses it)."),
+    ],
     "lsp": [
         CommandOption("--write", "Save .luarc.json next to the config file."),
         CommandOption("--force", "Replace a .luarc.json that is there already."),

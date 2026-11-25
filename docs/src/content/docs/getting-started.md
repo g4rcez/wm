@@ -92,7 +92,7 @@ The first time wm starts, it opens a **setup window**. It moves no window until 
 
 wm checks Accessibility for as long as it runs. When you remove it, wm stops listening for keys and gives macOS back Cmd+Tab and CapsLock; when you grant it again, wm listens again without a restart.
 
-The menu bar icon needs one more switch: System Settings > Menu Bar > "Allow in the Menu Bar" > `wm`.
+The menu bar icon needs one more switch: System Settings > Menu Bar > "Allow in the Menu Bar" > `wm`. Its menu has **Doctor…**, which checks wm and repairs the common problems ([Troubleshooting](/docs/troubleshooting#without-a-terminal)).
 
 ### Completion
 

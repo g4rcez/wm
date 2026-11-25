@@ -386,6 +386,14 @@ public let commandSections: [CommandSection] = [
             details: "One line for each check: ok, warn, fail or skip, and a hint when it is not ok. It exits with 1 when a check\nfailed (a warning is not a failure). It works without the daemon: the checks that need it are skipped.",
             example: "wm doctor"),
         CommandSpec(
+            "doctor show", "", "", "Open the Doctor window of wm.",
+            details: "The window shows the checks and has a button that repairs them, the same as Doctor… in the wm menu. It needs the\ndaemon: without it, run `wm doctor fix`.",
+            example: "wm doctor show"),
+        CommandSpec(
+            "doctor fix", "", "[--dry-run] [--json] [--show]", "Repair the known problems that wm can repair by itself.",
+            details: "It starts or restarts wm when it does not run, is another build or does not read the keys; loads the config again when the\nlogin item does not match; and ejects a disk image that holds a wm with another signature. When Accessibility is not\ngranted, it removes the old entry of wm (and of Screen Recording, when that is not granted either), starts wm, opens\nSystem Settings and, on a terminal, waits up to 60 seconds for you to turn the switch on. It does not edit your config,\nchange a setting of macOS or delete a file: it prints what is left for you. It exits with 1 when a check still fails.",
+            example: "wm doctor fix --dry-run"),
+        CommandSpec(
             "config check", "[path]", "", "Load the config without applying it.",
             details: "Runs the config file (default: the config path, see ENVIRONMENT) in a new Lua state. Nothing is applied and nothing\nstarts: wm.exec and wm.dispatch do nothing, and wm.query finds nothing. A script that needs a query result at load time\nfails here. It prints the error with the file and the line, and exits with 1. It works without the daemon.",
             example: "wm config check ~/dotfiles/wm/init.lua"),

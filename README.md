@@ -225,6 +225,9 @@ completion and start at login (`start_at_login = true`).
 wm daemon start    # starts wm.app in the background
 wm daemon status   # whether it runs, the workspace, the mode, the window count
 wm daemon stop     # quits wm; hidden windows come back on screen
+wm doctor          # checks the config, the daemon and the permissions
+wm doctor fix      # repairs what it can by itself (--dry-run only says what)
+wm doctor show     # the same in a window: Doctor… in the wm menu
 ```
 
 ## Your first config

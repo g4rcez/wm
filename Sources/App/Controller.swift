@@ -52,6 +52,7 @@ final class AppController: HostBridge, @unchecked Sendable {
     @MainActor var trayVisible: () -> Bool = { false }
     @MainActor var trayDebug: () -> String = { "" }
     @MainActor var onNotify: (String, TimeInterval) -> Void = { _, _ in }
+    @MainActor var onShowDoctor: () -> Void = {}
     @MainActor private(set) var bindRecords: [BindRecord] = []
 
     @MainActor init(manager: WindowManager, configURL: URL) {
@@ -190,13 +191,17 @@ final class AppController: HostBridge, @unchecked Sendable {
         case "version": return ok("wm \(Self.version) (Lua 5.4)\n")
         case "noop": return ok()
         case "doctor":
+            if args.count > 1 {
+                guard args.dropFirst() == ["show"] else { return fail("doctor takes show", 2, usage: "doctor show") }
+                return onMain { onShowDoctor(); return ok() }
+            }
             return onMain {
                 let facts = DoctorFacts(
                     accessibility: AXIsProcessTrusted(), keyTap: keyTapRunning, screenRecording: CGPreflightScreenCaptureAccess(),
                     loginItemWanted: manager.settings.startAtLogin, loginItemEnabled: SMAppService.mainApp.status == .enabled,
                     isAppBundle: Bundle.main.bundleURL.pathExtension == "app", onboarded: Onboarding.isDone(),
                     native: manager.nativeFacts(), secureInput: SecureInput.state(),
-                    keyLevelRefused: input.tap.wantedLevel != input.tap.level)
+                    keyLevelRefused: input.tap.wantedLevel != input.tap.level, menuBarShown: trayVisible())
                 return (try? JSONEncoder().encode(facts)).map { ok(String(decoding: $0, as: UTF8.self)) } ?? fail("cannot encode the facts")
             }
         case "switcher":

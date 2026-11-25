@@ -32,7 +32,7 @@ LAYOUT           layout set <scrolling|tiling|master|monocle|floating> | balance
 INTERFACE        switcher | overview | palette | cheatsheet [tui|gui|cli] | menu | mode <name|back> | pointer <window|monitor> | zen [on|off]
                  hints [all|window] [open|close|toggle] [--wait] | scroll [open|close|toggle] | select [open|close|toggle] | jump [open|close|toggle] [--swap] [--close]
                  exec [options] <command> | batch <commands> | set <key> <value> | animations [on|off] [kind] [--json] | menubar set <text> | menubar reset | notify <text> | key send <chord> | key press <chord>
-INSPECT          doctor [--json] | pick [--json] | list [windows|workspaces|monitors|keyboards|memory|binds] | query [what] | subscribe [--snapshot] [event ...] | logs [-n count] [-f] [-o otel|json]
+INSPECT          doctor [--json] | doctor show | doctor fix [--dry-run] [--json] [--show] | pick [--json] | list [windows|workspaces|monitors|keyboards|memory|binds] | query [what] | subscribe [--snapshot] [event ...] | logs [-n count] [-f] [-o otel|json]
 MEMORY           memory list | forget <app> [--title=<text>] [--all] | clear
 SESSIONS         session save <name> | open <name> [--no-launch] | list [--json] | delete <name>
 DAEMON           daemon start | stop | status | reload | version
@@ -52,7 +52,9 @@ Options for every command:
 | `-v`, `--verbose` | prints the state after the command |
 | `-h`, `--help` | shows help |
 
-- `wm doctor` checks the config, `shortcuts.toml`, the daemon, Accessibility, the key tap and Screen Recording. It prints a hint for each check that is not ok and exits with 1 when one failed.
+- `wm doctor` checks the config, `shortcuts.toml`, the daemon, Accessibility, the key tap, Screen Recording, the login item, the menu bar icon, other copies of wm.app and other window managers. It prints a hint for each check that is not ok and exits with 1 when one failed.
+- `wm doctor show` opens the Doctor window, the same as **Doctor…** in the wm menu.
+- `wm doctor fix` repairs what it can by itself, then prints what is left for you. `wm doctor fix --dry-run` says what it would do and changes nothing (`--json` for scripts). See [Troubleshooting](/docs/troubleshooting#wm-doctor-fix).
 - `wm config check [path]` loads a config file in a new Lua state without applying it. It prints the first error with its line, and a `warn:` line for each bind that `init.lua` and `shortcuts.toml` both make. Inside it, `wm.exec` and `wm.dispatch` do nothing and `wm.query` finds nothing.
 - `wm skills` prints a `SKILL.md` that teaches an AI agent to use wm, built from the same table as `wm help`: `mkdir -p ~/.claude/skills/wm && wm skills > ~/.claude/skills/wm/SKILL.md`.
 - `wm daemon reload` loads the config again. When the running wm is another build than this `wm` (after `brew upgrade wm`), it stops it and starts the new one instead, then prints `wm restarted: <old> -> <new>`. The release is signed with the same certificate, so the permissions stay. `wm daemon start` on a stale wm says so and points to `reload`.

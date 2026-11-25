@@ -8,6 +8,29 @@ order: 1
 
 Run `wm doctor` first. It checks the config, `shortcuts.toml`, the daemon and the permissions, and says what to do for each check that is not ok. `wm config check` loads the config alone and shows the line of an error.
 
+### Without a terminal
+
+Choose **Doctor…** in the wm menu bar menu (or run `wm doctor show`, which you can bind to a key). The window shows the same checks, with their hints. **Fix Problems** runs `wm doctor fix`; the window lists what it will do before you press it. When a fix restarts wm, the window opens again. **Copy Report** copies the checks for a bug report. When wm resets a permission, it opens System Settings and not the window. The output of the last fix is in `~/.local/state/wm/doctor.log`.
+
+The menu needs the wm icon: when macOS hides it, switch on `wm` in System Settings > Menu Bar, or open the window with `wm doctor show`.
+
+### wm doctor fix
+
+`wm doctor fix` runs the repairs below, one at a time, and looks again after each. `--dry-run` only lists them.
+
+| Problem | What it does |
+| --- | --- |
+| wm does not run | Starts it |
+| The running wm is another build (after an upgrade) or does not answer | Restarts it from this build |
+| Accessibility is not granted | Quits wm, removes its old Accessibility entry (`tccutil reset`; Screen Recording too, when that is not granted), starts it, opens System Settings and waits up to 60 seconds on a terminal. You turn the switch on: no program can do that for you |
+| Accessibility is granted and no key bind works | Restarts wm |
+| The login item does not match `start_at_login` | Loads the config again |
+| A mounted disk image holds a wm with another signature | Ejects the disk image |
+
+It does not edit your config, change a setting of macOS, quit another app or delete a file. A config error, secure input, the menu bar switch, the desktop settings, another window manager and a copy of wm.app on the disk stay in the report, each with its hint. A permission that is granted is never reset.
+
+### Common problems
+
 - **Nothing happens when I press a key.** Check that wm has Accessibility permission and that `wm daemon status` says it runs. Without a config, wm has no key binds (`wm init`).
 - **The setup window asks for no permission.** macOS shows its prompt once for each app signature. When the permission is still missing a moment after you press Grant, wm opens the matching pane of System Settings > Privacy & Security and shows a small panel with the wm icon. Drag the icon into the list and switch `wm` on. The panel closes when the permission is granted. `wm doctor` shows what is still missing.
 - **I rebuilt and macOS asks for permissions again.** The build was signed ad hoc. See [Signing](/docs/getting-started#signing). The Homebrew release is signed with the project's Developer ID and keeps the permissions through `brew upgrade wm`; if it asked once at the update from 0.5.1 or older, that is the change from the older signature: run `wm daemon stop`, `tccutil reset Accessibility local.wm`, `wm daemon start` and grant again. If it asks at every update, you have another copy of wm.app (for example `/Applications/wm.app`) with another signature: stop wm, remove that copy, run `tccutil reset Accessibility local.wm` and start wm.

@@ -32,11 +32,14 @@ public struct DoctorFacts: Codable, Equatable, Sendable {
     public var secureInput: String?
     /// `binds.event_level = "hid"` is set, but macOS refused the HID tap and the session tap runs.
     public var keyLevelRefused: Bool?
+    /// Whether the icon of wm is on screen. A daemon older than this check does not say.
+    public var menuBarShown: Bool?
 
     public init(
         accessibility: Bool, keyTap: Bool, screenRecording: Bool, loginItemWanted: Bool, loginItemEnabled: Bool, isAppBundle: Bool,
-        onboarded: Bool, native: NativeFacts? = nil, secureInput: String? = nil, keyLevelRefused: Bool = false
+        onboarded: Bool, native: NativeFacts? = nil, secureInput: String? = nil, keyLevelRefused: Bool = false, menuBarShown: Bool? = nil
     ) {
+        self.menuBarShown = menuBarShown
         self.keyLevelRefused = keyLevelRefused
         self.native = native
         self.secureInput = secureInput
@@ -123,6 +126,9 @@ public func daemonChecks(_ facts: DoctorFacts) -> [DoctorCheck] {
             "key level", .warn, "binds.event_level = \"hid\", but macOS refused a HID event tap: wm listens at the session level",
             hint: "remove event_level, or run wm from a terminal that has Input Monitoring and Accessibility permission"))
     }
+    if facts.menuBarShown == false {
+        checks.append(DoctorCheck("menu bar", .warn, "macOS hides the icon of wm", hint: "turn wm on in System Settings > Menu Bar"))
+    }
     if let holder = facts.secureInput {
         checks.append(DoctorCheck(
             "secure input", .warn, "on, held by \(holder): macOS hides the keys from wm, so no bind works",
@@ -130,6 +136,40 @@ public func daemonChecks(_ facts: DoctorFacts) -> [DoctorCheck] {
     }
     if let native = facts.native { checks += nativeChecks(native) }
     return checks
+}
+
+/// A wm.app on this Mac. macOS keeps one permission for all the copies with the same bundle id, by the signature.
+public struct AppCopy: Equatable, Sendable {
+    public var path: String
+    /// The designated requirement of its signature, nil without one.
+    public var requirement: String?
+    /// The mount point, when the copy is on a disk image.
+    public var diskImage: String?
+
+    public init(path: String, requirement: String?, diskImage: String? = nil) {
+        self.path = path
+        self.requirement = requirement
+        self.diskImage = diskImage
+    }
+}
+
+public func copiesCheck(own: AppCopy?, others: [AppCopy]) -> DoctorCheck {
+    guard let own else { return DoctorCheck("copies", .skip, "this wm is not in a wm.app") }
+    let different = others.filter { $0.requirement != own.requirement }
+    guard !different.isEmpty else { return DoctorCheck("copies", .ok, "no other wm.app with another signature") }
+    var hints: [String] = []
+    if different.contains(where: { $0.diskImage != nil }) { hints.append("`wm doctor fix` ejects the disk images") }
+    if different.contains(where: { $0.diskImage == nil }) { hints.append("remove the copies that you do not use") }
+    return DoctorCheck(
+        "copies", .warn, "another signature, which can take the permissions of this one: " + different.map(\.path).joined(separator: ", "),
+        hint: hints.joined(separator: "; "))
+}
+
+/// Nil when no other window manager runs.
+public func windowManagersCheck(running: [String]) -> DoctorCheck? {
+    guard !running.isEmpty else { return nil }
+    let names = running.joined(separator: ", ")
+    return DoctorCheck("window managers", .warn, "\(names) runs too: both move the same windows", hint: "quit \(names)")
 }
 
 public func nativeChecks(_ facts: NativeFacts) -> [DoctorCheck] {
