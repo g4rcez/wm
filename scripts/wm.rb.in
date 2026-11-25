@@ -49,8 +49,8 @@ class Wm < Formula
       After an upgrade, restart it with:
         wm daemon reload
 
-      macOS asks for Accessibility at the first start. Releases are signed with one certificate, so upgrades keep the
-      permissions. If you come from a build older than 0.5.0 (or a --HEAD build), clear its stale grants once:
+      macOS asks for Accessibility at the first start. Releases are signed with one Developer ID and notarized, so
+      upgrades keep the permissions. If you come from 0.5.1 or older (or a --HEAD build), clear its stale grants once:
         wm daemon stop
         tccutil reset Accessibility local.wm
         tccutil reset ScreenCapture local.wm

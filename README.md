@@ -215,8 +215,8 @@ pictures) and **Automation** (browser tabs in the palette) are optional. The men
 "Allow in the Menu Bar" > `wm`. When Accessibility is removed while wm runs, wm stops listening for keys and starts again when you grant it
 ([Troubleshooting](https://wm.garcez.dev/docs/troubleshooting)).
 
-Releases are signed with one certificate, so the Homebrew install keeps the permissions through upgrades (an install older than
-0.5.0 asks once more). When you build it yourself, sign with a stable certificate: an ad-hoc signature changes with every build,
+Releases are signed with one Developer ID and notarized by Apple, so the Homebrew install keeps the permissions through
+upgrades (an upgrade from 0.5.1 or older asks once more). When you build it yourself, sign with a stable certificate: an ad-hoc signature changes with every build,
 and macOS asks for the permissions again. The [Getting started](https://wm.garcez.dev/docs/getting-started) page explains
 permissions, signing, the `PATH` link, shell
 completion and start at login (`start_at_login = true`).

@@ -27,31 +27,69 @@ left out. A newer Swift or Xcode can add warnings: fix them, so that CI and a bu
 
 ## Releases and signing
 
-Releases are made on the Mac that holds the release certificate, not in CI. `scripts/release.sh patch|minor|major|X.Y.Z`:
+Releases are made on the Mac that holds the Developer ID certificate, not in CI. `scripts/release.sh patch|minor|major|X.Y.Z`:
 
-1. checks that `main` is clean and in sync, that the certificate is in your keychain and that `gh` is logged in;
+1. checks that `main` is clean and in sync, that the certificate and the notarization credentials work, and that `gh` is logged in;
 2. runs the tests and bumps `Version.swift`;
-3. builds a universal `wm.app` with `build-app.sh` and signs it with the release certificate, without the debug symbols (they name your folders);
-4. checks the signature, then commits, tags, pushes and creates the GitHub release with `wm-<version>-macos.tar.gz` (and its
-   `.sha256`);
-5. writes `Formula/wm.rb` of `g4rcez/homebrew-tap` from `scripts/wm.rb.in`. Change the formula there, not in the tap.
+3. builds a universal `wm.app` with `build-app.sh` and signs it with the Developer ID certificate, the hardened runtime and a
+   secure timestamp, without the debug symbols (they name your folders);
+4. checks the signature, sends the app to Apple to be notarized, staples the ticket to it and asks Gatekeeper to assess it;
+5. commits, tags, pushes and creates the GitHub release with `wm-<version>-macos.tar.gz` (and its `.sha256`);
+6. writes `Formula/wm.rb` of `g4rcez/homebrew-tap` from `scripts/wm.rb.in`. Change the formula there, not in the tap.
 
 `--dry-run` stops after the checks of step 1.
 
-macOS keeps the Accessibility and Screen Recording grants of an app by its designated requirement, which names the bundle id and
-the certificate. With one certificate it is the same for every release: users grant the permissions once, and `brew upgrade wm`
-plus `wm daemon reload` is all an update needs. `scripts/signing-cert.sha1` pins the certificate, and the release stops when the
-build has another signature.
+### Set up a release Mac
 
-`scripts/make-signing-cert.sh` makes the certificate once. It imports it into your login keychain and keeps a backup (`.p12` and
-password) in `~/Library/Application Support/wm-signing`. Copy that folder somewhere safe. To release from another Mac, import the
-backup there:
+You need a paid Apple Developer Program membership. Do these once.
 
-```sh
-security import wm-signing.p12 -P "$(cat password.txt)" -T /usr/bin/codesign
-```
+1. Make a **Developer ID Application** certificate (only the Account Holder can): Xcode > Settings > Accounts, select the team,
+   Manage Certificates, `+`, Developer ID Application. `make identities` must then list it. An "Apple Development" certificate
+   does not work for a release.
+2. Write the Team ID, the 10 characters in parentheses at the end of the certificate name, to `scripts/signing-team-id`, and
+   commit the file.
+3. Make an app-specific password at [account.apple.com](https://account.apple.com) (Sign-In and Security), then save the
+   notarization credentials in your keychain. The command asks for the password:
 
-A new certificate makes every user grant the permissions again.
+   ```sh
+   xcrun notarytool store-credentials wm-notary --apple-id "<your Apple ID>" --team-id "<Team ID>"
+   ```
+
+To release from another Mac, export the certificate with its private key from Keychain Access (a `.p12`), import it there, and
+run step 3 again. Keep that `.p12` and its password somewhere safe, and never commit them.
+
+### Permissions across releases
+
+macOS keeps the Accessibility and Screen Recording grants of an app by its designated requirement. For a Developer ID signature it
+names the bundle id and the Team ID. It is the same for every release, also after the certificate is renewed: users grant the
+permissions once, and `brew upgrade wm` plus `wm daemon reload` is all an update needs. `scripts/signing-team-id` pins the team,
+and the release stops when the build has another signature. Another team makes every user grant the permissions again.
+
+### Signing of local builds
+
+`scripts/signing-identity.sh` picks the certificate for `build-app.sh`, `make install`, `scripts/make-dmg.sh` and the release:
+
+1. the Developer ID Application certificate of the team in `scripts/signing-team-id`;
+2. without it, the first "Apple Development" certificate (not for a release);
+3. without any, `build-app.sh` signs ad hoc and `make install` stops.
+
+`CODESIGN_IDENTITY` overrides the choice. On the release Mac, a local build and a release have the same designated requirement,
+so the permissions stay when you go from `make install` to the Homebrew install and back. A local build has no secure timestamp
+and works without the network. Only the release asks for one (`TIMESTAMP=1`) and is notarized.
+
+The first time `codesign` uses the key, macOS asks for access: choose **Always Allow**.
+
+### Hardened runtime
+
+A release build of `build-app.sh` signs with the hardened runtime and `bundle/wm.entitlements`:
+
+| Entitlement | Why |
+|---|---|
+| `com.apple.security.automation.apple-events` | The palette reads and selects browser tabs with Apple events |
+| `com.apple.security.cs.disable-library-validation` | A config can `require` a Lua C module that someone else signed |
+
+A new use of a protected resource (camera, microphone, location) needs its entitlement there and its usage text in
+`bundle/Info.plist`. A debug build has no hardened runtime, so that `lldb` can attach.
 
 The engines are plain values with no AppKit, so most behavior has a test with literal frames. The parts that need a real
 screen (overlays, the event tap, window moves) were checked by running the daemon.

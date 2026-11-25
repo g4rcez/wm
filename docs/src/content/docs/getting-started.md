@@ -49,7 +49,7 @@ brew upgrade g4rcez/tap/wm
 wm daemon reload    # the running wm is the old build: this restarts it from the new one, and loads the new features and mappings
 ```
 
-If you installed wm with Homebrew before 0.5.0, or built it yourself, macOS holds a grant for the old signature. Clear it once: stop wm with `wm daemon stop`, run `tccutil reset Accessibility local.wm` (and `tccutil reset ScreenCapture local.wm` for Screen Recording), then `wm daemon start` and grant again. Stop wm first: a wm older than this fix that loses the permission while it runs can block the keyboard and the mouse.
+If you installed wm with Homebrew at 0.5.1 or older, or built it yourself, macOS holds a grant for the old signature. Clear it once: stop wm with `wm daemon stop`, run `tccutil reset Accessibility local.wm` (and `tccutil reset ScreenCapture local.wm` for Screen Recording), then `wm daemon start` and grant again. Stop wm first: a wm older than this fix that loses the permission while it runs can block the keyboard and the mouse.
 
 If you used `make install` before, remove the old copy, so that only one wm.app has the permissions: `wm daemon stop; rm -rf /Applications/wm.app ~/.local/bin/wm`, then `brew install g4rcez/tap/wm` and `wm daemon start`. Grant the permissions once more. If macOS keeps a stale entry, `wm daemon stop`, then `tccutil reset Accessibility local.wm` clears it, and `wm daemon start` asks again.
 
@@ -62,16 +62,17 @@ make install CODESIGN_IDENTITY="<name>"    # build, sign, copy to /Applications/
 ```
 
 - `make` lists the other tasks, such as `make test` and `make identities` (lists your code-signing certificates).
-- `make install` uses `CODESIGN_IDENTITY`, else the first "Apple Development" certificate. It stops when there is none.
+- `make install` uses `CODESIGN_IDENTITY`, else the release certificate when your keychain has it, else the first "Apple Development" certificate. It stops when there is none.
 - `./build-app.sh` builds `.build/wm.app` and starts it. `NO_START=1` skips the start, `debug` makes a debug build.
 
 ### Signing
 
 macOS keeps the Accessibility and Screen Recording grants of an app by its signature. An ad hoc signature changes at every build, so macOS asks for the permissions again.
 
-- Every release is signed with the same project certificate, so the Homebrew install keeps its grants through `brew upgrade wm`. You grant the permissions once.
-- A build you make yourself (`./build-app.sh`, `brew install --HEAD`) is signed with the first "Apple Development" certificate of your keychain, or ad hoc without one. Ad hoc loses the grants at every build. Sign with your own certificate to keep them: `codesign --force --sign "<certificate>" "$(brew --prefix)/opt/wm/wm.app"`.
-- Do not mix copies. macOS keeps one grant for the bundle id `local.wm`, and a copy with another signature (for example `/Applications/wm.app` from `make install`) replaces it.
+- Every release is signed with the same Developer ID and notarized by Apple, so Gatekeeper accepts it and the Homebrew install keeps its grants through `brew upgrade wm`. You grant the permissions once.
+- A build you make yourself with `./build-app.sh` or `make install` is signed with your "Apple Development" certificate, or ad hoc without one. `brew install --HEAD` builds are ad hoc. Ad hoc loses the grants at every build. Sign with your own certificate to keep them: `codesign --force --sign "<certificate>" "$(brew --prefix)/opt/wm/wm.app"`.
+- The maintainer's Mac holds the release certificate, and its builds use it ([Development](/docs/development#signing-of-local-builds)).
+- Do not mix copies. macOS keeps one grant for the bundle id `local.wm`, and a copy with another signature (for example your own `/Applications/wm.app` from `make install`) replaces it.
 
 ### First run
 
