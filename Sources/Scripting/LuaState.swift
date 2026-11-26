@@ -322,6 +322,29 @@ final class LuaState {
         self.generation = generation
         luaL_openlibs(L)
         try installAPI()
+        if !bridge.runsConfigEffects { try disableEffects() }
+    }
+
+    /// For a config that is only checked: a program does not run, a file is not changed and no native module loads. The
+    /// replacements answer like a failed call, so a config that tests the result still loads.
+    private func disableEffects() throws {
+        let sandbox = """
+        local off = "off while the config is only checked"
+        os.execute = function(command) if command == nil then return false end return nil, "exit", 1 end
+        io.popen = function() return nil, off end
+        os.remove = function() return nil, off end
+        os.rename = function() return nil, off end
+        os.tmpname = function() error(off, 2) end
+        local open = io.open
+        io.open = function(path, mode)
+          if mode ~= nil and string.find(mode, "[wa+]") then return nil, off end
+          return open(path, mode)
+        end
+        package.cpath = ""
+        package.loadlib = function() return nil, off end
+        """
+        guard luaL_loadstring(L, sandbox) == LUA_OK else { throw ConfigError(message: popError()) }
+        if let message = protectedCall(arguments: 0) { throw ConfigError(message: message) }
     }
 
     deinit { lua_close(L) }
@@ -329,7 +352,11 @@ final class LuaState {
     func run(configURL: URL) throws -> LoadedConfig {
         self.configURL = configURL
         let directory = configURL.deletingLastPathComponent().path
-        let setup = "local dir = ...; package.path = dir .. '/?.lua;' .. dir .. '/?/init.lua;' .. package.path"
+        // Native modules load into wm, which holds the Accessibility and Screen Recording permissions: by default only from the
+        // folder of the config, as trusted as the config itself, not from shared folders such as /usr/local/lib/lua. A config
+        // that wants another folder sets package.cpath itself.
+        let setup = "local dir = ...; package.path = dir .. '/?.lua;' .. dir .. '/?/init.lua;' .. package.path; "
+            + (bridge.runsConfigEffects ? "package.cpath = dir .. '/?.so'" : "package.cpath = ''")
         guard luaL_loadstring(L, setup) == LUA_OK else { throw ConfigError(message: popError()) }
         lua_pushstring(L, directory)
         if let message = protectedCall(arguments: 1) { throw ConfigError(message: message) }

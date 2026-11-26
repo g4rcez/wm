@@ -118,6 +118,14 @@ struct LuaHostTests {
         dir = try ConfigDir()
     }
 
+    @Test func nativeModulesLoadOnlyFromTheConfigFolderByDefault() throws {
+        _ = try host.load(configURL: dir.write("init.lua", "assert(package.cpath == '\(dir.url.path)/?.so', package.cpath)"))
+    }
+
+    @Test func aConfigCanStillChooseWhereNativeModulesLoadFrom() throws {
+        _ = try host.load(configURL: dir.write("init.lua", "package.cpath = '/opt/lua/?.so'; assert(package.cpath == '/opt/lua/?.so')"))
+    }
+
     @Test func sampleConfigLoadsSettings() throws {
         let config = try host.load(configURL: dir.write("init.lua", sampleConfig))
         let settings = config.settings
@@ -1022,6 +1030,14 @@ struct LuaHostTests {
         }
     }
 
+    @Test func everyNestedConfigKeyHasATypeStub() throws {
+        let stubs = try typeStubs()
+        let nested = trackpadConfigKeys + mouseConfigKeys + tilingOptionKeys.sorted() + masterOptionKeys.sorted() + scrollingOptionKeys.sorted()
+        for key in nested {
+            #expect(stubs.contains("---@field \(key)? "), "types/wm.lua does not describe the config key '\(key)'")
+        }
+    }
+
     @Test func functionBindRunsOnTheLuaThread() throws {
         let config = try host.load(configURL: dir.write("init.lua", sampleConfig))
         let action = try #require(config.binds["main"]?[try parseChord("alt-t")])
@@ -1113,6 +1129,13 @@ struct LuaHostTests {
 
         let on = try host.load(configURL: dir.write("init.lua", "wm.config { mouse = { move_modifier = \"alt\", resize_modifier = \"alt+shift\" } }"))
         #expect(on.settings.mouse == MouseSettings(moveModifier: "alt", resizeModifier: "alt+shift"))
+    }
+
+    @Test func theMovePreviewIsOnUntilTheConfigTurnsItOff() throws {
+        let plain = try host.load(configURL: dir.write("init.lua", "wm.config { layout = \"tiling\" }"))
+        #expect(plain.settings.mouse.movePreview)
+        let off = try host.load(configURL: dir.write("init.lua", "wm.config { mouse = { move_preview = false } }"))
+        #expect(!off.settings.mouse.movePreview)
     }
 
     @Test func aGestureCanNameTheNumberOfFingersInsteadOfAModifier() throws {
@@ -1817,5 +1840,32 @@ struct ConfigCheckTests {
 
         #expect(checkConfig(at: url) == .success(ConfigSummary(binds: 0)))
         #expect(!FileManager.default.fileExists(atPath: marker))
+    }
+
+    @Test func aCheckLoadsNoNativeModuleAtAll() throws {
+        let url = try dir.write("init.lua", "assert(package.cpath == '', package.cpath)")
+        #expect(checkConfig(at: url) == .success(ConfigSummary(binds: 0)))
+    }
+
+    /// A config from someone else is safe to check: Lua's own ways to run a program or change a file do nothing.
+    @Test func theCheckRunsNoProgramAndChangesNoFile() throws {
+        let ran = dir.url.appendingPathComponent("ran").path
+        let piped = dir.url.appendingPathComponent("piped").path
+        let written = dir.url.appendingPathComponent("written").path
+        let kept = try dir.write("kept", "x")
+        let url = try dir.write("init.lua", """
+        local ok = os.execute('touch \(ran)')
+        assert(not ok)
+        assert(io.popen('touch \(piped)') == nil)
+        assert(io.open('\(written)', 'w') == nil)
+        assert(os.remove('\(kept.path)') == nil)
+        assert(io.open('\(kept.path)', 'r') ~= nil)
+        assert(package.loadlib('/usr/lib/libz.dylib', 'luaopen_x') == nil)
+        wm.bind('alt-h', 'focus left')
+        """)
+
+        #expect(checkConfig(at: url) == .success(ConfigSummary(binds: 1)))
+        for path in [ran, piped, written] { #expect(!FileManager.default.fileExists(atPath: path)) }
+        #expect(FileManager.default.fileExists(atPath: kept.path))
     }
 }

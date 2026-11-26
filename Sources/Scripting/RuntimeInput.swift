@@ -1,3 +1,4 @@
+import Common
 import Core
 import Foundation
 
@@ -54,10 +55,10 @@ public func parseExecRule(_ text: String) throws -> ExecRequest {
                 finding = true
                 continue optionLoop
             case "--width":
-                guard let width = Double(raw), (0.05...1).contains(width) else { throw ConfigError(message: "exec: --width must be between 0.05 and 1") }
+                guard let width = finiteNumber(raw), (0.05...1).contains(width) else { throw ConfigError(message: "exec: --width must be between 0.05 and 1") }
                 rule.width = width
             case "--size":
-                let parts = raw.split(separator: ",").compactMap { Double($0) }
+                let parts = raw.split(separator: ",").compactMap { finiteNumber($0) }
                 guard parts.count == 2, parts.allSatisfy({ $0 > 0 }) else { throw ConfigError(message: "exec: --size needs <width>,<height>, for example 0.5,0.5") }
                 rule.size = RuleSize(width: parts[0], height: parts[1])
             default:

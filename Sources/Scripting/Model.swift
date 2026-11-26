@@ -312,9 +312,14 @@ public protocol HostBridge: AnyObject, Sendable {
     func exec(_ command: String, options: ExecOptions)
     func log(_ message: String)
     func logError(_ message: String)
+    /// `false` when the config only loads to be checked or read (`wm config check`, `wm doctor`, the cheatsheet without a
+    /// daemon): the Lua functions that run programs, change files or load native code do nothing then, so a check is safe
+    /// on a file from someone else.
+    var runsConfigEffects: Bool { get }
 }
 
 public extension HostBridge {
+    var runsConfigEffects: Bool { true }
     func logError(_ message: String) { log(message) }
     func exec(_ command: String, options: ExecOptions) { exec(command) }
 }

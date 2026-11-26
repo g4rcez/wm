@@ -199,6 +199,10 @@ private func selectChords(_ value: LuaValue, action: SelectAction) throws -> [St
     }
 }
 
+/// The keys of `trackpad` and `mouse`: a test checks that `types/wm.lua` describes every one.
+let trackpadConfigKeys = ["enabled", "fingers", "scroll_fingers", "speed", "title_bar", "title_bar_height", "pinch"]
+let mouseConfigKeys = ["move_modifier", "resize_modifier", "move_preview", "drag_picture"]
+
 let topLevelConfigKeys = [
     "layout", "workspaces", "gaps", "animations", "border", "dim", "pip", "focus_follows_mouse", "mouse_follows_focus",
     "start_at_login", "wrap_focus", "mouse", "trackpad", "workspace_back_and_forth", "tiling", "scrolling", "switcher", "prefix", "url",
@@ -283,7 +287,7 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
     if let flag = try top.bool("mouse_follows_focus") { settings.mouseFollowsFocus = flag }
     if let flag = try top.bool("start_at_login") { settings.startAtLogin = flag }
     if let flag = try top.bool("wrap_focus") { settings.wrapFocus = flag }
-    if let trackpad = try top.table("trackpad", allowed: ["enabled", "fingers", "scroll_fingers", "speed", "title_bar", "title_bar_height", "pinch"]) {
+    if let trackpad = try top.table("trackpad", allowed: trackpadConfigKeys) {
         if let flag = try trackpad.bool("enabled") {
             settings.trackpad.enabled = flag
             settings.trackpad.warnsWhenMissing = flag
@@ -302,7 +306,9 @@ func applyConfig(_ value: LuaValue, to settings: inout Settings) throws {
         if let height = try trackpad.number("title_bar_height", min: 10, max: 200) { settings.trackpad.titleBarHeight = height }
         if let flag = try trackpad.bool("pinch") { settings.trackpad.pinch = flag }
     }
-    if let mouse = try top.table("mouse", allowed: ["move_modifier", "resize_modifier"]) {
+    if let mouse = try top.table("mouse", allowed: mouseConfigKeys) {
+        if let flag = try mouse.bool("move_preview") { settings.mouse.movePreview = flag }
+        if let flag = try mouse.bool("drag_picture") { settings.mouse.dragPicture = flag }
         for (key, assign) in [("move_modifier", \MouseSettings.moveModifier), ("resize_modifier", \MouseSettings.resizeModifier)] {
             guard let text = try mouse.string(key) else { continue }
             do { _ = try parseModifiers(text) } catch { throw ConfigError(message: "wm.config: 'mouse.\(key)' \(error)") }
@@ -605,9 +611,9 @@ private func templates(_ group: Fields) throws -> [SplitTemplate]? {
     return result
 }
 
-private let tilingOptionKeys: Set<String> = ["split_ratio", "preserve_split", "force_split", "split_width_multiplier", "smart_split", "split_under_pointer"]
-private let masterOptionKeys: Set<String> = ["master_ratio", "master_count", "master_orientation", "master_new_window"]
-private let scrollingOptionKeys: Set<String> = [
+let tilingOptionKeys: Set<String> = ["split_ratio", "preserve_split", "force_split", "split_width_multiplier", "smart_split", "split_under_pointer"]
+let masterOptionKeys: Set<String> = ["master_ratio", "master_count", "master_orientation", "master_new_window"]
+let scrollingOptionKeys: Set<String> = [
     "presets", "default_width", "center", "sliver_width", "sliver_height", "vertical",
     "always_center_single_column", "default_column_display", "preset_heights", "single_window_fit", "visible_columns", "orientation",
 ]
