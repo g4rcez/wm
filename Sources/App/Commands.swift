@@ -21,10 +21,11 @@ extension WindowManager {
         case "focus": return focusCommand(words, flags, target: target)
         case "move":
             if let bad = unknownOption(flags, allowed: ["--wrap"], usage: "move") { return bad }
-            guard let direction = words.first.flatMap(Direction.init(rawValue:)) else { return fail("move needs a direction", 2, usage: "move") }
-            let step = words.dropFirst().first.map { Double($0) }
-            if step == .some(nil) || words.count > 2 { return fail("move takes a direction and an optional number of points", 2, usage: "move") }
-            return moveDirection(direction, target: id, step: CGFloat(step.flatMap { $0 } ?? 40), wrap: flags.contains("--wrap") || settings.wrapFocus)
+            switch CommandArguments.move(words) {
+            case .failure(let error): return fail(error.message, 2, usage: "move")
+            case .success(let move):
+                return moveDirection(move.direction, target: id, step: move.step, wrap: flags.contains("--wrap") || settings.wrapFocus)
+            }
         case "swap":
             if let bad = unknownOption(flags, allowed: ["--wrap"], usage: "swap") { return bad }
             guard let direction = words.first.flatMap(Direction.init(rawValue:)) else { return fail("swap needs a direction", 2, usage: "swap") }
@@ -32,22 +33,14 @@ extension WindowManager {
         case "resize":
             if let bad = unknownOption(flags, allowed: [], usage: "resize") { return bad }
             if words == ["maximize"] { return fail("resize maximize is now window maximize", 2, usage: "window maximize") }
-            if words.first == "dir" {
-                guard words.count == 3, let direction = Direction(rawValue: words[1]), let points = Double(words[2]), points > 0 else {
-                    return fail("resize dir needs a direction and a positive amount", 2, usage: "resize")
-                }
-                return resizeDirection(id, direction, CGFloat(points))
+            switch CommandArguments.resize(words) {
+            case .failure(let error): return fail(error.message, 2, usage: "resize")
+            case .success(.direction(let direction, let points)): return resizeDirection(id, direction, points)
+            case .success(.side(let side, let delta)): return resizeSide(id, side, delta)
+            case .success(.dimension(let dimension, let delta)):
+                if let id, let managed = windows[id], managed.floating { return resizeFloating(id, dimension, delta) }
+                return layoutCommand(.resize(dimension, delta), target: id)
             }
-            if words.count == 2, let side = Direction(rawValue: words[0]), let delta = Double(words[1]) {
-                return resizeSide(id, side, CGFloat(delta))
-            }
-            guard words.count == 2, let dimension = ResizeDimension(rawValue: words[0]), let delta = Double(words[1]) else {
-                return fail("resize needs a dimension or a side, and an amount", 2, usage: "resize")
-            }
-            if let id, let managed = windows[id], managed.floating {
-                return resizeFloating(id, dimension, CGFloat(delta))
-            }
-            return layoutCommand(.resize(dimension, CGFloat(delta)), target: id)
         case "workspace": return workspaceCommand(words, flags, target: target)
         case "workspaces": return workspacesCommand(words, flags)
         case "window": return windowCommand(words, flags, id)
@@ -101,7 +94,7 @@ extension WindowManager {
             let name = words.dropFirst().joined(separator: " ")
             guard !name.isEmpty else { return fail("focus app needs the name of an app", 2, usage: "focus app") }
             let ofApp = windows.filter {
-                !$0.value.minimized && ($0.value.info.bundleID.caseInsensitiveCompare(name) == .orderedSame
+                !$0.value.minimized && !$0.value.appHidden && ($0.value.info.bundleID.caseInsensitiveCompare(name) == .orderedSame
                     || $0.value.info.appName.caseInsensitiveCompare(name) == .orderedSame)
             }.map(\.key)
             if let id = windowToRaise(ofApp: ofApp, focused: focused, recent: recent) {
@@ -135,7 +128,9 @@ extension WindowManager {
             return ok()
         case "back":
             guard let workspace = focusedWorkspace,
-                  let previous = workspace.history.dropFirst().first(where: { windows[$0] != nil }) else { return fail("there is no previous window") }
+                  let previous = workspace.history.dropFirst().first(where: { windows[$0].map { !$0.isOutOfLayout } ?? false }) else {
+                return fail("there is no previous window")
+            }
             focus(previous)
             return ok()
         case "window":
@@ -215,7 +210,7 @@ extension WindowManager {
     }
 
     /// Ends maximize and fullscreen on the workspace, so that a rearranged layout shows.
-    private func endMaximize(in workspace: Workspace) {
+    func endMaximize(in workspace: Workspace) {
         workspace.fullscreen = nil
         workspace.maximized = []
         guard workspace.engine is ScrollingEngine else { return }
@@ -282,8 +277,8 @@ extension WindowManager {
         guard words.first == "balance" else { return fail("workspaces needs `balance`", 2, usage: "workspaces balance") }
         var count: Int?
         if words.count > 1 {
-            guard words.count == 2, let given = Int(words[1]), given >= 1 else {
-                return fail("workspaces balance takes a number of workspaces, 1 or more", 2, usage: "workspaces balance")
+            guard words.count == 2, let given = Int(words[1]), (1...WorkspaceLimit.largest).contains(given) else {
+                return fail("workspaces balance takes a number of workspaces, 1 to \(WorkspaceLimit.largest)", 2, usage: "workspaces balance")
             }
             count = given
         }
@@ -424,6 +419,7 @@ extension WindowManager {
             relayout()
             return ok()
         case "fullscreen":
+            guard !managed.isOutOfLayout else { return fail("this window is not in the layout (minimized or in native fullscreen)") }
             let workspace = workspace(managed.workspace)
             workspace.fullscreen = workspace.fullscreen == id ? nil : id
             if workspace.fullscreen != nil { workspace.maximized = [] }
@@ -437,7 +433,9 @@ extension WindowManager {
             setMark(name, on: id)
             return ok()
         case "unmark":
-            removeMarks(named: words.dropFirst().first, of: id)
+            let name = words.dropFirst().first
+            if let name, marks[name] != id { return fail("this window has no mark '\(name)'", 1, hint: "`wm list windows` shows the marks") }
+            removeMarks(named: name, of: id)
             return ok()
         case "raise-floating": return raiseFloating()
         case "rescue": return rescueFloating()
@@ -448,6 +446,21 @@ extension WindowManager {
                 try? await Task.sleep(nanoseconds: 700_000_000)
                 scheduleRefresh()
             }
+            return ok()
+        case "group":
+            let step = words.dropFirst().first
+            guard step == "next" || step == "prev" else { return fail("window group takes next or prev", 2, usage: "window group") }
+            guard cycleGroup(of: id, by: step == "next" ? 1 : -1) else {
+                return fail("this window is in no group", 1, hint: "hold Cmd and drop a floating window on the middle of another one")
+            }
+            relayout()
+            return ok()
+        case "ungroup":
+            guard floatGroups.group(of: id) != nil else { return fail("this window is in no group") }
+            leaveGroup(id, frame: managed.floatFrame)
+            // Out of the group, the window is a floating window of its own, a little off the group so that both show.
+            if let frame = managed.floatFrame { setFloatFrame(id, frame.offsetBy(dx: 40, dy: 40)) }
+            relayout()
             return ok()
         case "pseudo":
             let workspace = workspace(managed.workspace)
@@ -480,6 +493,11 @@ extension WindowManager {
             if SpecialWorkspace.isSpecial(name), SpecialWorkspace.name(name) == nil { return fail("bad special workspace name", 2, usage: usage) }
             if let problem = workspaceProblem(for: name) { return fail(problem) }
             let source = windows[id]?.workspace
+            // Already there: nothing moves, so nothing is balanced, maximized or split up.
+            if source == name {
+                if !stay { focus(id) }
+                return ok()
+            }
             if wholeColumn {
                 moveColumn(of: id, to: name)
             } else {
@@ -583,8 +601,8 @@ extension WindowManager {
             return fail("this window is not in the layout (minimized or in native fullscreen)")
         }
         func coordinate(_ text: String, of length: CGFloat) -> CGFloat? {
-            if text.hasSuffix("%") { return Double(text.dropLast()).map { CGFloat($0) / 100 * length } }
-            return Double(text).map { CGFloat($0) }
+            if text.hasSuffix("%") { return finiteNumber(text.dropLast()).map { CGFloat($0) / 100 * length } }
+            return finiteNumber(text).map { CGFloat($0) }
         }
         guard words.count == 2, let x = coordinate(words[0], of: area.width), let y = coordinate(words[1], of: area.height) else {
             return fail("window move-to needs x and y", 2, usage: "window move-to", hint: "points from the top left of the work area, or a percent such as 50%")
@@ -698,10 +716,11 @@ extension WindowManager {
             }
             return workspaceLayoutCommand(.masterCount(number, relative: relative), target: id, needs: .master, name: "layout master count")
         case "ratio":
-            guard let amount, let number = Double(amount) else {
-                return fail("layout master ratio needs a number, or +n or -n", 2, usage: "layout master ratio")
+            guard let ratio = CommandArguments.ratio(amount, in: MasterSettings.minRatio...MasterSettings.maxRatio) else {
+                return fail("layout master ratio needs a number from 0.1 to 0.9, or +n or -n", 2, usage: "layout master ratio")
             }
-            return workspaceLayoutCommand(.masterRatio(number, relative: relative), target: id, needs: .master, name: "layout master ratio")
+            return workspaceLayoutCommand(
+                .masterRatio(ratio.value, relative: ratio.relative), target: id, needs: .master, name: "layout master ratio")
         case "orientation":
             if amount == nil || amount == "next" { return workspaceLayoutCommand(.masterOrientation(nil), target: id, needs: .master, name: "layout master orientation") }
             guard let place = amount.flatMap(MasterOrientation.init(rawValue:)) else {
@@ -738,10 +757,10 @@ extension WindowManager {
             case "swap": return layoutCommand(.swapSplit, target: id)
             case "root": return tilingCommand(.moveToRoot, id, "layout split root")
             case "ratio":
-                guard let text = words.dropFirst(2).first, let number = Double(text) else {
-                    return fail("layout split ratio needs a number", 2, usage: "layout split ratio")
+                guard let ratio = CommandArguments.ratio(words.dropFirst(2).first, in: 0.1...0.9) else {
+                    return fail("layout split ratio needs a number from 0.1 to 0.9, or +n or -n", 2, usage: "layout split ratio")
                 }
-                return tilingCommand(.splitRatio(number, relative: text.hasPrefix("+") || text.hasPrefix("-")), id, "layout split ratio")
+                return tilingCommand(.splitRatio(ratio.value, relative: ratio.relative), id, "layout split ratio")
             default: return fail("layout split takes toggle, swap, root or ratio", 2, usage: "layout split")
             }
         case "column":
@@ -749,7 +768,9 @@ extension WindowManager {
             case "width":
                 let amount = words.dropFirst(2).first
                 if amount == "cycle" { return layoutCommand(.columnWidth(.cycle), target: id) }
-                guard let fraction = amount.flatMap(Double.init) else { return fail("layout column width needs a fraction or cycle", 2, usage: "layout column width") }
+                guard let fraction = CommandArguments.fraction(amount) else {
+                    return fail("layout column width needs a fraction from 0 to 1, or cycle", 2, usage: "layout column width")
+                }
                 return layoutCommand(.columnWidth(.fraction(fraction)), target: id)
             case "match": return layoutCommand(.matchWidth, target: id)
             case "expand": return layoutCommand(.expandColumn, target: id)
@@ -776,7 +797,9 @@ extension WindowManager {
             case "height":
                 let amount = words.dropFirst(2).first
                 if amount == "cycle" { return layoutCommand(.windowHeight(.cycle), target: id) }
-                guard let fraction = amount.flatMap(Double.init) else { return fail("layout stack height needs a fraction or cycle", 2, usage: "layout stack height") }
+                guard let fraction = CommandArguments.fraction(amount) else {
+                    return fail("layout stack height needs a fraction from 0 to 1, or cycle", 2, usage: "layout stack height")
+                }
                 return layoutCommand(.windowHeight(.fraction(fraction)), target: id)
             default: return fail("layout stack takes join, leave, tabs, equalize or height", 2, usage: "layout stack")
             }
@@ -789,7 +812,9 @@ extension WindowManager {
     private func focusDirection(_ direction: Direction, wrap: Bool) {
         guard let workspace = focusedWorkspace else { return }
         guard let id = focused, let managed = windows[id], managed.workspace == workspace.name else {
-            if let first = workspace.history.first ?? workspace.engine.windows.first { focus(first) }
+            if let first = workspace.history.first(where: { windows[$0] != nil }) ?? workspace.engine.windows.first(where: { windows[$0] != nil }) {
+                focus(first)
+            }
             return
         }
         var next: WindowID?
@@ -800,7 +825,15 @@ extension WindowManager {
             }
             next = nearestWindowByCenter(from: id, direction, in: frames, wrap: wrap)
         } else {
-            next = workspace.engine.neighbor(of: id, direction, wrap: wrap, in: layoutContext(forWorkspace: workspace.name))
+            let context = layoutContext(forWorkspace: workspace.name)
+            next = workspace.engine.neighbor(of: id, direction, wrap: wrap, in: context)
+            // While a restore waits for an app, its cell holds a placeholder: the focus goes on past it to a real window.
+            var hops = 0
+            while let cell = next, windows[cell] == nil, hops < workspace.engine.windows.count {
+                next = workspace.engine.neighbor(of: cell, direction, wrap: wrap, in: context)
+                hops += 1
+            }
+            if let cell = next, windows[cell] == nil || cell == id { next = nil }
         }
         if let next {
             focus(next)
@@ -1091,13 +1124,18 @@ extension WindowManager {
     }
 
     private func convert(_ workspace: Workspace, to kind: LayoutKind) {
+        // The same layout again changes nothing: a tiling tree would lose its ratios. Scrolling and master take the
+        // settings again in `rebuild`, so they still go through it.
+        if kind == workspace.kind, kind != .scrolling, kind != .master { return }
         workspace.maximized = []
         let tiled = kind == .floating && workspace.kind != .floating ? workspace.engine.windows : []
-        let frames = tiled.isEmpty ? [:] : workspace.engine.frames(in: layoutContext(forWorkspace: workspace.name), focused: tiled.first)
+        let context = layoutContext(forWorkspace: workspace.name)
+        let frames = tiled.isEmpty ? [:] : workspace.engine.frames(in: context, focused: tiled.first)
         rebuild(workspace, as: kind)
+        let area = context.gaps.outerArea(context.viewport)
         for id in tiled {
             setFloating(id, true)
-            if let frame = frames[id] { setFloatFrame(id, frame) }
+            if let frame = frames[id] { setFloatFrame(id, MonitorGeometry.floatable(frame, in: area)) }
         }
     }
 
@@ -1312,7 +1350,7 @@ extension WindowManager {
                     return OverviewWindow(
                         id: id, app: managed.info.appName, title: managed.info.title,
                         focused: id == focused, floating: managed.floating,
-                        maximized: isMaximized(id), minimized: managed.minimized,
+                        maximized: isMaximized(id), minimized: managed.minimized, hidden: managed.appHidden,
                         strip: scrolling?.strip(of: id) == .vertical ? "vertical" : nil
                     )
                 }
@@ -1327,6 +1365,7 @@ extension WindowManager {
         if managed.sticky { state.append("sticky") }
         if isMaximized(id) { state.append("maximized") }
         if managed.minimized { state.append("minimized") }
+        if managed.appHidden { state.append("hidden") }
         if managed.nativeFullscreen { state.append("fullscreen") }
         if managed.swallowedBy != nil { state.append("swallowed") }
         for name in marks(of: id) { state.append("mark:" + name) }
@@ -1399,6 +1438,8 @@ extension LuaValue {
         switch self {
         case .nil: "null"
         case let .bool(value): value ? "true" : "false"
+        // JSON has no NaN or infinity: such a number is written as null, so the output stays valid JSON.
+        case let .number(value) where !value.isFinite: "null"
         case let .number(value): value == value.rounded() && abs(value) < 1e15 ? String(Int64(value)) : String(value)
         case let .string(value): Self.quote(value)
         case let .array(values): "[" + values.map(\.json).joined(separator: ",") + "]"

@@ -67,3 +67,11 @@ final class TrackpadInput: @unchecked Sendable {
         }
     }
 }
+
+extension SystemSwipes {
+    /// What macOS uses now: read again each time, so a change in System Settings needs no reload.
+    static func current() -> SystemSwipes {
+        let settings = SystemGestures.read()
+        return SystemSwipes(trackpads: settings.trackpads, dock: settings.dock)
+    }
+}

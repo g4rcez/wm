@@ -10,9 +10,11 @@ struct ManagedWindow {
     var floating: Bool
     var minimized = false
     var nativeFullscreen = false
+    /// Its app is hidden (Cmd-H).
+    var appHidden = false
     var swallowedBy: WindowID?
     var swallows: WindowID?
-    var isOutOfLayout: Bool { minimized || nativeFullscreen || swallowedBy != nil }
+    var isOutOfLayout: Bool { minimized || nativeFullscreen || appHidden || swallowedBy != nil }
     var floatFrame: CGRect?
     var floatRestore: CGRect?
     var sticky = false
@@ -20,6 +22,19 @@ struct ManagedWindow {
     var borderColors: [Color]?
     /// Set by a rule; `nil` follows `dim.enabled`.
     var dim: Bool?
+}
+
+/// A drag of a tiled window while its neighbours make room. `original` is the layout from before the drag: every zone is tried
+/// on it, so a drag that ends nowhere puts it back as it was.
+struct DragDrop {
+    var workspace: String
+    var dragged: WindowID
+    var original: any LayoutEngine
+    /// The tiles of `original`: the zones are measured on them, so the windows that move aside do not move the zones.
+    var tiles: [WindowID: CGRect]
+    var zone: DropZone = .none
+    /// macOS moves the window (a drag by its title bar): wm leaves the window alone until the drop.
+    var native: Bool
 }
 
 final class Workspace {
@@ -31,6 +46,9 @@ final class Workspace {
     var maximized: Set<WindowID> = []
     var pseudo: [WindowID: CGSize] = [:]
     var zen = false
+    /// The work area of the monitor that showed the workspace last: its floating windows are placed in it. When the workspace
+    /// shows on another monitor, they move along.
+    var shownArea: CGRect?
 
     var savedLayout: LayoutState {
         if kind == .floating, case .tiling(let state) = engine.state { return .floating(state) }
@@ -128,7 +146,7 @@ final class WindowManager {
     private let dimOverlay = DimOverlay()
     private var dimSettle: DispatchWorkItem?
     lazy var pip = PipController(manager: self)
-    /// Whether the window shows on a monitor now: not on a hidden workspace, parked, minimized or swallowed.
+    /// Whether the window shows on a monitor now: not on a hidden workspace, parked, minimized, hidden with its app or swallowed.
     func isOnScreen(_ id: WindowID) -> Bool { lastVisible.contains(id) && !lastParked.contains(id) }
     private let tabIndicator = TabIndicatorOverlay()
     private var clock: DisplayClock?
@@ -166,6 +184,10 @@ final class WindowManager {
     private var skippedWindows: Set<WindowID> = []
     /// Since when a managed window that the scan does not list has been on no Space.
     private var goneSince: [WindowID: TimeInterval] = [:]
+    /// Where the windows of apps that quit were: an app that comes back gets its windows back on their workspaces.
+    private var recentlyClosed = RecentlyClosed()
+    /// A refresh whose read of the windows takes longer than this is logged.
+    private static let slowSnapshot: TimeInterval = 0.05
 
     init() {
         pendingRestore = StateStore.load()
@@ -252,13 +274,24 @@ final class WindowManager {
     private func refresh() async {
         guard let tracker, !tracker.isPaused else { return }
         tracker.syncWatchers()
-        let (infos, unread) = await tracker.snapshot()
+        let started = ProcessInfo.processInfo.systemUptime
+        let (infos, unread, hidden) = await tracker.snapshot()
+        // Every change reads the windows of every app: a slow read says how much that costs here, before it is made smarter.
+        let took = ProcessInfo.processInfo.systemUptime - started
+        if took > Self.slowSnapshot {
+            Log.write(
+                .debug, "reading the windows took \(Int(took * 1000)) ms: \(infos.count) windows, \(unread.count) apps not readable",
+                source: "refresh")
+        }
         let focusedID = await tracker.focusedWindow()
         guard !tracker.isPaused else { return }
         updateMonitors()
         beginRebootRestore()
-        reconcile(infos, unread: unread)
+        reconcile(infos, unread: unread, hidden: hidden)
         finishRestore()
+        #if DEBUG
+        checkLayoutInvariants()
+        #endif
         if let previous = refocusAfterOpen {
             refocusAfterOpen = nil
             if windows[previous] != nil { focus(previous) }
@@ -341,6 +374,8 @@ final class WindowManager {
     private func resendIfDrifted(_ info: WindowInfo, _ managed: ManagedWindow, parked: Bool) {
         guard !managed.floating, !managed.isOutOfLayout, !parked, !managed.minimized, !managed.nativeFullscreen,
               managed.workspaceVisible(self), modifierDrag?.window != info.id, !applier.isBusy(info.id),
+              // A window that the user drags by its title bar is where the user puts it, until the drop.
+              titleBarPress?.id != info.id, dragDrop?.dragged != info.id,
               animator.isSettled(info.id), let sent = applier.sentFrame(info.id),
               drift.shouldResend(info.id, actual: info.frame, sent: sent) else { return }
         Log.write(.debug, "window \(info.id) (\(info.appName)) is at \(info.frame), not \(sent): sending the frame again", source: "layout", prefix: "wmd")
@@ -355,7 +390,7 @@ final class WindowManager {
         }
     }
 
-    private func reconcile(_ infos: [WindowInfo], unread: Set<pid_t>) {
+    private func reconcile(_ infos: [WindowInfo], unread: Set<pid_t>, hidden: Set<pid_t>) {
         var seen: Set<WindowID> = []
         for info in infos {
             seen.insert(info.id)
@@ -366,6 +401,7 @@ final class WindowManager {
                     events.emit("window_title", ["id": .number(Double(info.id)), "app": .string(info.bundleID), "title": .string(info.title)])
                 }
                 managed.info = info
+                if managed.appHidden { setAppHidden(info.id, false) }
                 if isNative { nativeObserve(info.id) }
                 if info.isMinimized != managed.minimized { setMinimized(info.id, info.isMinimized) }
                 let fullscreenChanged = info.isFullscreen != managed.nativeFullscreen
@@ -390,21 +426,39 @@ final class WindowManager {
         skippedWindows.formIntersection(seen)
         let missing = windows.keys.filter { !seen.contains($0) }
         let system = missing.isEmpty ? [] : Self.systemWindowIDs()
-        for id in missing { reconcileMissing(id, unread: unread, inSystemList: system.contains(id)) }
+        for id in missing { reconcileMissing(id, unread: unread, hidden: hidden, inSystemList: system.contains(id)) }
     }
 
-    private func reconcileMissing(_ id: WindowID, unread: Set<pid_t>, inSystemList: Bool) {
+    /// A debug build says when a window's record and the layouts disagree, which shows as a window on the wrong workspace or a
+    /// hole in a layout. It only logs: the user's windows stay where they are.
+    private func checkLayoutInvariants() {
+        let records = windows.mapValues {
+            LayoutInvariants.Window(workspace: $0.workspace, tiled: !$0.floating && !$0.isOutOfLayout)
+        }
+        let spaces = workspaces.mapValues {
+            LayoutInvariants.Workspace(engine: $0.engine.windows, fullscreen: $0.fullscreen, maximized: $0.maximized)
+        }
+        for problem in LayoutInvariants.problems(windows: records, workspaces: spaces) {
+            Log.write(.warn, "layout out of step: \(problem)", source: "invariants")
+        }
+    }
+
+    private func reconcileMissing(_ id: WindowID, unread: Set<pid_t>, hidden: Set<pid_t>, inSystemList: Bool) {
         let place = WindowSpace.place(of: id)
         let now = ProcessInfo.processInfo.systemUptime
         let started = place == .gone && goneSince[id] == nil
         goneSince[id] = place == .gone ? goneSince[id] ?? now : nil
+        let appHidden = windows[id].map { hidden.contains($0.info.pid) } ?? false
         let forgotten = shouldForgetMissingWindow(
             appUnreadable: windows[id].map { unread.contains($0.info.pid) } ?? false,
-            inSystemList: inSystemList, place: place, goneFor: goneSince[id].map { now - $0 } ?? 0)
+            appHidden: appHidden, inSystemList: inSystemList, place: place, goneFor: goneSince[id].map { now - $0 } ?? 0)
         if forgotten {
             Log.write(.debug, "window closed: id=\(id) place=\(place) inSystemList=\(inSystemList)", source: "window")
             forget(id)
-        } else if started {
+            return
+        }
+        if appHidden { setAppHidden(id, true) }
+        if started {
             // No event may follow a real close, so look again when the grace is over.
             DispatchQueue.main.asyncAfter(deadline: .now() + spaceTransitionGrace + 0.05) { [weak self] in
                 MainActor.assumeIsolated { self?.scheduleRefresh() }
@@ -423,7 +477,7 @@ final class WindowManager {
                 let app = info.bundleID.isEmpty ? "(no bundle id)" : info.bundleID
                 Log.write(
                     .debug,
-                    "window skipped: id=\(info.id) app=\(app) name=\(info.appName) title=\(info.title.debugDescription) role=\(info.role) subrole=\(info.subrole.isEmpty ? "(none)" : info.subrole) identifier=\(info.identifier.isEmpty ? "(none)" : info.identifier) fullscreen=\(info.isFullscreen)",
+                    "window skipped: id=\(info.id) app=\(app) name=\(info.appName) title=\(Log.title(info.title)) role=\(info.role) subrole=\(info.subrole.isEmpty ? "(none)" : info.subrole) identifier=\(info.identifier.isEmpty ? "(none)" : info.identifier) fullscreen=\(info.isFullscreen)",
                     source: "window")
             }
             return
@@ -438,6 +492,10 @@ final class WindowManager {
         }
         var rule = matchingRule(info)
         if let spawn = takeSpawnRule(for: info) { rule = rule.map { $0.merging(spawn) } ?? spawn }
+        // An app that quit and came back (an update, a crash) restores its windows as new ones: each takes the place of a
+        // window that the app had before, not the workspace that shows now.
+        let reopened = didFirstScan
+            ? recentlyClosed.take(bundleID: info.bundleID, pid: info.pid, title: info.title, now: ProcessInfo.processInfo.systemUptime) : nil
         let remembered = didFirstScan ? memory.match(app: info.bundleID, title: info.title) : nil
         let host = didFirstScan && remembered == nil && rule?.workspace == nil && rule?.monitor == nil ? swallowHost(for: info) : nil
         let last = didFirstScan && remembered == nil && settings.floating.rememberPosition && rule?.float == true && rule?.size == nil
@@ -448,15 +506,17 @@ final class WindowManager {
         let fromHost: String? = host.flatMap { windows[$0]?.workspace }
         let fromRules: String? = rule?.workspace ?? ruleMonitor.map(activeWorkspace(of:)) ?? lastMonitor.map(activeWorkspace(of:))
         let fromPlace: String? = nativeWorkspace(ofWindow: info.id) ?? home.map(activeWorkspace(of:))
-        let workspaceName: String = fromHost ?? remembered?.workspace ?? fromRules ?? fromPlace ?? "1"
+        let workspaceName: String = fromHost ?? reopened?.workspace ?? remembered?.workspace ?? fromRules ?? fromPlace ?? "1"
         let rememberedMonitor = remembered?.monitor.flatMap(monitor(matching:))
         let monitor = monitor(showing: workspaceName) ?? rememberedMonitor ?? focusedMonitor
         let opening = workspace(workspaceName)
         let layout = rule?.layout.flatMap { opening.engine.windows.isEmpty ? $0 : nil } ?? opening.kind
         let floatsByDefault = layout == .floating
-        var floating = remembered?.floating ?? host.flatMap { windows[$0]?.floating } ?? (info.kind == .floating || (rule?.float ?? floatsByDefault))
+        var floating = reopened?.floating ?? remembered?.floating ?? host.flatMap { windows[$0]?.floating } ?? (info.kind == .floating || (rule?.float ?? floatsByDefault))
         var floatFrame: CGRect?
-        if let remembered {
+        if let reopened, floating, let frame = reopened.floatFrame {
+            floatFrame = frame
+        } else if let remembered {
             if floating, let frame = remembered.frame, let area = monitor?.workArea { floatFrame = WindowMemory.absolute(frame, in: area) }
         } else if let host, floating, let frame = windows[host]?.floatFrame {
             floatFrame = frame
@@ -494,7 +554,7 @@ final class WindowManager {
             let app = info.bundleID.isEmpty ? "(no bundle id)" : info.bundleID
             Log.write(
                 .debug,
-                "window opened: id=\(info.id) app=\(app) name=\(info.appName) title=\(info.title.debugDescription) workspace=\(workspaceName) floating=\(floating) rule=\(Self.describe(rule))\(remembered == nil ? "" : " remembered=yes")",
+                "window opened: id=\(info.id) app=\(app) name=\(info.appName) title=\(Log.title(info.title)) workspace=\(workspaceName) floating=\(floating) rule=\(Self.describe(rule))\(remembered == nil ? "" : " remembered=yes")\(reopened == nil ? "" : " reopened=yes")",
                 source: "window")
         }
         let target = workspace(workspaceName)
@@ -671,7 +731,7 @@ final class WindowManager {
         windows[info.id] = ManagedWindow(
             info: info, workspace: saved.workspace, floating: saved.floating, minimized: info.isMinimized,
             nativeFullscreen: info.isFullscreen,
-            floatFrame: saved.floatFrame ?? (saved.floating && !info.isFullscreen ? info.frame : nil), sticky: saved.sticky == true, stickyMonitor: saved.stickyMonitor)
+            floatFrame: saved.floatFrame ?? (saved.floating && !info.isFullscreen ? info.frame : nil), sticky: saved.floating && saved.sticky == true, stickyMonitor: saved.stickyMonitor)
         for name in saved.marks ?? [] { marks[name] = info.id }
         let space = workspace(saved.workspace)
         space.engine.relabel([placeholder: info.id])
@@ -708,8 +768,9 @@ final class WindowManager {
         windows[info.id] = ManagedWindow(
             info: info, workspace: saved.workspace, floating: saved.floating, minimized: info.isMinimized,
             nativeFullscreen: info.isFullscreen,
-            floatFrame: saved.floatFrame ?? (saved.floating && !info.isFullscreen ? info.frame : nil), sticky: saved.sticky == true, stickyMonitor: saved.stickyMonitor)
+            floatFrame: saved.floatFrame ?? (saved.floating && !info.isFullscreen ? info.frame : nil), sticky: saved.floating && saved.sticky == true, stickyMonitor: saved.stickyMonitor)
         for name in saved.marks ?? [] { marks[name] = info.id }
+        windows[info.id]?.swallowedBy = saved.swallowedBy
         _ = workspace(saved.workspace)
         adopted.insert(info.id)
         animator.seed(info.id, at: info.frame)
@@ -719,6 +780,16 @@ final class WindowManager {
         guard let saved = pendingRestore else { return }
         guard saved.mode == settings.workspaceMode.rawValue else { return }
         pendingRestore = nil
+        // A swallowed terminal stays parked behind its program, when both came back; else it is a window like any other.
+        for id in adopted {
+            guard let child = windows[id]?.swallowedBy else { continue }
+            if windows[child] != nil, adopted.contains(child) {
+                windows[child]?.swallows = id
+                swallowedAt[child] = ProcessInfo.processInfo.systemUptime
+            } else {
+                windows[id]?.swallowedBy = nil
+            }
+        }
         for name in Set(adopted.compactMap { windows[$0]?.workspace }) {
             guard let savedSpace = saved.workspaces[name] else { continue }
             let space = workspace(name)
@@ -747,7 +818,8 @@ final class WindowManager {
                 SavedWindow(
                     id: $0.key, bundleID: $0.value.info.bundleID, workspace: $0.value.workspace, floating: $0.value.floating,
                     floatFrame: $0.value.floatFrame, marks: marks(of: $0.key), title: $0.value.info.title, order: order[$0.key],
-                    sticky: $0.value.sticky ? true : nil, stickyMonitor: $0.value.sticky ? $0.value.stickyMonitor : nil)
+                    sticky: $0.value.sticky ? true : nil, stickyMonitor: $0.value.sticky ? $0.value.stickyMonitor : nil,
+                    swallowedBy: $0.value.swallowedBy)
             },
             workspaces: workspaces.mapValues {
                 SavedWorkspace(layout: $0.savedLayout, history: $0.history, maximized: $0.maximized.sorted(), fullscreen: $0.fullscreen)
@@ -803,7 +875,9 @@ final class WindowManager {
             windows[id]?.stickyMonitor = monitor.id
             let active = activeWorkspace(of: monitor)
             guard managed.workspace != active else { continue }
-            workspace(managed.workspace).history.removeAll { $0 == id }
+            let left = workspace(managed.workspace)
+            left.history.removeAll { $0 == id }
+            if left.fullscreen == id { left.fullscreen = nil }
             windows[id]?.workspace = active
         }
     }
@@ -861,9 +935,14 @@ final class WindowManager {
         return CGRect(origin: origin, size: size)
     }
 
+    /// Whether the workspace has a window of an app that is not hidden. A workspace with only hidden apps counts as empty.
+    private func hasShownApp(_ name: String) -> Bool {
+        windows.values.contains { $0.workspace == name && !$0.appHidden }
+    }
+
     private func runOnEmptyIfEmpty(_ name: String) {
         guard let request = workspaceRules[name]?.onEmpty, !pendingOnEmpty.contains(name),
-              !windows.values.contains(where: { $0.workspace == name }) else { return }
+              !hasShownApp(name) else { return }
         pendingOnEmpty.insert(name)
         let wait = (request.options?.timeout ?? ExecOptions.defaultTimeout) + 0.5
         DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
@@ -906,7 +985,7 @@ final class WindowManager {
 
     private func windowOf(app: String) -> WindowID? {
         let isApp = { (id: WindowID) -> Bool in
-            guard let window = self.windows[id], !window.minimized, window.swallowedBy == nil else { return false }
+            guard let window = self.windows[id], !window.minimized, !window.appHidden, window.swallowedBy == nil else { return false }
             return window.info.bundleID.caseInsensitiveCompare(app) == .orderedSame || window.info.appName.caseInsensitiveCompare(app) == .orderedSame
         }
         return recent.first(where: isApp) ?? windows.keys.sorted().first(where: isApp)
@@ -1041,7 +1120,7 @@ final class WindowManager {
         if dynamicSaved[id] == nil { dynamicSaved[id] = (floating: managed.floating, floatFrame: managed.floatFrame, border: managed.borderColors, dim: managed.dim) }
         windows[id]?.borderColors = rule.border ?? dynamicSaved[id]?.border
         windows[id]?.dim = rule.dim ?? dynamicSaved[id]?.dim
-        Log.write(.debug, "dynamic rule applied: id=\(id) title=\(managed.info.title.debugDescription) rule=\(Self.describe(rule))", source: "window")
+        Log.write(.debug, "dynamic rule applied: id=\(id) title=\(Log.title(managed.info.title)) rule=\(Self.describe(rule))", source: "window")
         let destination = rule.workspace ?? rule.monitor.flatMap(monitor(matching:)).map(activeWorkspace(of:))
         if let destination, destination != managed.workspace {
             moveWindow(id, to: destination)
@@ -1059,7 +1138,7 @@ final class WindowManager {
 
     private func revertDynamic(_ id: WindowID) {
         guard let saved = dynamicSaved.removeValue(forKey: id), let managed = windows[id] else { return }
-        Log.write(.debug, "dynamic rule undone: id=\(id) title=\(managed.info.title.debugDescription)", source: "window")
+        Log.write(.debug, "dynamic rule undone: id=\(id) title=\(Log.title(managed.info.title))", source: "window")
         if managed.floating != saved.floating { setFloating(id, saved.floating) }
         if saved.floating, let frame = saved.floatFrame { setFloatFrame(id, frame) }
         windows[id]?.borderColors = saved.border
@@ -1096,12 +1175,25 @@ final class WindowManager {
 
     private func forget(_ id: WindowID) {
         guard let managed = windows.removeValue(forKey: id) else { return }
+        // Kept for a while: if the app quits and comes back, its new window goes where this one was.
+        if managed.swallowedBy == nil {
+            recentlyClosed.add(
+                RecentlyClosed.Place(
+                    bundleID: managed.info.bundleID, pid: managed.info.pid, title: managed.info.title, workspace: managed.workspace,
+                    floating: managed.floating, floatFrame: managed.floatFrame),
+                now: ProcessInfo.processInfo.systemUptime)
+        }
         let wasFocused = focused == id
         let returning = giveBackTerminal(of: id, managed)
         swallowedAt[id] = nil
         goneSince[id] = nil
+        placedSpace[id] = nil
+        movingUntil[id] = nil
+        lastVisible.remove(id)
+        lastParked.remove(id)
         dynamicTracker.forget(id)
         dynamicSaved[id] = nil
+        leaveGroup(id, frame: managed.floatFrame)
         openingHold[id] = nil
         rememberFloatPlace(of: managed)
         lastShownFrame[id] = nil
@@ -1127,10 +1219,39 @@ final class WindowManager {
         windows[id] = managed
         let workspace = workspace(managed.workspace)
         if minimized {
+            // Out of the layout like a hidden window: no fullscreen that hides the others, no focus that lands on it.
             workspace.maximized.remove(id)
+            if workspace.fullscreen == id { workspace.fullscreen = nil }
+            workspace.history.removeAll { $0 == id }
             workspace.engine.remove(id)
-        } else if !managed.floating {
+            if focused == id { focused = workspace.history.first }
+        } else if !managed.floating, !managed.isOutOfLayout {
             workspace.engine.insert(id, after: workspace.history.first)
+        }
+    }
+
+    /// The windows of a hidden app keep their workspace. They leave the layout and the focus history until the app shows again.
+    private func setAppHidden(_ id: WindowID, _ hidden: Bool) {
+        guard var managed = windows[id], managed.appHidden != hidden else { return }
+        managed.appHidden = hidden
+        windows[id] = managed
+        let workspace = workspace(managed.workspace)
+        let what = hidden ? "hidden with its app" : "shown again"
+        Log.write(.debug, "window \(what): id=\(id) app=\(managed.info.bundleID) workspace=\(workspace.name)", source: "window")
+        if hidden {
+            openingHold[id] = nil
+            workspace.maximized.remove(id)
+            if workspace.fullscreen == id { workspace.fullscreen = nil }
+            workspace.history.removeAll { $0 == id }
+            workspace.engine.remove(id)
+            if focused == id { focused = workspace.history.first }
+            hideSpecialIfEmpty(workspace.name)
+        } else {
+            // The app may have moved it while wm did not look.
+            applier.resend(id, pid: managed.info.pid)
+            if !managed.floating, !managed.isOutOfLayout {
+                workspace.engine.insert(id, after: workspace.history.first { $0 != id })
+            }
         }
     }
 
@@ -1144,7 +1265,7 @@ final class WindowManager {
             workspace.maximized.remove(id)
             if workspace.fullscreen == id { workspace.fullscreen = nil }
             workspace.engine.remove(id)
-        } else if !managed.floating, !managed.minimized {
+        } else if !managed.floating, !managed.isOutOfLayout {
             workspace.engine.insert(id, after: workspace.history.first { $0 != id })
         }
     }
@@ -1169,6 +1290,11 @@ final class WindowManager {
             unswallow(id)
         }
         guard let managed = windows[id] else { return }
+        // A tab of a group that got the focus another way (the switcher, a command) shows, in the frame of the group.
+        if let front = floatGroups.shownMember(of: id), front != id {
+            if let frame = windows[front]?.floatFrame { windows[id]?.floatFrame = frame }
+            floatGroups.show(id)
+        }
         focused = id
         urgent.focused(managed.info.bundleID, managed.info.appName)
         let workspace = workspace(managed.workspace)
@@ -1186,7 +1312,7 @@ final class WindowManager {
             focusedMonitorID = monitor.id
             let hiding = SpecialWorkspace.monitorsHiding(
                 onFocusOf: monitor.id, shown: specials, otherMonitors: settings.special.hideOnOtherMonitor
-            ) { name in windows.values.contains { $0.workspace == name } }
+            ) { name in hasShownApp(name) }
             if !hiding.isEmpty { setSpecials(specials.filter { !hiding.contains($0.key) }) }
         } else if !isNative, let monitor = focusedMonitor {
             showWorkspace(managed.workspace, on: monitor.id, focusWindow: false)
@@ -1254,15 +1380,18 @@ final class WindowManager {
 
     private func hideSpecialIfEmpty(_ name: String) {
         guard let monitor = specials.first(where: { $0.value == name })?.key,
-              !windows.values.contains(where: { $0.workspace == name }) else { return }
+              !hasShownApp(name) else { return }
         setSpecials(specials.filter { $0.key != monitor })
     }
 
     private func relocateFloats(of name: String, from old: CGRect, to new: CGRect) {
+        guard old != new else { return }
         for (id, managed) in windows where managed.workspace == name && managed.floating {
             guard let frame = managed.floatFrame ?? currentFrame(of: id) else { continue }
             windows[id]?.floatFrame = MonitorGeometry.translated(frame, from: old, to: new)
         }
+        layoutHistory.moveFloating(of: name) { MonitorGeometry.translated($0, from: old, to: new) }
+        workspace(name).shownArea = new
     }
 
     func moveWorkspace(to target: Monitor) -> String? {
@@ -1302,6 +1431,9 @@ final class WindowManager {
             relocateFloats(of: name, from: monitors[other].workArea, to: monitors[index].workArea)
             relocateFloats(of: monitors[index].workspace, from: monitors[index].workArea, to: monitors[other].workArea)
             monitors[other].workspace = monitors[index].workspace
+        } else if let last = workspace(name).shownArea {
+            // A hidden workspace keeps the places of the monitor that showed it last; on another monitor they move along.
+            relocateFloats(of: name, from: last, to: monitors[index].workArea)
         }
         let old = monitors[index].workspace
         monitors[index].workspace = name
@@ -1344,6 +1476,7 @@ final class WindowManager {
     }
 
     func setFloatFrame(_ id: WindowID, _ frame: CGRect) {
+        guard frame.isFinite else { return }
         openingHold[id] = nil
         windows[id]?.floatFrame = frame
     }
@@ -1366,7 +1499,11 @@ final class WindowManager {
                 managed.floatFrame = frame
             }
         } else {
-            workspace.engine.insert(id, after: workspace.history.first { $0 != id })
+            // Only a floating window can be sticky, or a tab of a float group.
+            leaveGroup(id, frame: managed.floatFrame)
+            managed.sticky = false
+            managed.stickyMonitor = nil
+            if !managed.isOutOfLayout { workspace.engine.insert(id, after: workspace.history.first { $0 != id }) }
         }
         windows[id] = managed
         events.emit("window_floating", ["id": .number(Double(id)), "floating": .bool(floating)])
@@ -1378,8 +1515,11 @@ final class WindowManager {
         windows[id]?.stickyMonitor = on ? (monitor(showing: managed.workspace) ?? focusedMonitor)?.id : nil
     }
 
+    /// The window that gets the focus when the workspace shows: the last one used that can take it, else the first of the
+    /// layout. A minimized or hidden window, or the place of a window that a restore still waits for, cannot.
     private func windowToFocus(in workspace: Workspace) -> WindowID? {
-        return workspace.history.first(where: { windows[$0] != nil }) ?? workspace.engine.windows.first
+        func usable(_ id: WindowID) -> Bool { windows[id].map { !$0.isOutOfLayout } ?? false }
+        return workspace.history.first(where: usable) ?? workspace.engine.windows.first(where: usable)
     }
 
     func arrive(_ id: WindowID, tile: Bool = false) {
@@ -1418,6 +1558,8 @@ final class WindowManager {
         let tiled = workspace.engine.windows
         guard tiled.contains(a), tiled.contains(b) else { return false }
         workspace.engine.relabel([a: b, b: a])
+        // A swap from the keyboard, the mouse or jump mode rearranges the layout: maximize and fullscreen end, so it shows.
+        endMaximize(in: workspace)
         return true
     }
 
@@ -1439,6 +1581,8 @@ final class WindowManager {
         }
         let order = workspace.engine.windows
         workspace.kind = kind
+        // `window pseudo` belongs to tiling: another layout gives the window its whole cell.
+        if kind != .tiling { workspace.pseudo = [:] }
         if kind == .master {
             workspace.engine = MasterEngine(settings: settings(forWorkspace: workspace.name), windows: order)
             events.emit("layout_changed", ["workspace": .string(workspace.name), "layout": .string(kind.rawValue)])
@@ -1544,9 +1688,7 @@ final class WindowManager {
     }
 
     func workspaceProblem(for name: String) -> String? {
-        if WorkspaceLimit.exceeds(name, limit: settings.workspaceLimit), let limit = settings.workspaceLimit {
-            return "workspace \(name) is above the limit of \(limit) workspaces (`workspaces` in the config)"
-        }
+        if let problem = WorkspaceLimit.problem(name, limit: settings.workspaceLimit) { return problem }
         return nativeProblem(for: name)
     }
 
@@ -1700,6 +1842,9 @@ final class WindowManager {
     }
 
     func relayout(snapAll: Bool = false) {
+        let started = CACurrentMediaTime()
+        // Counted only while an animation runs: that is when its time competes with the frames.
+        defer { if clock != nil { applier.stats.relayout(seconds: CACurrentMediaTime() - started) } }
         followSticky()
         var targets: [WindowID: CGRect] = [:]
         var visible: Set<WindowID> = []
@@ -1707,6 +1852,7 @@ final class WindowManager {
         for monitor in monitors {
             if isNative, nativeIsSwitching(monitor) { continue }
             let workspace = workspace(activeWorkspace(of: monitor))
+            if !SpecialWorkspace.isSpecial(workspace.name) { workspace.shownArea = monitor.workArea }
             let context = layoutContext(forWorkspace: workspace.name)
             let focusHere = focused.flatMap { windows[$0]?.workspace == workspace.name ? $0 : nil }
             if workspace.zen, workspace.fullscreen == nil, let shown = zenWindow(in: workspace, focused: focusHere) {
@@ -1715,7 +1861,8 @@ final class WindowManager {
                 continue
             }
             for (id, frame) in workspace.engine.frames(in: context, focused: focusHere) {
-                let cell = workspace.pseudo[id].map { PixelFrame.centered($0, in: frame) } ?? frame
+                let pseudo = workspace.kind == .tiling ? workspace.pseudo[id] : nil
+                let cell = pseudo.map { PixelFrame.centered($0, in: frame) } ?? frame
                 targets[id] = workspace.fullscreen == id ? monitor.workArea : cell
                 visible.insert(id)
             }
@@ -1725,12 +1872,21 @@ final class WindowManager {
                     targets[maximized] = context.gaps.outerArea(context.viewport)
                 }
             }
+            let waiting = floatGroups.waiting
             for (id, managed) in windows where managed.workspace == workspace.name && managed.floating && !managed.isOutOfLayout {
+                // A tab of a group that does not show waits out of sight, like a window of a hidden workspace.
+                if waiting.contains(id) { continue }
                 targets[id] = workspace.fullscreen == id ? monitor.workArea : (managed.floatFrame ?? managed.info.frame)
                 visible.insert(id)
             }
         }
         if let drag = modifierDrag, drag.followsPointer { targets[drag.window] = drag.frame }
+        // macOS moves a window that is dragged by its title bar: wm gives it no frame until the drop.
+        if let drop = dragDrop, drop.native { targets[drop.dragged] = nil }
+        // The window of a drag with a picture waits out of sight; the picture is what moves.
+        if let drag = modifierDrag, drag.picture, let size = currentFrame(of: drag.window)?.size {
+            targets[drag.window] = CGRect(origin: hiddenCorner(), size: size)
+        }
         let corner = hiddenCorner()
         for (id, managed) in windows where !visible.contains(id) && !managed.isOutOfLayout && parksWhenHidden(managed) {
             let size = animator.frames[id]?.size ?? managed.info.frame.size
@@ -1746,6 +1902,7 @@ final class WindowManager {
             .union(targets.keys.filter { !visible.contains($0) })
             .union(parkedNow).union(lastParked)
         if !settings.animations.windows.enabled { snap.formUnion(targets.keys) }
+        if let drag = modifierDrag, drag.picture { snap.insert(drag.window) }
         snap.subtract(slides.keys)
         lastVisible = visible
         lastParked = parkedNow
@@ -1846,6 +2003,7 @@ final class WindowManager {
 
     private func tick() {
         let now = CACurrentMediaTime()
+        defer { applier.stats.work(seconds: CACurrentMediaTime() - now) }
         let changed = animator.step(dt: now - lastTick)
         applier.stats.tick(interval: now - lastTick)
         lastTick = now
@@ -1868,6 +2026,12 @@ final class WindowManager {
     }
 
     private func updateTabIndicator() {
+        // A float group shows its tabs like a tabbed column.
+        if settings.tabIndicator.enabled, let focused, let managed = windows[focused], managed.floating, isVisible(managed.workspace),
+           let members = floatGroups.group(of: focused), let index = members.firstIndex(of: focused), let frame = currentFrame(of: focused) {
+            tabIndicator.show(on: frame, count: members.count, selected: index, settings.tabIndicator)
+            return
+        }
         guard settings.tabIndicator.enabled, let focused, let managed = windows[focused], !managed.isOutOfLayout, !managed.floating,
               isVisible(managed.workspace), workspace(managed.workspace).fullscreen == nil,
               let (index, count) = tabPosition(of: focused, in: workspace(managed.workspace).engine),
@@ -1949,6 +2113,17 @@ final class WindowManager {
     func watcher(for pid: pid_t) -> AppWatcher? { tracker?.watcher(for: pid) }
 
     var modifierDrag: ModifierDrag?
+    /// A tiled window that is being dragged with a space opened for it: the layout already shows the drop.
+    private var dragDrop: DragDrop?
+    /// A floating window that is dragged, and where it goes if it is dropped now (`nil`: where it is let go).
+    private var floatDrag: (id: WindowID, target: FloatDrop?, native: Bool, start: CGRect)?
+    /// Floating windows grouped as tabs.
+    var floatGroups = FloatGroups()
+    let movePreview = MovePreviewOverlay()
+    let dragPicture = DragPicture()
+    /// A tiled window whose title bar the button went down on: it may be dragged by macOS. `moving` once it has really moved.
+    private var titleBarPress: (id: WindowID, start: CGRect, moving: Bool)?
+    private var lastPreviewCheck: TimeInterval = 0
     private var mouseIsDown = false
     private var gestureCounter = 0
     private var gestureBaseline: [WindowID: CGRect]?
@@ -1965,8 +2140,19 @@ final class WindowManager {
     private func beginGesture() {
         gestureBaseline = nil
         gestureCounter += 1
-        followBorder()
-        guard let tracker, animator.isSettled else { return }
+        // Only a border has to follow the window while the button is down.
+        let shown = windows.filter { !$0.value.isOutOfLayout && isVisible($0.value.workspace) }
+        if shown.values.contains(where: { settings(forWorkspace: $0.workspace).border.enabled }) { followBorder() }
+        let tiledFrames = shown.filter { !$0.value.floating }.keys.compactMap(currentFrame(of:))
+        titleBarPress = nil
+        if settings.mouse.movePreview, modifierDrag == nil, let pointer = CGEvent(source: nil)?.location {
+            if let id = WindowList.topmost(at: pointer, among: Set(shown.keys)), let frame = currentFrame(of: id),
+               pointer.y < frame.minY + MouseGesture.titleBar {
+                titleBarPress = (id, frame, false)
+            }
+        }
+        guard let tracker, animator.isSettled, let pointer = CGEvent(source: nil)?.location,
+              MouseGesture.mayRearrange(at: pointer, frames: tiledFrames) else { return }
         let gesture = gestureCounter
         Task { @MainActor in
             let frames = await tracker.frameSnapshot()
@@ -2022,6 +2208,24 @@ final class WindowManager {
     }
 
     private func endGesture() {
+        titleBarPress = nil
+        movePreview.hide()
+        if let drag = floatDrag, drag.native {
+            finishFloatDrop(from: WindowList.bounds(of: drag.id))
+            gestureBaseline = nil
+            updateBorder()
+            return
+        }
+        if let drop = dragDrop, drop.native {
+            // The drop is already in the layout: no swap, no resize to read back.
+            finishDrop(from: WindowList.bounds(of: drop.dragged))
+            gestureBaseline = nil
+            borderClock?.stop()
+            borderClock = nil
+            borderLiveFrame = nil
+            updateBorder()
+            return
+        }
         if let live = borderLiveFrame, windows[live.id]?.floating == true {
             borderSettleStart = ProcessInfo.processInfo.systemUptime
             borderStableTicks = 0
@@ -2041,6 +2245,179 @@ final class WindowManager {
             applyMouseResize(frames, baseline)
             updateBorder()
         }
+    }
+
+    /// A drag event with no modifier drag: when the window pressed by its title bar has moved, the placeholder follows the pointer.
+    func nativeDragMoved(to pointer: CGPoint) {
+        guard let press = titleBarPress else { return }
+        if !press.moving {
+            // One look at the real frame per frame of the screen: a press on a title bar is not always a move.
+            let now = ProcessInfo.processInfo.systemUptime
+            guard now - lastPreviewCheck >= 1.0 / 60 else { return }
+            lastPreviewCheck = now
+            guard let frame = WindowList.bounds(of: press.id), MovePreview.isMoving(from: press.start, to: frame) else { return }
+            titleBarPress?.moving = true
+        }
+        if windows[press.id]?.floating == true { return updateFloatDrop(of: press.id, pointer: pointer, native: true) }
+        if !updateDrop(of: press.id, pointer: pointer, native: true) { showMovePreview(of: press.id, pointer: pointer) }
+    }
+
+    /// Shows where the dragged floating window goes if it is dropped now: an edge or a corner of the screen, against another
+    /// floating window, or into a group with it (Cmd held over its middle).
+    func updateFloatDrop(of id: WindowID, pointer: CGPoint, native: Bool) {
+        guard settings.mouse.movePreview, let managed = windows[id], managed.floating, isVisible(managed.workspace),
+              let frame = currentFrame(of: id) else { return }
+        if floatDrag == nil, native { beginLayoutChange() }
+        let context = layoutContext(forWorkspace: managed.workspace)
+        let others = Dictionary(uniqueKeysWithValues: windows.compactMap { other, window -> (WindowID, CGRect)? in
+            guard other != id, window.workspace == managed.workspace, window.floating, !window.isOutOfLayout,
+                  !floatGroups.waiting.contains(other), let frame = currentFrame(of: other) else { return nil }
+            return (other, frame)
+        })
+        // A drag by the title bar reaches macOS too: when macOS tiles at the edges, wm leaves them to it.
+        let target = FloatDrop.target(
+            pointer: pointer, dragged: id, size: frame.size, others: others, area: context.gaps.outerArea(context.viewport),
+            edges: !native || !SystemGestures.tilesByEdgeDrag, grouping: EventTap.currentFlags().contains(.maskCommand))
+        floatDrag = (id, target, native, floatDrag?.start ?? frame)
+        let radius = settings(forWorkspace: managed.workspace).border.radius
+        switch target {
+        case .frame(let slot)?: movePreview.show(slot, radius: radius, below: id)
+        case .group(let other)?: if let slot = others[other] { movePreview.show(slot, radius: radius, below: id) }
+        case nil: movePreview.hide()
+        }
+    }
+
+    /// Ends the drag of a floating window: it springs from `frame` to the place that the drop chose, or joins a group. `false` when
+    /// no floating window was dragged.
+    @discardableResult
+    func finishFloatDrop(from frame: CGRect?) -> Bool {
+        guard let drag = floatDrag else { return false }
+        floatDrag = nil
+        movePreview.hide()
+        if drag.native, drag.target == nil {
+            // A plain move by the title bar: the window is where macOS left it (maybe tiled by macOS at an edge), and the next
+            // refresh reads that place. Writing the frame of the release back would undo macOS's tile.
+            if floatGroups.group(of: drag.id) != nil { leaveGroup(drag.id, frame: drag.start) }
+            endLayoutChange()
+            return true
+        }
+        if let frame { animator.place(drag.id, at: frame) }
+        if case .group = drag.target {} else if floatGroups.group(of: drag.id) != nil {
+            // Dragged out of its group: the next tab stays where the group was.
+            leaveGroup(drag.id, frame: drag.start)
+        }
+        switch drag.target {
+        case .frame(let slot)?:
+            setFloatFrame(drag.id, slot)
+        case .group(let other)?:
+            if let place = windows[other]?.floatFrame ?? currentFrame(of: other) { setFloatFrame(drag.id, place) }
+            floatGroups.join(drag.id, with: other)
+        case nil:
+            if let frame { setFloatFrame(drag.id, frame) }
+        }
+        // The border must not write the frame of the drag back over the drop.
+        borderClock?.stop()
+        borderClock = nil
+        borderLiveFrame = nil
+        relayout()
+        if drag.native { endLayoutChange() }
+        return true
+    }
+
+    /// `id` leaves its float group. When it was the tab that showed, the next tab shows in `frame`, where the group was.
+    func leaveGroup(_ id: WindowID, frame: CGRect?) {
+        guard let members = floatGroups.group(of: id) else { return }
+        let wasFront = floatGroups.shownMember(of: id) == id
+        floatGroups.leave(id)
+        guard wasFront, let frame, let rest = members.first(where: { $0 != id }) else { return }
+        // A group of one ends: its last window is then a plain floating window, in the frame of the group.
+        let next = floatGroups.shownMember(of: rest) ?? rest
+        windows[next]?.floatFrame = frame
+    }
+
+    /// The window `step` tabs away in the group of `id` shows, in the same frame. `false` when `id` is in no group.
+    func cycleGroup(of id: WindowID, by step: Int) -> Bool {
+        guard let front = floatGroups.shownMember(of: id), let next = floatGroups.cycle(id, by: step), next != front else {
+            return floatGroups.group(of: id) != nil
+        }
+        if let frame = windows[front]?.floatFrame { setFloatFrame(next, frame) }
+        focus(next)
+        return true
+    }
+
+    /// Opens a space for the dragged tiled window at the zone under `pointer`: its neighbours move aside and the placeholder shows
+    /// the slot. The layout changes only when the zone does. `false` when this layout has no live drop (monocle, floating,
+    /// maximize, fullscreen); the caller then shows the plain placeholder.
+    func updateDrop(of id: WindowID, pointer: CGPoint, native: Bool) -> Bool {
+        guard settings.mouse.movePreview, let managed = windows[id], !managed.floating, !managed.isOutOfLayout,
+              isVisible(managed.workspace) else { return false }
+        let space = workspace(managed.workspace)
+        guard [.tiling, .scrolling, .master].contains(space.kind), space.fullscreen == nil, !space.maximized.contains(id) else { return false }
+        let context = layoutContext(forWorkspace: space.name)
+        if dragDrop == nil {
+            // A drag by the title bar is one step of `layout undo`; a modifier drag is one already.
+            if native { beginLayoutChange() }
+            let tiles = space.engine.frames(in: context, focused: id)
+            dragDrop = DragDrop(workspace: space.name, dragged: id, original: space.engine, tiles: tiles, native: native)
+        }
+        guard var drop = dragDrop, drop.dragged == id else { return true }
+        let zone = DropZone.find(pointer: pointer, dragged: id, tiles: drop.tiles, area: context.gaps.outerArea(context.viewport))
+        guard zone != drop.zone else { return true }
+        drop.zone = zone
+        dragDrop = drop
+        space.engine = DropPlan.apply(zone, dragged: id, to: drop.original, in: context) ?? drop.original
+        relayout()
+        if zone != .none, let slot = space.engine.frames(in: context, focused: id)[id] {
+            movePreview.show(slot, radius: settings(forWorkspace: space.name).border.radius, below: id)
+        } else {
+            movePreview.hide()
+        }
+        return true
+    }
+
+    /// A window that waited out of sight during a drag with a picture animates to its tile at the drop, instead of jumping there
+    /// as a window that comes back from a hidden workspace does.
+    func springBack(_ id: WindowID) {
+        lastParked.remove(id)
+    }
+
+    /// Ends a drag that opened a space. The layout keeps the drop, or goes back to how it was when the zone is none. The window
+    /// springs from `frame`, where the user let go, into its tile. `false` when no such drag was going on.
+    @discardableResult
+    func finishDrop(from frame: CGRect?) -> Bool {
+        guard let drop = dragDrop else { return false }
+        dragDrop = nil
+        movePreview.hide()
+        let space = workspace(drop.workspace)
+        if drop.zone == .none {
+            space.engine = drop.original
+            // A window that closed during the drag is not in the layout any more.
+            for id in space.engine.windows where windows[id] == nil && !Placeholder.isPlaceholder(id) { space.engine.remove(id) }
+        }
+        springBack(drop.dragged)
+        if let managed = windows[drop.dragged] {
+            if let frame {
+                // From where the user let go: the place of a window that waited out of sight, or the start of one that macOS moved.
+                animator.seed(drop.dragged, at: frame)
+                animator.place(drop.dragged, at: frame)
+            }
+            applier.resend(drop.dragged, pid: managed.info.pid)
+        }
+        relayout()
+        if drop.native { endLayoutChange() }
+        return true
+    }
+
+    /// Shows the slot where the tiled window `id` lands when it is dropped at `pointer`, or hides the placeholder when there is
+    /// none: a floating, maximized or fullscreen window has no slot to show.
+    func showMovePreview(of id: WindowID, pointer: CGPoint) {
+        guard settings.mouse.movePreview, let managed = windows[id], !managed.floating, !managed.isOutOfLayout,
+              isVisible(managed.workspace) else { return movePreview.hide() }
+        let space = workspace(managed.workspace)
+        guard space.fullscreen == nil, !space.maximized.contains(id) else { return movePreview.hide() }
+        let tiles = space.engine.frames(in: layoutContext(forWorkspace: space.name), focused: id)
+        guard let slot = MovePreview.target(pointer: pointer, dragged: id, tiles: tiles) else { return movePreview.hide() }
+        movePreview.show(slot, radius: settings(forWorkspace: space.name).border.radius, below: id)
     }
 
     private func isLaidOutAndShown(_ id: WindowID) -> Bool {
@@ -2131,14 +2508,19 @@ final class WindowManager {
         return id
     }
 
+    /// The managed window under `point` that is in front. Where only one window is there, as in a tiled layout, its frame says
+    /// so without a look at the system: this runs on every move of the mouse with focus-follows-mouse. Where windows overlap (a
+    /// floating window over a tile), the window list of macOS says which one is on top.
     func window(at point: CGPoint) -> WindowID? {
+        var under: [WindowID] = []
         for monitor in monitors {
             let name = activeWorkspace(of: monitor)
             for (id, managed) in windows where managed.workspace == name && !managed.isOutOfLayout {
-                if currentFrame(of: id)?.contains(point) == true { return id }
+                if currentFrame(of: id)?.contains(point) == true { under.append(id) }
             }
         }
-        return nil
+        guard under.count > 1 else { return under.first }
+        return WindowList.topmost(at: point, among: Set(under)) ?? under.first
     }
 
     func readWindow(_ id: WindowID, pid: pid_t) async -> WindowInfo? {

@@ -59,7 +59,9 @@ final class PipController {
     }
 
     private func open(_ id: WindowID, corner: PipCorner?) -> ServerAnswer {
-        guard let managed = manager.windows[id], !managed.minimized else { return fail("wm has no such window, or it is minimized") }
+        guard let managed = manager.windows[id], !managed.minimized, !managed.appHidden else {
+            return fail("wm has no such window, or it is minimized or hidden")
+        }
         guard items.count < Self.limit else { return fail("there are \(Self.limit) pictures already", 1, hint: "close one with `wm window pip off`") }
         guard ThumbnailService.hasPermission else {
             ThumbnailService.requestOnce()

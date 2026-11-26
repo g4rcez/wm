@@ -184,7 +184,7 @@ final class DoctorWindow: NSObject {
         guard let cli else { return }
         // Not a pipe to this process: the fix may quit this wm, and a write to a closed pipe would end the helper half way.
         let log = defaultLogURL().deletingLastPathComponent().appendingPathComponent("doctor.log")
-        _ = FileManager.default.createFile(atPath: log.path, contents: nil)
+        _ = FileManager.default.createFile(atPath: log.path, contents: nil, attributes: [.posixPermissions: 0o600])
         let output = (try? FileHandle(forWritingTo: log)) ?? FileHandle.nullDevice
         let process = Process()
         process.executableURL = cli

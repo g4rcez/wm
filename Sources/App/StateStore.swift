@@ -13,6 +13,8 @@ struct SavedWindow: Codable {
     var order: Int?
     var sticky: Bool?
     var stickyMonitor: UInt32?
+    /// The program window that swallowed this terminal. Kept only within one boot, where window ids stay the same.
+    var swallowedBy: WindowID?
 }
 
 struct SavedWorkspace: Codable {
@@ -82,5 +84,7 @@ enum StateStore {
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         try data.write(to: url, options: .atomic)
+        // Window titles and places: readable by this user only. An atomic write makes a new file each time.
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 }

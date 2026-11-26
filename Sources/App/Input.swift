@@ -377,9 +377,12 @@ final class InputRouter {
     private var swipeGestures: [Gesture] = []
     /// A `wm.gesture` took the swipe: the strip does not scroll.
     private var swipeClaimed = false
+    /// The swipes that macOS used when the swipe that is going on started.
+    private var systemSwipes = SystemSwipes(trackpads: [], dock: [:])
 
     /// The events of `FingerTracker`. A gesture for the number of fingers claims the swipe on its axis; the rest of the
-    /// swipes scroll the strip when their number is `trackpad.scroll_fingers`, with momentum at the end.
+    /// swipes scroll the strip when their number is `trackpad.scroll_fingers`, with momentum at the end. A swipe that macOS
+    /// uses does neither: macOS sees it too.
     func handleFinger(_ events: [FingerTracker.Event]) {
         let settings = manager.settings.trackpad
         let modifiers = Self.modifiers(of: EventTap.currentFlags())
@@ -389,8 +392,12 @@ final class InputRouter {
             case .began(let fingers):
                 swipeFingers = fingers
                 swipeClaimed = false
-                swipeGestures = Gesture.effective(
+                systemSwipes = .current()
+                let wanted = Gesture.effective(
                     gestures, scrollsStrip: fingers == settings.scrollFingers && manager.focusedWorkspace?.kind == .scrolling)
+                swipeGestures = wanted.filter { !systemSwipes.takes($0) }
+                let left = wanted.filter { $0.fingers == fingers && systemSwipes.takes($0) }.map(\.label)
+                if !left.isEmpty { Log.write(.debug, "left to macOS, which uses them: \(left.joined(separator: ", "))", source: "trackpad") }
                 _ = fingerGestures.scroll(dx: 0, dy: 0, modifiers: modifiers, phase: .began, time: time, gestures: swipeGestures, fingers: fingers)
             case .moved(let dx, let dy):
                 guard let fingers = swipeFingers else { continue }
@@ -401,19 +408,24 @@ final class InputRouter {
                     swipeClaimed = true
                     perform(action, flags: EventTap.currentFlags())
                 case .ignored:
-                    if !swipeClaimed, fingers == settings.scrollFingers, manager.focusedWorkspace?.kind == .scrolling {
+                    if !swipeClaimed, fingers == settings.scrollFingers, manager.focusedWorkspace?.kind == .scrolling, stripIsFree(fingers) {
                         scrollStrip(x, y)
                     }
                 }
             case .ended(let vx, let vy):
                 defer { swipeFingers = nil }
                 guard let fingers = swipeFingers, !swipeClaimed, fingers == settings.scrollFingers,
-                      manager.focusedWorkspace?.kind == .scrolling else { continue }
+                      manager.focusedWorkspace?.kind == .scrolling, stripIsFree(fingers) else { continue }
                 // The swipe goes on a little after the fingers lift, then the strip settles on a column.
                 scrollStrip(vx * Self.pointsPerPad * settings.speed * 0.12, vy * Self.pointsPerPad * settings.speed * 0.12)
                 manager.settleScroll()
             }
         }
+    }
+
+    /// Whether macOS leaves the swipe that scrolls the focused strip to wm.
+    private func stripIsFree(_ fingers: Int) -> Bool {
+        !systemSwipes.takes(fingers: fingers, horizontal: manager.focusedStrip != .vertical)
     }
 
     // MARK: Title bar gestures

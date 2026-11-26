@@ -196,12 +196,16 @@ final class AppController: HostBridge, @unchecked Sendable {
                 return onMain { onShowDoctor(); return ok() }
             }
             return onMain {
-                let facts = DoctorFacts(
+                var facts = DoctorFacts(
                     accessibility: AXIsProcessTrusted(), keyTap: keyTapRunning, screenRecording: CGPreflightScreenCaptureAccess(),
                     loginItemWanted: manager.settings.startAtLogin, loginItemEnabled: SMAppService.mainApp.status == .enabled,
                     isAppBundle: Bundle.main.bundleURL.pathExtension == "app", onboarded: Onboarding.isDone(),
                     native: manager.nativeFacts(), secureInput: SecureInput.state(),
                     keyLevelRefused: input.tap.wantedLevel != input.tap.level, menuBarShown: trayVisible())
+                if let conflicts = swipeConflicts() {
+                    facts.takenGestures = conflicts.user
+                    facts.takenSwipes = conflicts.builtIn
+                }
                 return (try? JSONEncoder().encode(facts)).map { ok(String(decoding: $0, as: UTF8.self)) } ?? fail("cannot encode the facts")
             }
         case "switcher":
@@ -366,16 +370,47 @@ final class AppController: HostBridge, @unchecked Sendable {
             return fail("the terminal sheet is drawn by `wm` in a terminal", 2, usage: "cheatsheet", hint: "run `wm cheatsheet tui` in a terminal")
         }
         return onMain {
-            cheatsheet.toggle(binds: bindRecords.map(CheatBind.init), mode: manager.mode, style: manager.settings.overlayStyle())
+            cheatsheet.toggle(binds: listedBinds().map(CheatBind.init), mode: manager.mode, style: manager.settings.overlayStyle())
             return ok()
         }
+    }
+
+    /// The binds as they work now: a swipe that macOS uses says that it is off.
+    @MainActor private func listedBinds() -> [BindRecord] {
+        let off = Set(takenGestures().map(\.label))
+        return bindRecords.map { record in
+            guard record.mode == "gesture", off.contains(record.keys) else { return record }
+            var copy = record
+            copy.options.description = [record.options.description, "(off: macOS uses this swipe)"].compactMap { $0 }.joined(separator: " ")
+            return copy
+        }
+    }
+
+    @MainActor private func takenGestures() -> [Gesture] {
+        guard manager.settings.trackpad.enabled else { return [] }
+        let system = SystemSwipes.current()
+        return input.gestures.filter { system.takes($0) }
+    }
+
+    /// The gestures of the config and the swipes of wm itself that macOS uses, for `wm doctor`. `nil` with the trackpad off.
+    @MainActor private func swipeConflicts() -> (user: [String], builtIn: [String])? {
+        let pad = manager.settings.trackpad
+        guard pad.enabled else { return nil }
+        let taken = takenGestures()
+        var builtIn = taken.filter(\.isBuiltIn).map(\.label)
+        let scrolls = manager.settings.layout == .scrolling || manager.workspaceLayouts.values.contains(.scrolling)
+            || manager.workspaces.values.contains { $0.kind == .scrolling }
+        if scrolls, SystemSwipes.current().takes(fingers: pad.scrollFingers, horizontal: true) {
+            builtIn.append("\(pad.scrollFingers)-finger strip scroll")
+        }
+        return (taken.filter { !$0.isBuiltIn }.map(\.label), builtIn)
     }
 
     @MainActor private func listBinds(_ flags: Set<String>) -> ServerAnswer {
         if let bad = unknownOption(flags, allowed: ["--json"], usage: "list") { return bad }
         func when(_ trigger: BindTrigger) -> String { trigger == .longPress ? "long press" : trigger.rawValue }
         if flags.contains("--json") {
-            return ok(LuaValue.array(bindRecords.map { record in
+            return ok(LuaValue.array(listedBinds().map { record in
                 .table([
                     "mode": .string(record.mode), "keys": .string(record.keys), "trigger": .string(record.trigger.rawValue),
                     "command": .string(record.action), "description": record.options.description.map { .string($0) } ?? .nil,
@@ -384,7 +419,7 @@ final class AppController: HostBridge, @unchecked Sendable {
                 ])
             }).json + "\n")
         }
-        return ok(renderTable(["mode", "keys", "when", "command", "description"], bindRecords.map {
+        return ok(renderTable(["mode", "keys", "when", "command", "description"], listedBinds().map {
             [$0.mode, $0.keys, when($0.trigger), truncated($0.action, to: 40), $0.options.description ?? ""]
         }))
     }
@@ -512,7 +547,7 @@ final class AppController: HostBridge, @unchecked Sendable {
         var text: [String] = []
         for word in words {
             if word.hasPrefix("--seconds=") {
-                guard let value = Double(word.dropFirst(10)), value > 0 else { return fail("--seconds needs a positive number", 2, usage: "notify") }
+                guard let value = finiteNumber(word.dropFirst(10)), value > 0 else { return fail("--seconds needs a positive number", 2, usage: "notify") }
                 seconds = min(value, 60)
             } else if word.hasPrefix("--") {
                 return fail("unknown option \(word)", 2, usage: "notify")
@@ -708,6 +743,8 @@ final class AppController: HostBridge, @unchecked Sendable {
         applySystemShortcuts()
         input.tap.setPointerTracking(loaded.settings.focusFollowsMouse.enabled)
         updateTrackpad(loaded.settings.trackpad)
+        let off = takenGestures().map(\.label)
+        if !off.isEmpty { Log.write(.info, "off, because macOS uses these swipes: \(off.joined(separator: ", "))", source: "trackpad") }
         updateStartAtLogin(loaded.settings.startAtLogin)
         idleWatcher.configure(thresholds: loaded.idleThresholds)
         wallpaper.configure(Dictionary(uniqueKeysWithValues: loaded.workspaceRules.compactMap { name, rule in rule.wallpaper.map { (name, $0) } }))

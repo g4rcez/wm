@@ -20,10 +20,12 @@ struct ModifierDrag {
     /// A tiled resize moves dividers step by step: the pointer of the last step and its time.
     var lastPointer: CGPoint
     var lastStep: TimeInterval = 0
+    /// A small picture follows the pointer; the window itself waits out of sight until the drop.
+    var picture = false
 
     /// The window itself follows the pointer: a move, or the resize of a floating window. The resize of a tiled window
     /// moves dividers, and the layout decides the frame.
-    var followsPointer: Bool { kind == .move || floating }
+    var followsPointer: Bool { (kind == .move && !picture) || floating }
 }
 
 extension WindowManager {
@@ -49,6 +51,7 @@ extension WindowManager {
         case .dragged:
             guard let drag = modifierDrag, drag.button == event.button else {
                 refreshLiveBorder()
+                nativeDragMoved(to: event.location)
                 return false
             }
             continueDrag(drag, to: event.location)
@@ -72,10 +75,19 @@ extension WindowManager {
         openingHold[id] = nil
         // The whole drag is one step for `layout undo`.
         beginLayoutChange()
-        modifierDrag = ModifierDrag(
+        var drag = ModifierDrag(
             kind: event.button == .left ? .move : .resize, button: event.button, window: id, floating: managed.floating,
             startPointer: event.location, startFrame: frame,
             edges: MonitorGeometry.nearestEdges(of: frame, to: event.location), frame: frame, lastPointer: event.location)
+        let space = workspace(managed.workspace)
+        if drag.kind == .move, !managed.floating, settings.mouse.dragPicture, settings.mouse.movePreview,
+           [.tiling, .scrolling, .master].contains(space.kind), space.fullscreen == nil, !space.maximized.contains(id) {
+            drag.picture = true
+            dragPicture.start(
+                window: id, windowSize: frame.size, pid: managed.info.pid, at: event.location, live: ThumbnailService.hasPermission)
+        }
+        modifierDrag = drag
+        if drag.picture { relayout() }
         return true
     }
 
@@ -83,8 +95,15 @@ extension WindowManager {
         var drag = start
         let delta = CGPoint(x: pointer.x - drag.startPointer.x, y: pointer.y - drag.startPointer.y)
         switch drag.kind {
+        case .move where drag.picture:
+            // Only the picture moves: the window waits out of sight, and its neighbours make room.
+            dragPicture.move(to: pointer)
+            _ = updateDrop(of: drag.window, pointer: pointer, native: false)
+            modifierDrag = drag
+            return
         case .move:
             drag.frame = drag.startFrame.offsetBy(dx: delta.x, dy: delta.y)
+            if !drag.floating, !updateDrop(of: drag.window, pointer: pointer, native: false) { showMovePreview(of: drag.window, pointer: pointer) }
         case .resize where drag.floating:
             drag.frame = MonitorGeometry.resized(drag.startFrame, edges: drag.edges, by: delta, minimum: Self.minimumDragSize)
         case .resize:
@@ -107,6 +126,7 @@ extension WindowManager {
             relayout(snapAll: true)
             return
         }
+        if drag.kind == .move, drag.floating { updateFloatDrop(of: drag.window, pointer: pointer, native: false) }
         modifierDrag = drag
         if drag.floating { setFloatFrame(drag.window, drag.frame) }
         animator.place(drag.window, at: drag.frame)
@@ -116,6 +136,25 @@ extension WindowManager {
 
     private func endDrag(_ drag: ModifierDrag, at pointer: CGPoint) {
         modifierDrag = nil
+        movePreview.hide()
+        if drag.kind == .move, drag.floating, finishFloatDrop(from: drag.frame) {
+            endLayoutChange()
+            return
+        }
+        let from = drag.picture ? dragPicture.frame : drag.frame
+        if drag.picture { dragPicture.stop() }
+        if finishDrop(from: from) {
+            endLayoutChange()
+            return
+        }
+        if drag.picture {
+            // A drag that opened no space (the pointer never left the window): the window comes back from the picture.
+            springBack(drag.window)
+            animator.place(drag.window, at: from)
+            relayout()
+            endLayoutChange()
+            return
+        }
         // A tiled window that was moved and dropped on the tile of another window of its workspace swaps places with it.
         // Anywhere else it goes back to its tile.
         if drag.kind == .move, !drag.floating, let managed = windows[drag.window] {
