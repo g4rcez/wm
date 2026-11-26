@@ -15,6 +15,20 @@ public func stableBundlePath(_ path: String, fileExists: (String) -> Bool = { Fi
     return fileExists(stable) ? stable : path
 }
 
+/// Whether version `a` is older than `b`, part by part as numbers: `0.9.1` is older than `0.10.0`. A part that is not a number
+/// (`1.2.0-beta`) counts by its leading digits; a missing part is 0.
+public func isOlderVersion(_ a: String, than b: String) -> Bool {
+    func parts(_ text: String) -> [Int] {
+        text.split(separator: ".").map { Int($0.prefix { $0.isNumber }) ?? 0 }
+    }
+    let left = parts(a), right = parts(b)
+    for index in 0..<max(left.count, right.count) {
+        let x = index < left.count ? left[index] : 0, y = index < right.count ? right[index] : 0
+        if x != y { return x < y }
+    }
+    return false
+}
+
 /// Whether the running daemon has to be replaced by the build of this `wm`: it is another version, its bundle is gone
 /// (brew removed the old version) or it runs from another bundle. A daemon that does not report its bundle (older
 /// than this feature) is judged by its version alone.

@@ -17,6 +17,17 @@ public enum LogLevel: String, Sendable, CaseIterable {
     public static func lowest(environment: [String: String] = ProcessInfo.processInfo.environment) -> LogLevel {
         environment["WM_LOG_LEVEL"].flatMap { LogLevel(rawValue: $0.lowercased()) } ?? .debug
     }
+
+    /// Window titles go to the log only when `WM_LOG_LEVEL` is `debug`, set on purpose.
+    public static func recordsTitles(environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
+        environment["WM_LOG_LEVEL"]?.lowercased() == "debug"
+    }
+
+    /// `text` quoted when titles may be logged, else only its length: enough to tell an empty title from a real one.
+    public static func loggable(title text: String, recordsTitles: Bool) -> String {
+        if recordsTitles { return text.debugDescription }
+        return text.isEmpty ? "\"\"" : "(\(text.count) characters)"
+    }
 }
 
 /// One line of the log. The file holds each record as one JSON object per line; `wm logs -o json` prints that line as it is.
@@ -135,7 +146,8 @@ public enum LogFile {
             }
             closeOpenFile()
         }
-        try files.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        // The log holds window and app names: only this user reads the folder, also when the log makes it first.
+        try files.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         if let size = try? files.attributesOfItem(atPath: url.path)[.size] as? Int, size >= maxBytes {
             try? files.removeItem(at: rotatedURL(of: url))
             try files.moveItem(at: url, to: rotatedURL(of: url))
@@ -199,6 +211,13 @@ public struct LogFollower {
 public enum Log {
     /// Read once: `WM_LOG_LEVEL` does not change while the process runs.
     private static let lowestLevel = LogLevel.lowest()
+
+    /// Whether the log may hold what windows show: their titles (a mail subject, a document name). Only when `WM_LOG_LEVEL=debug`
+    /// asks for it on purpose; the default debug log says how long a title is instead.
+    private static let recordsTitles = LogLevel.recordsTitles()
+
+    /// A window title as the log may show it.
+    public static func title(_ text: String) -> String { LogLevel.loggable(title: text, recordsTitles: recordsTitles) }
 
     /// `prefix` is what stderr shows before the message.
     public static func write(_ level: LogLevel, _ message: String, source: String? = nil, prefix: String = "wm") {

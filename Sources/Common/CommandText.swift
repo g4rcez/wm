@@ -1,7 +1,26 @@
 import Foundation
 
-/// Commands that act outside wm (a shell, the keyboard of another app) or hold the connection open. A `wm://` URL may not run them unless the config lists them in `url.allow`: any app or web page can open a URL.
-public let urlBlockedCommands: Set<String> = ["exec", "daemon", "subscribe", "key", "session"]
+/// The commands that a `wm://` URL may run: any app or web page can open one, so only what moves the view, the focus and the
+/// layout of wm. A command that is not here (a shell, keys sent to another app, the daemon, settings, sessions, text of the
+/// screen, notices) runs only when the config lists it in `url.allow`. A command added to wm later is blocked until it is listed.
+public let urlAllowedCommands: Set<String> = [
+    "focus", "workspace", "workspaces", "layout", "move", "swap", "resize", "window", "zen", "overview", "switcher", "palette",
+    "menu", "hints", "scroll", "jump", "mode", "cheatsheet", "pointer", "list", "query", "version", "noop",
+]
+
+/// Forms of allowed commands that act outside wm: closing another app's window and starting an app. `url.allow` can list them
+/// as they are written here.
+public let urlBlockedForms: [(name: String, matches: @Sendable ([String]) -> Bool)] = [
+    ("window close", { $0.first == "window" && $0.dropFirst().first == "close" }),
+    ("focus app --launch", { $0.first == "focus" && $0.dropFirst().first == "app" && $0.contains("--launch") }),
+]
+
+/// A number typed in a command, or `nil`. `Double("nan")` and `Double("inf")` are numbers to Swift, but no size, ratio or
+/// step can be one: a NaN gets through every `min`/`max` clamp and then sticks in the layout and in the animations.
+public func finiteNumber<S: StringProtocol>(_ text: S) -> Double? {
+    guard let number = Double(text), number.isFinite else { return nil }
+    return number
+}
 
 /// The first command of a URL request that the URL may not run, or `nil`. `batch` runs other commands, so each of its commands
 /// counts too: `wm://batch?args=exec ...` must not get around the list.
@@ -12,7 +31,10 @@ public func urlBlockedCommand(in words: [String], allowed: [String]) -> String? 
         let inner = splitBatch(words.dropFirst().joined(separator: " ")).map(splitCommand)
         return inner.lazy.compactMap { urlBlockedCommand(in: $0, allowed: allowed) }.first
     }
-    return urlBlockedCommands.contains(command) && !allowed.contains(command) ? command : nil
+    if allowed.contains(command) { return nil }
+    guard urlAllowedCommands.contains(command) else { return command }
+    let rest = Array(words.drop { $0 != command })
+    return urlBlockedForms.first { $0.matches(rest) && !allowed.contains($0.name) }?.name
 }
 
 /// The command words without the `--verbose` flag, and whether the flag was there. Before the command word it is always the flag;

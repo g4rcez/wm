@@ -54,6 +54,28 @@ struct DoctorTests {
         #expect(daemonChecks(healthy).contains { $0.name == "secure input" } == false)
     }
 
+    @Test func aGestureOfTheUserThatMacOSUsesIsAWarningThatNamesIt() {
+        var facts = healthy
+        facts.takenGestures = ["4-finger up"]
+        facts.takenSwipes = ["4-finger left"]
+        let check = daemonChecks(facts).first { $0.name == "gestures" }
+        #expect(check?.status == .warn)
+        #expect(check?.detail.hasSuffix("4-finger up") == true)
+        #expect(check?.hint?.contains("More Gestures") == true)
+        #expect(doctorExitCode(daemonChecks(facts)) == 0)
+    }
+
+    @Test func builtInSwipesThatMacOSUsesAreNoWarning() {
+        let check = gesturesCheck(user: [], builtIn: ["4-finger left", "4-finger right"])
+        #expect(check.status == .skip)
+        #expect(check.detail.hasSuffix("4-finger left, 4-finger right"))
+    }
+
+    @Test func freeSwipesAreOkAndNoTrackpadFactsMeanNoCheck() {
+        #expect(gesturesCheck(user: [], builtIn: []).status == .ok)
+        #expect(daemonChecks(healthy).contains { $0.name == "gestures" } == false)
+    }
+
     @Test func aRefusedHidTapIsAWarning() {
         var facts = healthy
         facts.keyLevelRefused = true
@@ -66,6 +88,7 @@ struct DoctorTests {
         let facts = try JSONDecoder().decode(DoctorFacts.self, from: Data(json.utf8))
         #expect(facts.secureInput == nil)
         #expect(facts.keyLevelRefused == nil)
+        #expect(facts.takenGestures == nil)
     }
 
     @Test func missingAccessibilityFailsAndSaysWhereToGrantIt() {

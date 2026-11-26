@@ -34,6 +34,10 @@ public struct DoctorFacts: Codable, Equatable, Sendable {
     public var keyLevelRefused: Bool?
     /// Whether the icon of wm is on screen. A daemon older than this check does not say.
     public var menuBarShown: Bool?
+    /// The `wm.gesture` swipes that macOS uses, so they do not run. `nil` with the trackpad off, or from an older daemon.
+    public var takenGestures: [String]?
+    /// The swipes that wm has without a config and that macOS uses.
+    public var takenSwipes: [String]?
 
     public init(
         accessibility: Bool, keyTap: Bool, screenRecording: Bool, loginItemWanted: Bool, loginItemEnabled: Bool, isAppBundle: Bool,
@@ -134,8 +138,23 @@ public func daemonChecks(_ facts: DoctorFacts) -> [DoctorCheck] {
             "secure input", .warn, "on, held by \(holder): macOS hides the keys from wm, so no bind works",
             hint: "leave the password field, or turn off Secure Keyboard Entry in \(holder)"))
     }
+    if let user = facts.takenGestures, let builtIn = facts.takenSwipes { checks.append(gesturesCheck(user: user, builtIn: builtIn)) }
     if let native = facts.native { checks += nativeChecks(native) }
     return checks
+}
+
+/// Swipes that macOS uses are off in wm. Only a swipe that the user asked for is a warning: a Mac as it comes uses them all.
+public func gesturesCheck(user: [String], builtIn: [String]) -> DoctorCheck {
+    let hint = "to use them in wm, turn the macOS gesture off in System Settings > Trackpad > More Gestures "
+        + "(three-finger drag: Accessibility > Pointer Control > Trackpad Options)"
+    if !user.isEmpty {
+        return DoctorCheck(
+            "gestures", .warn, "macOS uses these swipes, so wm.gesture does not run: " + user.joined(separator: ", "), hint: hint)
+    }
+    if !builtIn.isEmpty {
+        return DoctorCheck("gestures", .skip, "left to macOS, which uses them: " + builtIn.joined(separator: ", "), hint: hint)
+    }
+    return DoctorCheck("gestures", .ok, "macOS uses no swipe of wm")
 }
 
 /// A wm.app on this Mac. macOS keeps one permission for all the copies with the same bundle id, by the signature.

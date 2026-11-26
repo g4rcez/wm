@@ -39,3 +39,16 @@ struct UpgradeTests {
         #expect(needsRestart(daemonVersion: "0.4.3", daemonBundle: "/a/wm.app", cliVersion: "0.4.3", cliBundle: "/b/wm.app", fileExists: { _ in true }))
     }
 }
+
+struct VersionOrderTests {
+    @Test(arguments: [("1.0.0", "1.1.0"), ("0.9.1", "0.10.0"), ("1.1", "1.1.1"), ("1.2.0-beta", "1.3.0"), ("0.5.1", "1.0.0")])
+    func olderVersions(older: String, newer: String) {
+        #expect(isOlderVersion(older, than: newer))
+        #expect(!isOlderVersion(newer, than: older))
+    }
+
+    @Test func aVersionIsNotOlderThanItself() {
+        #expect(!isOlderVersion("1.1.0", than: "1.1.0"))
+        #expect(!isOlderVersion("1.1", than: "1.1.0"))
+    }
+}

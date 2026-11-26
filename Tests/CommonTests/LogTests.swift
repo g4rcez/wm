@@ -188,3 +188,18 @@ struct LogTests {
         #expect(throws: LogsOptions.Failure(message: message)) { try LogsOptions(parsing: words) }
     }
 }
+
+struct LogTitleTests {
+    @Test func titlesAreLoggedOnlyWhenDebugIsAskedFor() {
+        #expect(LogLevel.recordsTitles(environment: ["WM_LOG_LEVEL": "debug"]))
+        #expect(LogLevel.recordsTitles(environment: ["WM_LOG_LEVEL": "DEBUG"]))
+        #expect(!LogLevel.recordsTitles(environment: [:]))
+        #expect(!LogLevel.recordsTitles(environment: ["WM_LOG_LEVEL": "info"]))
+    }
+
+    @Test func aTitleThatMayNotBeLoggedShowsOnlyItsLength() {
+        #expect(LogLevel.loggable(title: "Re: salary review", recordsTitles: false) == "(17 characters)")
+        #expect(LogLevel.loggable(title: "", recordsTitles: false) == "\"\"")
+        #expect(LogLevel.loggable(title: "Re: salary review", recordsTitles: true) == "\"Re: salary review\"")
+    }
+}

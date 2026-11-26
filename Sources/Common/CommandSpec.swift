@@ -98,7 +98,7 @@ public let commandSections: [CommandSection] = [
             example: "wm window center"),
         CommandSpec(
             "window sticky", "", "", "Show the window on every workspace of its monitor.",
-            details: "A tiled window floats first. The window follows the workspace that the monitor shows (also a special workspace). Again\nto end it; the window then stays floating on the workspace that it is on. `window remember` keeps it.",
+            details: "A tiled window floats first. The window follows the workspace that the monitor shows (also a special workspace). Again\nto end it; the window then stays floating on the workspace that it is on. Tiling the window also ends it. `window remember` keeps it.",
             example: "wm window sticky"),
         CommandSpec(
             "window pip", "[on|off|toggle]", "[--corner=<corner>] [--all]", "Show a small live picture of the window.",
@@ -118,7 +118,7 @@ public let commandSections: [CommandSection] = [
             example: "wm window move-to 40 80"),
         CommandSpec(
             "window minimize", "", "", "Minimize the window.",
-            details: "It sets the minimized state of the window, as the yellow button does. A minimized window has no place in the layout.",
+            details: "It sets the minimized state of the window, as the yellow button does. A minimized window has no place in the layout:\nit ends its fullscreen, and the focus does not go back to it until it shows again.",
             example: "wm window minimize"),
         CommandSpec(
             "window swipe", "<left|right|up|down>", "", "What a swipe on the title bar does.",
@@ -135,7 +135,9 @@ public let commandSections: [CommandSection] = [
             "window mark", "<name>", "", "Give the window a name.",
             details: "A name belongs to one window; marking another window with it moves the mark. Marks last until the window closes\nand are saved with the layout. `wm --window mark:<name> ...` and `wm focus mark <name>` find the window.",
             example: "wm window mark mail"),
-        CommandSpec("window unmark", "[name]", "", "Remove one mark, or all marks of the window."),
+        CommandSpec(
+            "window unmark", "[name]", "", "Remove one mark, or all marks of the window.",
+            details: "A name that is a mark of another window is an error: the mark stays where it is."),
         CommandSpec(
             "window remember", "", "[--title]", "Keep this window's state for the next window of the app.",
             details: "Keeps the workspace and monitor, floating or tiled, the place and size of a floating window, maximized, pseudo, the column width and\nstrip, and the marks. When a window of the same app opens later, it gets them and the focus. With --title the window must\nalso have this exact title. Remembering again replaces the entry. Windows that are open when wm starts are not moved.\n`wm memory list` shows the entries and `wm memory forget` removes one.",
@@ -145,8 +147,13 @@ public let commandSections: [CommandSection] = [
             "window pseudo", "", "", "Keep the window's own size, centered in its tile.",
             details: "The window keeps the size it has now. A tile that is smaller than that cuts it down. Run it again to tile the\nwindow normally."),
         CommandSpec(
+            "window group", "<next|prev>", "", "Show the next or previous tab of the float group.",
+            details: "Floating windows make a group when you hold Cmd and drop one on the middle of another: they share one frame, and one\nof them shows. Dragging the window that shows out of the group takes it out.",
+            example: "wm window group next"),
+        CommandSpec("window ungroup", "", "", "Take the window out of its float group."),
+        CommandSpec(
             "window send workspace", "<name>", "[--stay] [--tile] [--column]", "Send the window to a workspace; --stay keeps the view.",
-            details: "The name can also be next, prev or empty (see `wm help workspace`). On an empty workspace the window arrives maximized; on one that has windows it joins the layout and the\nlayout is balanced. With --tile it only joins the layout. `special:<name>` is a special workspace.\nWith --column the whole column goes (scrolling), with its stack, width and tabs, and joins the layout like --tile.",
+            details: "The name can also be next, prev or empty (see `wm help workspace`). On an empty workspace the window arrives maximized; on one that has windows it joins the layout and the\nlayout is balanced. With --tile it only joins the layout. `special:<name>` is a special workspace.\nWith --column the whole column goes (scrolling), with its stack, width and tabs, and joins the layout like --tile.\nThe workspace that the window is on already changes nothing.",
             example: "wm window send workspace 3 --stay"),
         CommandSpec(
             "window send monitor", "<monitor>", "[--tile] [--column]", "Send the window to another monitor and follow it.",
@@ -157,7 +164,7 @@ public let commandSections: [CommandSection] = [
     CommandSection(title: "Workspaces", specs: [
         CommandSpec(
             "workspace", "<name|back>", "", "Show a workspace on the focused monitor.",
-            details: "Names with a meaning: back (the previous workspace), next and prev (the workspaces in use, wrapping around)\nand empty (the lowest free number).\nWith workspaces = \"native\" this switches to the macOS desktop of the workspace, and makes the desktop first when it does not exist\n(macOS 27 or later); next and prev walk the desktops of the focused display.",
+            details: "Names with a meaning: back (the previous workspace), next and prev (the workspaces in use, wrapping around)\nand empty (the lowest free number).\nWith workspaces = \"native\" this switches to the macOS desktop of the workspace, and makes the desktop first when it does not exist\n(macOS 27 or later); next and prev walk the desktops of the focused display.\nA name needs more than spaces. With a `workspaces` limit in the config, a number is 1 to that limit.\nFloating windows keep their place relative to the monitor: on another monitor they move along.",
             example: "wm workspace next"),
         CommandSpec(
             "workspace all", "<layout>", "", "Give every workspace this layout.",
@@ -174,13 +181,13 @@ public let commandSections: [CommandSection] = [
         CommandSpec("workspace special", "[name]", "", "Show or hide a special workspace (default: special).", example: "wm workspace special term"),
         CommandSpec(
             "workspaces balance", "[count]", "", "Spread the windows evenly over the workspaces.",
-            details: "With as many workspaces as windows, or more, each workspace gets one window. With more windows, no workspace gets more than one window\nabove another. A window moves only when it has to. The workspaces are 1 to `count`, or to the `workspaces` limit of the config when\nthere is no count (an error when neither is set). With workspaces = \"native\" they are the first desktops. Sticky, minimized and\nspecial-workspace windows stay.",
+            details: "With as many workspaces as windows, or more, each workspace gets one window. With more windows, no workspace gets more than one window\nabove another. A window moves only when it has to. The workspaces are 1 to `count` (at most 999), or to the `workspaces` limit of the config when\nthere is no count (an error when neither is set). With workspaces = \"native\" they are the first desktops. Sticky, minimized and\nspecial-workspace windows stay.",
             example: "wm workspaces balance 4"),
     ]),
     CommandSection(title: "Layout", specs: [
         CommandSpec(
             "layout set", "<layout>", "", "Switch the layout of the workspace.",
-            details: "`layout` is scrolling, tiling, master, monocle or floating. The layout belongs to the workspace: the other workspaces keep theirs. `wm list workspaces` shows each one.\n`floating` floats every window where it is, and a window that opens floats in the frame that tiling would give it. A switch to\nanother layout leaves the windows floating; only the windows that open later are tiled.",
+            details: "`layout` is scrolling, tiling, master, monocle or floating. The layout belongs to the workspace: the other workspaces keep theirs. `wm list workspaces` shows each one.\n`floating` floats every window where it is, and a window that opens floats in the frame that tiling would give it. A window that\nthe old layout hid (monocle, a column scrolled away) floats on the screen. A switch to another layout leaves the windows floating;\nonly the windows that open later are tiled. The layout that the workspace already has changes nothing.",
             example: "wm layout set master"),
         CommandSpec(
             "layout master promote", "", "", "Swap the window with the master.",
@@ -199,7 +206,7 @@ public let commandSections: [CommandSection] = [
             example: "wm layout master orientation center"),
         CommandSpec(
             "layout balance", "", "", "Give every window (or column) an equal share.",
-            details: "It acts on the whole workspace, so no window has to be in focus (a floating window, or the desktop, is fine). It also ends maximize and fullscreen on that workspace, and a maximized scrolling column takes its share with the others. With no window in focus, scrolling balances both strips. It writes the size and position of every tiled window again, so a window that you or its app resized goes back to its share."),
+            details: "It acts on the whole workspace, so no window has to be in focus (a floating window, or the desktop, is fine). It also ends maximize and fullscreen on that workspace, and a maximized scrolling column takes its share with the others. In scrolling, the windows of a stack get equal heights (or widths) and the\nvertical zone goes back to its configured width. With no window in focus, scrolling balances both strips. It writes the size and position of every tiled window again, so a window that you or its app resized goes back to its share."),
         CommandSpec(
             "layout undo", "[workspace]", "", "Go back to the layout before the last change.",
             details: "A change is what a command or the mouse did to the arrangement of a workspace: a swap, a move, a resize, balance,\na tile pattern, floating a window, maximize, another layout. A `batch` and a drag count as one. Opening, closing and sending\na window to another workspace are not changes: undo never moves a window between workspaces. wm keeps 50 steps for each\nworkspace until it stops. Without a name it acts on the focused workspace.",
@@ -357,7 +364,7 @@ public let commandSections: [CommandSection] = [
     CommandSection(title: "Sessions", specs: [
         CommandSpec(
             "session save", "<name>", "", "Save the open windows and their layouts under a name.",
-            details: "Keeps the app and title of every window, its workspace, layout, floating place, marks and sticky state, and which workspace\neach monitor shows. Saving a name again replaces it. Minimized, native fullscreen and swallowed windows are left out.\nThe name takes letters, digits, `.`, `_` and `-`. The files are in sessions/, next to state.json.",
+            details: "Keeps the app and title of every window, its workspace, layout, floating place, marks and sticky state, and which workspace\neach monitor shows. Saving a name again replaces it. Minimized, hidden, native fullscreen and swallowed windows are left out.\nThe name takes letters, digits, `.`, `_` and `-`. The files are in sessions/, next to state.json.",
             example: "wm session save dev"),
         CommandSpec(
             "session open", "<name>", "[--no-launch]", "Put the windows back as the session saved them.",
@@ -379,11 +386,11 @@ public let commandSections: [CommandSection] = [
             example: "wm daemon status || wm daemon start"),
         CommandSpec(
             "daemon reload", "", "", "Load the config; after an upgrade, run the new build.",
-            details: "Reads init.lua again. A value that `wm set` changed goes back to what the config says. When the running wm is an older build than this `wm` (after `brew upgrade wm`), it restarts wm from the new one instead: the Accessibility and Screen Recording permissions stay.",
+            details: "Reads init.lua again. A value that `wm set` changed goes back to what the config says. When the running wm is an older build than this `wm` (after `brew upgrade wm`), it restarts wm from the new one instead: the Accessibility and Screen Recording permissions stay. When this `wm` is older than the running wm (an old copy earlier in PATH),\nit refuses: that would go back to the old version.",
             example: "wm daemon reload"),
         CommandSpec(
             "doctor", "", "[--json]", "Check the config, the daemon and the permissions.",
-            details: "One line for each check: ok, warn, fail or skip, and a hint when it is not ok. It exits with 1 when a check\nfailed (a warning is not a failure). It works without the daemon: the checks that need it are skipped.",
+            details: "The `gestures` line lists the trackpad swipes that are off because macOS uses them.\nOne line for each check: ok, warn, fail or skip, and a hint when it is not ok. It exits with 1 when a check\nfailed (a warning is not a failure). It works without the daemon: the checks that need it are skipped.",
             example: "wm doctor"),
         CommandSpec(
             "doctor show", "", "", "Open the Doctor window of wm.",
@@ -395,7 +402,7 @@ public let commandSections: [CommandSection] = [
             example: "wm doctor fix --dry-run"),
         CommandSpec(
             "config check", "[path]", "", "Load the config without applying it.",
-            details: "Runs the config file (default: the config path, see ENVIRONMENT) in a new Lua state. Nothing is applied and nothing\nstarts: wm.exec and wm.dispatch do nothing, and wm.query finds nothing. A script that needs a query result at load time\nfails here. It prints the error with the file and the line, and exits with 1. It works without the daemon.",
+            details: "Runs the config file (default: the config path, see ENVIRONMENT) in a new Lua state. Nothing is applied and nothing\nstarts: wm.exec and wm.dispatch do nothing, and wm.query finds nothing. os.execute, io.popen, file writes and native\nmodules are off too, so a config from someone else is safe to check. A script that needs a query result at load time\nfails here. It prints the error with the file and the line, and exits with 1. It works without the daemon.",
             example: "wm config check ~/dotfiles/wm/init.lua"),
         CommandSpec(
             "lsp", "", "[--write] [--force]", "Set up autocomplete for the config in your editor.",
@@ -463,7 +470,8 @@ private let environmentRows: [(String, String)] = [
     ("XDG_CONFIG_HOME", "The folder that holds wm/init.lua."),
     ("XDG_STATE_HOME", "The folder of the log and of the saved state."),
     ("NO_COLOR", "No colors in the help and in errors. CLICOLOR_FORCE=1 forces them."),
-    ("WM_LOG_LEVEL", "Lowest level in the log file: debug (default), info, warn or error."),
+    ("WM_LOG_LEVEL", "Lowest log level: debug (default), info, warn, error. Set to debug: titles too."),
+    ("WM_DEBUG", "Set for the daemon: `daemon status` shows the timings of the last animation."),
 ]
 
 public func renderHelp(topic: String? = nil, style: HelpStyle = .plain) -> String? {
@@ -565,7 +573,7 @@ private func overviewHelp(style: HelpStyle) -> String {
     }
     lines += ["", style.heading("GLOBAL OPTIONS")] + optionLines(globalOptions, style: style)
     lines += ["", style.heading("URL SCHEME")] + rows(urlRows, paint: style.command)
-    lines.append("  " + style.dim("URLs cannot run exec, key, daemon, subscribe or session, unless `url.allow` lists them."))
+    lines.append("  " + style.dim("URLs only move the view, the focus and the layout; `url.allow` lists more commands."))
     lines += ["", style.heading("EXIT CODES")] + rows(exitCodeRows, paint: style.command)
     lines += ["", style.heading("ENVIRONMENT")] + rows(environmentRows, paint: style.command)
     lines += ["", style.dim("Run `wm help <command>` for details and examples, for example `wm help window`."), style.dim("<dir> is left, right, up or down.")]

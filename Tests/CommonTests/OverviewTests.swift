@@ -30,11 +30,12 @@ struct OverviewTests {
         """)
     }
 
-    @Test func marksMaximizedAndMinimizedWindowsAndSkipsEmptyTitles() {
+    @Test func marksMaximizedMinimizedAndHiddenWindowsAndSkipsEmptyTitles() {
         let text = renderOverview(monitors: [], workspaces: [
             OverviewWorkspace(name: "2", layout: "scrolling", monitor: 2, windows: [
                 OverviewWindow(id: 7, app: "Notes", title: "", maximized: true),
                 OverviewWindow(id: 8, app: "Mail", title: "Inbox", minimized: true),
+                OverviewWindow(id: 9, app: "Maps", title: "", hidden: true),
             ]),
         ])
 
@@ -42,6 +43,7 @@ struct OverviewTests {
         workspace 2  scrolling  [visible, monitor 2]
             7  Notes  (maximized)
             8  Mail   Inbox  (minimized)
+            9  Maps   (hidden)
 
         """)
     }

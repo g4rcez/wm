@@ -38,7 +38,10 @@ func diagnose() -> Diagnosis {
     let daemon: DaemonState
     if let running = runningDaemon() {
         let stale = isStale(running)
-        if running.version != wmVersion {
+        if isOlderThan(running) {
+            checks.append(DoctorCheck(
+                "daemon", .warn, "runs version \(running.version), and this wm is older (\(wmVersion))", hint: olderCopyHint(running)))
+        } else if running.version != wmVersion {
             checks.append(DoctorCheck("daemon", .warn, "runs version \(running.version), and this wm is \(wmVersion)", hint: "run `wm daemon reload`"))
         } else if stale {
             checks.append(DoctorCheck("daemon", .warn, "runs from \(running.bundle ?? "another place"), and this wm is not that one", hint: "run `wm daemon reload`"))

@@ -21,12 +21,14 @@ public struct OverviewWindow: Sendable, Equatable {
     public var floating = false
     public var maximized = false
     public var minimized = false
+    /// Its app is hidden.
+    public var hidden = false
     /// `"vertical"` for a window in the vertical strip of a scrolling workspace.
     public var strip: String?
 
     public init(
         id: UInt32, app: String, title: String, focused: Bool = false, floating: Bool = false,
-        maximized: Bool = false, minimized: Bool = false, strip: String? = nil
+        maximized: Bool = false, minimized: Bool = false, hidden: Bool = false, strip: String? = nil
     ) {
         self.id = id
         self.app = app
@@ -35,6 +37,7 @@ public struct OverviewWindow: Sendable, Equatable {
         self.floating = floating
         self.maximized = maximized
         self.minimized = minimized
+        self.hidden = hidden
         self.strip = strip
     }
 }
@@ -76,6 +79,7 @@ public func renderOverview(monitors: [OverviewMonitor], workspaces: [OverviewWor
             if window.floating { marks.append("(floating)") }
             if window.maximized { marks.append("(maximized)") }
             if window.minimized { marks.append("(minimized)") }
+            if window.hidden { marks.append("(hidden)") }
             if let strip = window.strip { marks.append("[\(strip)]") }
             if !marks.isEmpty { row += "  " + marks.joined(separator: " ") }
             // An app column pads short names; do not leave blanks at the end of the line.

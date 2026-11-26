@@ -350,6 +350,19 @@ func runningDaemon() -> (version: String, bundle: String?)? {
     return (version, object["bundle"] as? String)
 }
 
+/// This `wm` is older than the daemon that runs: an old copy earlier in PATH (a `make install`, an old download) next to a
+/// newer brew install. Replacing the daemon from it would downgrade wm, so `daemon reload` and the hints refuse.
+func isOlderThan(_ daemon: (version: String, bundle: String?)) -> Bool {
+    isOlderVersion(wmVersion, than: daemon.version)
+}
+
+/// What to say when this `wm` is older than the daemon: where this copy is and where the daemon's is.
+func olderCopyHint(_ daemon: (version: String, bundle: String?)) -> String {
+    let mine = Bundle.main.executableURL?.resolvingSymlinksInPath().path ?? CommandLine.arguments[0]
+    let theirs = daemon.bundle.map { " (\($0)/Contents/MacOS/wm)" } ?? ""
+    return "this wm is \(mine); use the wm of the daemon\(theirs), or remove the old copy (`which -a wm` lists them)"
+}
+
 func isStale(_ daemon: (version: String, bundle: String?)) -> Bool {
     needsRestart(daemonVersion: daemon.version, daemonBundle: daemon.bundle, cliVersion: wmVersion, cliBundle: appBundle()?.path)
 }
@@ -403,7 +416,11 @@ func quitDaemon() -> DaemonStop {
 
 if arguments == ["daemon", "start"] {
     if let running = runningDaemon() {
-        print(isStale(running) ? "wm \(running.version) is running; run `wm daemon reload` to switch to \(wmVersion)" : "wm is already running")
+        if isOlderThan(running) {
+            print("wm \(running.version) is running, and this wm is older (\(wmVersion))")
+        } else {
+            print(isStale(running) ? "wm \(running.version) is running; run `wm daemon reload` to switch to \(wmVersion)" : "wm is already running")
+        }
         exit(0)
     }
     startDaemon()
@@ -414,6 +431,10 @@ if arguments == ["daemon", "start"] {
 if arguments == ["daemon", "reload"] {
     // After `brew upgrade` the daemon still runs the old build: reload then replaces it, so the new features and mappings load.
     // The permissions stay: the signature of every release is the same.
+    if let running = runningDaemon(), isOlderThan(running) {
+        die("the daemon runs wm \(running.version), and this wm is \(wmVersion): a reload from it would go back to the old version",
+            hint: olderCopyHint(running))
+    }
     if let running = runningDaemon(), isStale(running) {
         replaceDaemon()
         print("wm restarted: \(running.version) -> \(wmVersion)")

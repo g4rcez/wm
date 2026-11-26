@@ -42,8 +42,25 @@ struct CommandTextTests {
         #expect(commandWords(fromURL: URL(string: "wm://")!) == nil)
     }
 
-    @Test func dangerousCommandsAreBlockedForUrls() {
-        #expect(urlBlockedCommands == ["exec", "daemon", "subscribe", "key", "session"])
+    @Test(arguments: ["exec", "daemon", "subscribe", "key", "session", "set", "memory", "notify", "menubar", "select", "pick", "animations"])
+    func commandsThatActOutsideWmAreBlockedForUrls(command: String) {
+        #expect(urlBlockedCommand(in: [command, "x"], allowed: []) == command)
+        #expect(urlBlockedCommand(in: [command, "x"], allowed: [command]) == nil)
+    }
+
+    @Test func aCommandThatWmDoesNotKnowYetIsBlockedForUrls() {
+        #expect(urlBlockedCommand(in: ["teleport", "x"], allowed: []) == "teleport")
+    }
+
+    @Test func closingAWindowAndStartingAnAppNeedToBeAllowed() {
+        #expect(urlBlockedCommand(in: ["window", "close"], allowed: []) == "window close")
+        #expect(urlBlockedCommand(in: ["--verbose", "window", "close"], allowed: []) == "window close")
+        #expect(urlBlockedCommand(in: ["window", "close"], allowed: ["window close"]) == nil)
+        #expect(urlBlockedCommand(in: ["focus", "app", "Safari", "--launch"], allowed: []) == "focus app --launch")
+        #expect(urlBlockedCommand(in: ["focus", "app", "Safari"], allowed: []) == nil)
+        #expect(urlBlockedCommand(in: ["batch", "workspace 2; window close"], allowed: []) == "window close")
+        #expect(urlBlockedCommand(in: ["window", "send", "workspace", "3"], allowed: []) == nil)
+        #expect(urlBlockedCommand(in: ["layout", "balance"], allowed: []) == nil)
     }
 
     @Test func aBatchCannotCarryABlockedCommandForUrls() {
@@ -97,5 +114,19 @@ struct CommandTextTests {
         #expect(splitBatch("exec 'echo a; echo b'; focus left") == ["exec 'echo a; echo b'", "focus left"])
         #expect(splitBatch(" ; focus left ;; ") == ["focus left"])
         #expect(splitBatch("") == [])
+    }
+}
+
+struct FiniteNumberTests {
+    @Test func aCommandNumberIsFinite() {
+        #expect(finiteNumber("40") == 40)
+        #expect(finiteNumber("-0.5") == -0.5)
+        #expect(finiteNumber("+50") == 50)
+        #expect(finiteNumber("1e3") == 1000)
+    }
+
+    @Test(arguments: ["nan", "NaN", "inf", "-inf", "infinity", "1e999", "", "abc", "5px"])
+    func notANumberOrNotFinite(text: String) {
+        #expect(finiteNumber(text) == nil)
     }
 }
