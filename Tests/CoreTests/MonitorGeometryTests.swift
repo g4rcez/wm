@@ -118,3 +118,32 @@ struct MonitorGeometryTests {
         #expect(small == CGRect(x: 380, y: 100, width: 120, height: 80))
     }
 }
+
+struct FloatableFrameTests {
+    private let area = CGRect(x: 0, y: 25, width: 1000, height: 775)
+
+    @Test func aFrameThatShowsStaysWhereItIs() {
+        let frame = CGRect(x: 100, y: 100, width: 400, height: 300)
+        #expect(MonitorGeometry.floatable(frame, in: area) == frame)
+    }
+
+    @Test func aParkedFrameComesBackIntoTheArea() {
+        // The hidden corner: one point inside the bottom-right corner, at the size of the whole area.
+        let parked = CGRect(x: 999, y: 799, width: 1000, height: 775)
+        #expect(MonitorGeometry.floatable(parked, in: area) == area)
+    }
+
+    @Test func aColumnScrolledOffTheLeftComesBackAtTheLeftEdge() {
+        let away = CGRect(x: -748, y: 79, width: 756, height: 700)
+        #expect(MonitorGeometry.floatable(away, in: area) == CGRect(x: 0, y: 79, width: 756, height: 700))
+    }
+
+    @Test func everyMonocleWindowFloatsOnTheScreen() {
+        var engine = MonocleEngine(settings: Settings())
+        for id: WindowID in 1...3 { engine.insert(id, after: id == 1 ? nil : id - 1) }
+        let context = LayoutContext(viewport: area, hiddenCorner: CGPoint(x: 999, y: 799))
+        let floated = engine.frames(in: context, focused: 1).mapValues { MonitorGeometry.floatable($0, in: area) }
+        #expect(floated.count == 3)
+        #expect(floated.values.allSatisfy { area.contains($0) })
+    }
+}

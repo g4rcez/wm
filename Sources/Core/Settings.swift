@@ -381,6 +381,10 @@ public struct TrackpadSettings: Sendable, Equatable {
 public struct MouseSettings: Sendable, Equatable {
     public var moveModifier: String?
     public var resizeModifier: String?
+    /// A placeholder shows the slot where a tiled window lands while it is dragged.
+    public var movePreview = true
+    /// A tiled window that is dragged with the move modifier shrinks to a picture that follows the pointer.
+    public var dragPicture = true
     public init(moveModifier: String? = nil, resizeModifier: String? = nil) {
         self.moveModifier = moveModifier
         self.resizeModifier = resizeModifier

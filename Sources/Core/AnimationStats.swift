@@ -15,6 +15,10 @@ public struct AnimationStats: Sendable, Equatable {
     private var writtenCount = 0
     private var replacedCount = 0
     private var apps: [String: (count: Int, total: Double, max: Double)] = [:]
+    /// The main-thread time of each tick (the step and what follows it), and of each relayout while the animation runs: when
+    /// these grow toward the frame time, the animation drops frames before any app is asked.
+    private var work = (count: 0, total: 0.0, max: 0.0)
+    private var relayouts = (count: 0, total: 0.0, max: 0.0)
 
     public init() {}
 
@@ -26,6 +30,16 @@ public struct AnimationStats: Sendable, Equatable {
         tickTotal += interval
         tickMax = max(tickMax, interval)
         if interval > Self.slowTick { slowTicks += 1 }
+    }
+
+    /// The main-thread time that one tick took.
+    public mutating func work(seconds: Double) {
+        work = (work.count + 1, work.total + seconds, max(work.max, seconds))
+    }
+
+    /// The time that one relayout took during the animation.
+    public mutating func relayout(seconds: Double) {
+        relayouts = (relayouts.count + 1, relayouts.total + seconds, max(relayouts.max, seconds))
     }
 
     /// A new frame for a window (it differs from the last one).
@@ -47,6 +61,10 @@ public struct AnimationStats: Sendable, Equatable {
         func ms(_ seconds: Double) -> String { String(format: "%.1fms", seconds * 1000) }
         var text = "ticks=\(ticks) mean=\(ms(ticks == 0 ? 0 : tickTotal / Double(ticks))) max=\(ms(tickMax)) slow=\(slowTicks)"
         text += " offered=\(offeredCount) written=\(writtenCount) replaced=\(replacedCount)"
+        if work.count > 0 { text += " work avg=\(ms(work.total / Double(work.count))) max=\(ms(work.max))" }
+        if relayouts.count > 0 {
+            text += " relayouts=\(relayouts.count) avg=\(ms(relayouts.total / Double(relayouts.count))) max=\(ms(relayouts.max))"
+        }
         for (name, value) in apps.sorted(by: { $0.key < $1.key }) {
             text += " | \(name) n=\(value.count) avg=\(ms(value.total / Double(value.count))) max=\(ms(value.max))"
         }

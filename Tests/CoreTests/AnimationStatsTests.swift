@@ -33,6 +33,16 @@ struct AnimationStatsTests {
         #expect(stats.summary.contains("Spotify n=1 avg=20.0ms max=20.0ms"))
     }
 
+    @Test func mainThreadWorkAndRelayoutsAreTimed() {
+        var stats = AnimationStats()
+        #expect(!stats.summary.contains("work"))
+        stats.work(seconds: 0.001)
+        stats.work(seconds: 0.003)
+        stats.relayout(seconds: 0.004)
+        #expect(stats.summary.contains("work avg=2.0ms max=3.0ms"))
+        #expect(stats.summary.contains("relayouts=1 avg=4.0ms max=4.0ms"))
+    }
+
     @Test func resetClearsEverything() {
         var stats = AnimationStats()
         stats.tick(interval: 0.5)

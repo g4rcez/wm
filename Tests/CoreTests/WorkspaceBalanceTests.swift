@@ -47,6 +47,26 @@ struct WorkspaceBalanceTests {
 }
 
 struct WorkspaceLimitTests {
+    @Test(arguments: ["", " ", "  \t"])
+    func aWorkspaceNeedsAName(name: String) {
+        #expect(WorkspaceLimit.problem(name, limit: nil) == "a workspace needs a name")
+        #expect(WorkspaceLimit.problem(name, limit: 9) == "a workspace needs a name")
+    }
+
+    @Test func withALimitTheNumbersAreOneToTheLimit() {
+        #expect(WorkspaceLimit.problem("0", limit: 9)?.contains("1 to 9") == true)
+        #expect(WorkspaceLimit.problem("-1", limit: 9)?.contains("1 to 9") == true)
+        #expect(WorkspaceLimit.problem("10", limit: 9)?.contains("above the limit of 9") == true)
+        #expect(WorkspaceLimit.problem("1", limit: 9) == nil)
+        #expect(WorkspaceLimit.problem("9", limit: 9) == nil)
+    }
+
+    @Test func namesThatAreNotNumbersAndAnyNumberWithoutALimitAreFine() {
+        #expect(WorkspaceLimit.problem("web", limit: 9) == nil)
+        #expect(WorkspaceLimit.problem("0", limit: nil) == nil)
+        #expect(WorkspaceLimit.problem("42", limit: nil) == nil)
+    }
+
     @Test func aNumberAboveTheLimitIsRefused() {
         #expect(WorkspaceLimit.exceeds("7", limit: 6))
         #expect(!WorkspaceLimit.exceeds("6", limit: 6))

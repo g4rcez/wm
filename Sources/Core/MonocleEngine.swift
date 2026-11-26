@@ -89,6 +89,7 @@ public struct MonocleEngine: LayoutEngine {
     }
 
     public mutating func perform(_ command: LayoutCommand, focused: WindowID?, in context: LayoutContext) -> Bool {
+        guard command.isFinite else { return false }
         switch command {
         case .move(let direction):
             guard let focused, let index = order.firstIndex(of: focused),

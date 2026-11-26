@@ -36,7 +36,9 @@ public struct Animator: Sendable {
 
     /// Sets the targets. Windows in `snap`, unseen windows, and every window when animations are off jump straight
     /// to their target. Windows that are no longer in `targets` are forgotten.
-    public mutating func setTargets(_ targets: [WindowID: CGRect], snap: Set<WindowID> = []) {
+    public mutating func setTargets(_ wanted: [WindowID: CGRect], snap: Set<WindowID> = []) {
+        // A frame with a NaN or an infinity is no place: the window stays where it is instead of never arriving.
+        let targets = wanted.filter { $0.value.isFinite }
         target = targets
         current = current.filter { targets[$0.key] != nil }
         speed = speed.filter { targets[$0.key] != nil }
@@ -53,7 +55,7 @@ public struct Animator: Sendable {
     /// Starts the move of a window toward its target from `frame`, for a window that slides in. With a `rate` this window uses it
     /// until it arrives. Does nothing when animations are off or the window has no target.
     public mutating func start(_ id: WindowID, from frame: CGRect, rate: Double? = nil) {
-        guard enabled, target[id] != nil, target[id] != frame else { return }
+        guard enabled, frame.isFinite, target[id] != nil, target[id] != frame else { return }
         current[id] = frame
         speed[id] = nil
         ownRate[id] = rate
@@ -61,13 +63,13 @@ public struct Animator: Sendable {
 
     /// Starts a window's animation from `frame` (its real position) instead of jumping to the first target.
     public mutating func seed(_ id: WindowID, at frame: CGRect) {
-        if current[id] == nil { current[id] = frame }
+        if current[id] == nil, frame.isFinite { current[id] = frame }
     }
 
     /// Moves a window's current frame to where it really is, for example after the user resized it with the mouse,
     /// so that the next animation starts there and not at the old target.
     public mutating func place(_ id: WindowID, at frame: CGRect) {
-        guard target[id] != nil else { return }
+        guard target[id] != nil, frame.isFinite else { return }
         current[id] = frame
         speed[id] = nil
     }
@@ -80,7 +82,8 @@ public struct Animator: Sendable {
             guard let from = current[id], from != goal else { continue }
             var moving = speed[id] ?? Speed()
             let next = Self.advance(from, to: goal, speed: &moving, rate: ownRate[id] ?? rate, time: time)
-            if Self.close(next, to: goal) {
+            // A spring that lost its numbers (a NaN from anywhere) would run forever: it lands on the goal at once.
+            if !next.isFinite || Self.close(next, to: goal) {
                 current[id] = goal
                 speed[id] = nil
                 ownRate[id] = nil
@@ -119,5 +122,12 @@ public struct Animator: Sendable {
         let push = speed + rate * offset
         speed = (speed - rate * push * time) * decay
         return goal + CGFloat((offset + push * time) * decay)
+    }
+}
+
+extension CGRect {
+    /// Every coordinate is a real number: no NaN and no infinity.
+    public var isFinite: Bool {
+        origin.x.isFinite && origin.y.isFinite && size.width.isFinite && size.height.isFinite
     }
 }

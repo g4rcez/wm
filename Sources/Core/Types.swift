@@ -264,6 +264,17 @@ public enum LayoutCommand: Sendable, Equatable {
 }
 
 extension LayoutCommand {
+    /// Whether every number in the command is finite. An engine refuses a command with a NaN or an infinity: a NaN gets
+    /// through every `min`/`max` clamp, then stays in the layout, the saved state and the animations.
+    public var isFinite: Bool {
+        switch self {
+        case .resize(_, let value), .resizeEdge(_, let value), .resizeDirection(_, let value), .scroll(let value): value.isFinite
+        case .splitRatio(let value, _), .masterRatio(let value, _): value.isFinite
+        case .columnWidth(.fraction(let value)), .windowHeight(.fraction(let value)): value.isFinite
+        default: true
+        }
+    }
+
     /// The command in a space with x and y swapped (see `LayoutContext.transposed`).
     var transposed: LayoutCommand {
         switch self {

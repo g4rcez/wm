@@ -370,7 +370,7 @@ struct ScrollingEngineTests {
         #expect(!engine.perform(.resize(.height, 50), focused: 1, in: context))
     }
 
-    @Test func balanceFitsEveryColumnOnScreenAndKeepsStackHeights() {
+    @Test func balanceFitsEveryColumnOnScreenAndEvensStackHeights() {
         let engine = engine([1, 2, 3, 4])
         _ = engine.perform(.stack(.left), focused: 3, in: context)
         _ = engine.perform(.resize(.height, 80), focused: 2, in: context)
@@ -378,8 +378,8 @@ struct ScrollingEngineTests {
         #expect(engine.perform(.balance, focused: 1, in: context))
         #expect(engine.frames(in: context, focused: 1) == [
             1: CGRect(x: 0, y: 0, width: 333.3333333333333, height: 800),
-            2: CGRect(x: 333.3333333333333, y: 0, width: 333.3333333333333, height: 480),
-            3: CGRect(x: 333.3333333333333, y: 480, width: 333.3333333333333, height: 320),
+            2: CGRect(x: 333.3333333333333, y: 0, width: 333.3333333333333, height: 400),
+            3: CGRect(x: 333.3333333333333, y: 400, width: 333.3333333333333, height: 400),
             4: CGRect(x: 666.6666666666666, y: 0, width: 333.3333333333333, height: 800),
         ])
         #expect(!engine.perform(.balance, focused: 1, in: context))

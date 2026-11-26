@@ -82,6 +82,13 @@ public struct MasterEngine: LayoutEngine {
         }
     }
 
+    /// Puts `window` right before or after `target` in the order of the layout (a drop beside it).
+    mutating func place(_ window: WindowID, near target: WindowID, after: Bool) {
+        order.removeAll { $0 == window }
+        guard let index = order.firstIndex(of: target) else { return order.append(window) }
+        order.insert(window, at: after ? index + 1 : index)
+    }
+
     public mutating func remove(_ window: WindowID) {
         order.removeAll { $0 == window }
     }
@@ -174,6 +181,7 @@ public struct MasterEngine: LayoutEngine {
     }
 
     public mutating func perform(_ command: LayoutCommand, focused: WindowID?, in context: LayoutContext) -> Bool {
+        guard command.isFinite else { return false }
         let area = context.gaps.tilingArea(context.viewport)
         let alongWidth = orientation != .top && orientation != .bottom
         let length = alongWidth ? area.width : area.height

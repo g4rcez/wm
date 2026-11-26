@@ -93,6 +93,15 @@ public struct LayoutHistory: Sendable {
         openChanges += 1
     }
 
+    /// wm moved the floating windows of `workspace` itself while a change is open (the workspace went to another monitor):
+    /// the state from before the change moves the same way, so that move is no step of its own and `undo` never sends the
+    /// windows back to the other monitor.
+    public mutating func moveFloating(of workspace: String, _ transform: (CGRect) -> CGRect) {
+        guard openChanges > 0, var step = before[workspace] else { return }
+        step.floating = step.floating.mapValues(transform)
+        before[workspace] = step
+    }
+
     /// Ends a change. Each workspace that the outermost change rearranged gets a step, and loses its redo steps.
     public mutating func end(_ capture: () -> [String: LayoutStep], settings: (String) -> Settings) {
         guard openChanges > 0 else { return }

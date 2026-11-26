@@ -278,6 +278,28 @@ struct DwindleEngineTests {
         #expect(engine.frames(in: context, focused: 1)[1] == CGRect(x: 0, y: 0, width: 500, height: 600))
     }
 
+    @Test func balanceUndoesResizesOfEveryKindOnManyWindows() {
+        var fresh = DwindleEngine(settings: Settings())
+        for id in 1...4 { fresh.insert(WindowID(id), after: id == 1 ? nil : WindowID(id - 1)) }
+        // The first layout decides which way each split goes, and a resize or balance keeps it.
+        _ = fresh.frames(in: context, focused: nil)
+        var engine = fresh
+        _ = fresh.perform(.balance, focused: nil, in: context)
+        var changes = 0
+        for window in 1...4 as ClosedRange<WindowID> {
+            for direction in [Direction.left, .right, .up, .down] {
+                if engine.perform(.resizeEdge(direction, 40), focused: window, in: context) { changes += 1 }
+            }
+            if engine.perform(.resizeDirection(.right, 30), focused: window, in: context) { changes += 1 }
+            if engine.perform(.resize(.height, 25), focused: window, in: context) { changes += 1 }
+        }
+        #expect(changes > 0)
+        _ = engine.perform(.balance, focused: 2, in: context)
+        let frames = engine.frames(in: context, focused: 2)
+        #expect(frames == fresh.frames(in: context, focused: 2))
+        #expect(frames.values.map { $0.width * $0.height } == [150_000, 150_000, 150_000, 150_000])
+    }
+
     @Test func balanceNeedsNoWindowInFocus() {
         var engine = DwindleEngine(settings: Settings())
         engine.insert(1, after: nil)

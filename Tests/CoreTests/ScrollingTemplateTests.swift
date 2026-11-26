@@ -156,6 +156,22 @@ struct ScrollingTemplateTests {
         #expect(frames[3]?.height == 800)
     }
 
+    @Test func sendingAWindowOfTheBlockToTheOtherStripBreaksTheBlock() {
+        let engine = engine([1, 2, 3])
+        _ = engine.perform(.applyTemplate(.three), focused: 1, in: context)
+        #expect(engine.perform(.sendToStrip(.vertical), focused: 2, in: context))
+        #expect(engine.engine.strip(of: 2) == .vertical)
+        // Every way out of the windows that stay works: the block no longer counts cells that it lost.
+        for window: WindowID in [1, 3] {
+            for direction in Direction.allCases {
+                _ = engine.neighbor(of: window, direction, wrap: true, in: context)
+                _ = engine.perform(.move(direction), focused: window, in: context)
+            }
+        }
+        #expect(Set(engine.windows) == [1, 2, 3])
+        #expect(engine.frames(in: context, focused: 1).count == 3)
+    }
+
     @Test func stackingAndTabsDoNotApplyInsideATemplate() {
         let engine = engine([1, 2, 3])
         _ = engine.perform(.applyTemplate(.three), focused: 1, in: context)

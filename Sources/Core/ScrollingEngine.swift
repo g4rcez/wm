@@ -213,6 +213,7 @@ public struct ScrollingEngine: LayoutEngine {
     }
 
     public mutating func perform(_ command: LayoutCommand, focused: WindowID?, in context: LayoutContext) -> Bool {
+        guard command.isFinite else { return false }
         guard runsVertically(in: context) else { return run(command, focused: focused, in: context) }
         return run(command.transposed, focused: focused, in: context.transposed)
     }
@@ -249,10 +250,14 @@ public struct ScrollingEngine: LayoutEngine {
 
         if command == .balance {
             // The strip of the focused window; with no window in focus (or one outside the layout), every strip.
-            if let focused, let at = locate(focused) { return self[strip: at.strip].fit() }
+            // The zones go back to the configured widths either way: they are what the two strips share.
+            let configured = Self.clampedVerticalWidth(settings.scrolling.vertical.width)
+            let zoneChanged = abs(configured - verticalWidth) > 1e-9
+            verticalWidth = configured
+            if let focused, let at = locate(focused) { return self[strip: at.strip].fit() || zoneChanged }
             let horizontalChanged = horizontal.fit()
             let verticalChanged = vertical.fit()
-            return horizontalChanged || verticalChanged
+            return horizontalChanged || verticalChanged || zoneChanged
         }
 
         guard let focused, let at = locate(focused) else { return false }
@@ -412,7 +417,10 @@ public struct ScrollingEngine: LayoutEngine {
     /// Moves the window into a new lane of the strip `target`, after that strip's most visible lane.
     private mutating func send(_ window: WindowID, to target: Orientation, in context: LayoutContext) -> Bool {
         guard let at = locate(window), at.strip != target else { return false }
-        self[strip: at.strip].remove(window, at: (at.lane, at.index))
+        // A template needs all its windows: the block breaks into single lanes first, as when a window of it closes.
+        self[strip: at.strip].dissolve(lane: at.lane, size: defaultSize(of: at.strip))
+        guard let moved = locate(window) else { return false }
+        self[strip: moved.strip].remove(window, at: (moved.lane, moved.index))
         horizontal.hold = nil
         vertical.hold = nil
         let length = zoneRect(of: target, in: context).length(along: target)

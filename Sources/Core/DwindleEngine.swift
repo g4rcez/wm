@@ -105,6 +105,7 @@ public struct DwindleEngine: LayoutEngine {
     }
 
     public mutating func perform(_ command: LayoutCommand, focused: WindowID?, in context: LayoutContext) -> Bool {
+        guard command.isFinite else { return false }
         if command == .balance { return root?.balance() ?? false }
         if case .applyTemplate(let template) = command {
             // A template also sets the frame, so a grid after `center` fills the whole area again.

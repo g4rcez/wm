@@ -58,6 +58,18 @@ public enum MonitorGeometry {
             width: frame.width, height: frame.height)
     }
 
+    /// `frame` as a floating window on `area`: where it is when its centre shows in the area, else moved the shortest way
+    /// into it. It is never larger than the area. A layout gives a window that it hides (monocle, a column scrolled away)
+    /// a frame off the screen: floated there, the window could not be found again.
+    public static func floatable(_ frame: CGRect, in area: CGRect) -> CGRect {
+        guard !area.isEmpty else { return frame }
+        let size = CGSize(width: min(frame.width, area.width), height: min(frame.height, area.height))
+        if area.contains(CGPoint(x: frame.midX, y: frame.midY)), frame.width <= area.width, frame.height <= area.height {
+            return frame
+        }
+        return clamped(CGRect(origin: frame.origin, size: size), in: area)
+    }
+
     /// The edges of `frame` that a drag starting at `point` takes hold of: the side of the centre that the point is on.
     public static func nearestEdges(of frame: CGRect, to point: CGPoint) -> (horizontal: Direction, vertical: Direction) {
         (point.x < frame.midX ? .left : .right, point.y < frame.midY ? .up : .down)

@@ -57,6 +57,22 @@ struct ScrollingTwoStripTests {
         return workspace
     }
 
+    // MARK: Balance
+
+    @Test(arguments: [WindowID?.some(1), nil])
+    func balanceGivesTheVerticalZoneItsConfiguredWidthAgain(focused: WindowID?) {
+        let workspace = workspace(columns: [1, 2], rows: [10, 11])
+        _ = workspace.perform(.balance, focused: nil, in: context)
+        let balanced = workspace.frames(in: context, focused: 1)
+        let resized = workspace.perform(.resize(.width, 100), focused: 10, in: context)
+        #expect(resized)
+        #expect(workspace.verticalWidth == 0.35)
+        let changed = workspace.perform(.balance, focused: focused, in: context)
+        #expect(changed)
+        #expect(workspace.verticalWidth == 0.25)
+        #expect(workspace.frames(in: context, focused: 1) == balanced)
+    }
+
     // MARK: Zones
 
     @Test func twoColumnsAndTwoRowsSplitTheAreaThreeToOne() {

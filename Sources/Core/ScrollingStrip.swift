@@ -182,7 +182,7 @@ extension ScrollingEngine {
         }
 
         /// Every lane gets 1/N of the zone, so all of them fit at once. With more than 1/minSize lanes the share
-        /// stops at the minimum size.
+        /// stops at the minimum size. The windows of a stack get the same share of their lane.
         mutating func fit() -> Bool {
             guard !lanes.isEmpty else { return false }
             let before = lanes
@@ -193,6 +193,7 @@ extension ScrollingEngine {
                 lanes[index].zoom = nil
             }
             _ = setEverySize(to: Self.clampedSize(1 / Double(lanes.count)))
+            for index in lanes.indices { _ = equalize(lane: index) }
             return lanes != before
         }
 

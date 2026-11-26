@@ -1,7 +1,22 @@
+import Foundation
+
 public enum WorkspaceLimit {
+    /// The most workspaces that `workspaces balance` spreads over, as `workspaces = <max>` allows in the config.
+    public static let largest = 999
+
     public static func exceeds(_ name: String, limit: Int?) -> Bool {
         guard let limit, let number = Int(name), number >= 1 else { return false }
         return number > limit
+    }
+
+    /// Why `name` cannot be a workspace, or `nil`. A name needs a letter or a digit that is not a space. With a limit the
+    /// numbers are 1 to the limit: `0` and `-1` would be workspaces that no key reaches and that balance never fills.
+    public static func problem(_ name: String, limit: Int?) -> String? {
+        if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "a workspace needs a name" }
+        guard let limit, let number = Int(name) else { return nil }
+        if number < 1 { return "workspace \(name) is not one of the workspaces 1 to \(limit) (`workspaces` in the config)" }
+        if number > limit { return "workspace \(name) is above the limit of \(limit) workspaces (`workspaces` in the config)" }
+        return nil
     }
 }
 

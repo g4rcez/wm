@@ -20,9 +20,12 @@ public let spaceTransitionGrace: TimeInterval = 2
 /// another Space is not gone: if wm forgot it, it would lose its workspace and its place in the layout, and open again as a new
 /// window on the active workspace when the user comes back. An app that could not be read says nothing about its windows either.
 /// `goneFor` is how long the window has been on no Space: one that the system still lists may be on its way between two.
-public func shouldForgetMissingWindow(appUnreadable: Bool, inSystemList: Bool, place: WindowPlace, goneFor: TimeInterval) -> Bool {
+/// A hidden app (Cmd-H) is not listed either, but its windows are still there while the system lists them.
+public func shouldForgetMissingWindow(
+    appUnreadable: Bool, appHidden: Bool, inSystemList: Bool, place: WindowPlace, goneFor: TimeInterval
+) -> Bool {
     if place == .elsewhere { return false }
     if place == .gone && inSystemList && goneFor < spaceTransitionGrace { return false }
-    if appUnreadable && inSystemList { return false }
+    if (appUnreadable || appHidden) && inSystemList { return false }
     return true
 }

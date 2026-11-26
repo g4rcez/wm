@@ -28,6 +28,26 @@ struct LayoutHistoryTests {
         history.end({ ["1": new] }, settings: { _ in settings })
     }
 
+    /// `workspace 2` while 2 shows on the other monitor: wm moves its floating windows along, which is not a change to undo.
+    @Test func floatingWindowsThatWmMovesToAnotherMonitorMakeNoStep() {
+        var history = LayoutHistory()
+        let live = engine(.tiling, [1])
+        let left = CGRect(x: 0, y: 0, width: 1000, height: 600), right = CGRect(x: 1000, y: 0, width: 1000, height: 600)
+        let before = step(live, floating: [9: CGRect(x: 100, y: 100, width: 300, height: 200)])
+        history.begin { ["1": before] }
+        history.moveFloating(of: "1") { MonitorGeometry.translated($0, from: left, to: right) }
+        let after = step(live, floating: [9: CGRect(x: 1100, y: 100, width: 300, height: 200)])
+        history.end({ ["1": after] }, settings: { _ in settings })
+        #expect(history.take(.undo, of: "1", from: after, settings: settings) == nil)
+    }
+
+    @Test func aRelocationOutsideAChangeChangesNothing() {
+        var history = LayoutHistory()
+        history.moveFloating(of: "1") { $0.offsetBy(dx: 10, dy: 0) }
+        let live = engine(.tiling, [1])
+        #expect(history.take(.undo, of: "1", from: step(live), settings: settings) == nil)
+    }
+
     @Test(arguments: [LayoutKind.tiling, .scrolling, .master])
     func undoAndRedoOfASwap(kind: LayoutKind) throws {
         var history = LayoutHistory()
