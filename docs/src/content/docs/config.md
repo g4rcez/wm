@@ -20,18 +20,18 @@ wm reads `init.lua` and `shortcuts.toml` from `~/.config/wm/`. The Lua functions
 | `layout` | `"tiling"` | `scrolling`, `tiling`, `master` or `monocle`. |
 | `gaps` | `{ inner = 8, outer = 8, smart = false }` | `outer` can be `{ top=, right=, bottom=, left= }`. `smart`: no gaps around a lone tiled window. |
 | `animations` | `{ enabled = true, fps = 120, rate = 16 }` | Every animation of wm, with a master switch. `fps`: 30 to 240, capped by the display. `rate`: spring stiffness. Sub-tables `windows`, `workspaces`, `special`, `overlays` (see Animations below). |
-| `border` | `{ enabled = true, width = 2, radius = 10, active = "#89b4fa", inactive = "#00000000" }` | `active` can be `{ "#89b4fa", "#cba6f7" }` for a gradient (`angle = 45`). |
+| `border` | `{ enabled = false, width = 2, radius = 10, active = "#89b4fa", inactive = "#00000000" }` | `active` can be `{ "#89b4fa", "#cba6f7" }` for a gradient (`angle = 45`). |
 | `dim` | `{ enabled = false, amount = 0.25, color = "#000000" }` | Darkens the windows without the focus. See [Features](/docs/features#dim). |
 | `pip` | `{ corner = "bottom-right", size = 0.25, fps = 30, hide_when_visible = true }` | The live pictures of `window pip`. See [Features](/docs/features#picture-in-picture). |
 | `focus_follows_mouse` | `false` | Or `{ enabled = true, only_fully_visible = true }`. |
-| `workspaces` | none | The mode, the limit, or both. `"emulated"` (the mode, default) hides the windows of other workspaces at a screen corner; `"native"` makes each workspace a macOS desktop (see [Native workspaces](#native-workspaces)). A number is the most workspaces there can be: `workspace 7` with `workspaces = 6` is an error, and `wm workspaces balance` spreads the windows over that many. A table has both: `{ mode = "native", max = 6 }`. Names that are not numbers are free. |
+| `workspaces` | none | The mode, the limit, or both. `"emulated"` (the mode, default) hides the windows of other workspaces at a screen corner; `"native"` makes each workspace a macOS desktop (see [Native workspaces](#native-workspaces)). A number is the most workspaces there can be: `workspace 7` (and `workspace 0`) with `workspaces = 6` is an error, and `wm workspaces balance` spreads the windows over that many. A table has both: `{ mode = "native", max = 6 }`. Names that are not numbers are free. |
 | `mouse_follows_focus` | `false` | Moves the cursor to the center of a window that a command focuses. Switching workspaces never moves it. |
-| `start_at_login` | `true` | Only when running as wm.app. |
-| `mouse` | `{ move_modifier = "alt", resize_modifier = "alt" }` | Both are off by default. |
+| `start_at_login` | `false` | Only when running as wm.app. |
+| `mouse` | `{ move_modifier = "alt", resize_modifier = "alt", move_preview = true, drag_picture = true }` | The modifiers are off by default; `move_preview` and `drag_picture` are on. See [Features](/docs/features#mouse). |
 | `wrap_focus` | `false` | `focus`, `move` and `swap` wrap at the edge, as with `--wrap`. |
 | `workspace_back_and_forth` | `false` | `workspace N` while N is shown goes back to the previous one. |
 | `tiling` | `{ split_ratio = 0.5, preserve_split = true, split_under_pointer = false, smart_split = false, force_split = "second", split_width_multiplier = 1 }` | `split_under_pointer`: a new window splits the tile under the mouse. `smart_split`: it opens on the side nearest to the mouse. `force_split`: `"second"` (right, bottom) or `"first"`. `split_width_multiplier` 2 or more keeps columns on an ultrawide screen. |
-| `binds` | `{ long_press_timeout = 0.4, disable_system_cmd_tab = false, capslock = "hyper", event_level = "session" }` | See Key binds. |
+| `binds` | `{ long_press_timeout = 0.4, disable_system_cmd_tab = false, event_level = "session" }` | See Key binds. `capslock = "hyper"` makes CapsLock the hyper key; without it CapsLock is unchanged. |
 | `commands` | `{ mode = "normal", timeout = 800 }` | Sequences, see Key binds. Same as `wm.commands`. |
 | `keyboards` | every keyboard on | See Key binds. |
 | `urgent` | `{ enabled = true, interval = 2 }` | Reads Dock badges every `interval` seconds, for `focus urgent` and `window_urgent`. |
@@ -43,7 +43,7 @@ wm reads `init.lua` and `shortcuts.toml` from `~/.config/wm/`. The Lua functions
 | `prefix` | `{ menubar = true, label = { ... } }` | `menubar`: show "..." in the icon while a sequence waits. `label`: the key panel (below). |
 | `trackpad` | see Gestures | |
 | `appearance` | `{ style = "native", theme = "system", density = "comfortable" }` | See Appearance. |
-| `url` | `{ allow = {} }` | Extra commands that `wm://` URLs may run. See [CLI](/docs/cli). |
+| `url` | `{ allow = {} }` | Extra commands that `wm://` URLs may run, such as `"exec"` or `"window close"`. See [CLI](/docs/cli). |
 
 `scrolling` keys: `presets = { 0.33, 0.5, 0.66, 1.0 }`, `default_width = 0.5`, `center = "on-overflow"`, `always_center_single_column = false` (a lone column is centered), `default_column_display = "normal"` (`"tabbed"`: every new column is a tab stack), `orientation = "horizontal"` (`"vertical"`: rows scroll up and down; `"auto"`: vertical on a portrait monitor), `single_window_fit = "fill"` (or `"keep"` the width), `visible_columns = 0` (3: with 2 columns, they grow to fill the screen), `preset_heights = { 0.33, 0.5, 0.66 }` (`layout stack height cycle` walks it), `sliver_width = 8`, `sliver_height = 0.9`, `vertical = { side = "right", width = 0.25, row_height = 0.5 }` (`side`: left or right).
 
@@ -160,7 +160,7 @@ While a mode other than `main` is active, or a prefix waits, a panel lists the k
 
 ### Hyper key and remaps
 
-With `binds = { capslock = "hyper" }` (the default), CapsLock is the `hyper` modifier. Hold it with a key to make a chord such as `hyper-k`. A tap alone types Esc. A hyper chord that nothing binds is swallowed.
+With `binds = { capslock = "hyper" }` (off unless the config sets it), CapsLock is the `hyper` modifier. Hold it with a key to make a chord such as `hyper-k`. A tap alone types Esc. A hyper chord that nothing binds is swallowed.
 
 ```lua
 wm.remap("hyper-k", "up")                    -- types Up; the key repeats
@@ -186,7 +186,7 @@ Quit Karabiner-Elements first and stop it from starting at login, because it tak
 
 - CapsLock to hyper (Esc when alone): `binds = { capslock = "hyper" }`. Hyper + key types another key: `wm.remap`. Open an app: `function() wm.exec("open -a Spotify") end`. A sublayer (hyper + `w`, then a key): `wm.bind("hyper-w>1", "workspace 1")`.
 - Key names differ: `return_or_enter` is `enter`, `spacebar` is `space`, `escape` is `esc`, `hyphen` is `minus`, `left_arrow` is `left`.
-- wm has no per-app or per-device rules, no left and right modifier distinction, no `fn` key, no simultaneous keys and no mouse remaps.
+- Key binds and remaps apply to every app (`wm.rule` sets window rules, not key rules). `keyboards` turns a keyboard on or off for wm, but a bind cannot differ per keyboard. wm has no left and right modifier distinction, no `fn` key, no simultaneous keys and no mouse remaps.
 - If wm crashes, CapsLock stays mapped to F18 until wm starts again; to put it back: `hidutil property --set '{"UserKeyMapping":[]}'`.
 
 ## Hotkeys and gestures
@@ -202,7 +202,7 @@ Quit Karabiner-Elements first and stop it from starting at login, because it tak
 - `mods` is one or more of `alt`, `shift`, `ctrl` and `cmd` (`"alt+shift"`). `direction` is `left`, `right`, `up` or `down`.
 - The command is a string or a Lua function. It runs once per swipe, after the scroll has gone `threshold` points (10 to 2000, default 100).
 
-Swipes with 3 or 4 fingers work without a config. `trackpad.fingers` is 4 (default) or 3.
+wm also has swipes with 3 or 4 fingers that need no config. `trackpad.fingers` is 4 (default) or 3. They run only where macOS does not use the same swipe (see below).
 
 Built-in swipes: fingers left `workspace next`, right `workspace prev`, up `overview open`, down `overview close`.
 
@@ -212,6 +212,20 @@ wm.gesture { fingers = 4, direction = "up", command = "overview" }
 ```
 
 - On a scrolling workspace, a sideways swipe scrolls the strip. `scroll_fingers` is the finger count that does it (default: the same as `fingers`; 0 is never). `speed` (0.1 to 10) sets how far it moves. A `wm.gesture` for the same fingers and direction replaces a built-in swipe.
+
+#### Swipes that macOS uses
+
+wm reads the trackpad next to macOS and cannot hide a swipe from it. So **macOS wins**: a swipe that macOS uses does nothing in wm. This holds for built-in swipes, for `wm.gesture` with `fingers` (also with `mods`) and for the swipe that scrolls the strip. On a Mac with the default settings, macOS uses every 3 and 4 finger swipe, so they are all off in wm until you free them.
+
+| To free | In System Settings |
+|---|---|
+| left and right | Trackpad > More Gestures > Swipe between full-screen applications: off, or the other number of fingers (and the same for Swipe between pages) |
+| up and down | Trackpad > More Gestures > Mission Control and App Exposé: both off, or the other number of fingers |
+| all 3 finger swipes | Accessibility > Pointer Control > Trackpad Options: no three finger drag |
+
+Up and down go together, because a swipe down also closes Mission Control. wm reads the settings at each swipe, so a change needs no reload. `wm list binds` marks the swipes that are off, and the `gestures` line of `wm doctor` lists them: a warning for a `wm.gesture` of yours, a note for the built-in ones. wm never changes the settings of macOS.
+
+Title bar gestures and `mods` with a two finger scroll are not affected: wm takes those before any app.
 
 ### Title bar gestures
 

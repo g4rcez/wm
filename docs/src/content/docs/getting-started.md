@@ -20,7 +20,7 @@ wm is a tiling window manager for macOS. It is written in Swift, runs with SIP o
 
 One command set has three entry points: the `wm` CLI, Lua (`wm.dispatch`) and `wm://` URLs. See [Command line](/docs/cli) and [Lua API](/docs/lua-api).
 
-wm has no default key bindings. Until you bind keys in `init.lua`, it only reacts to the `wm` command and to the built-in trackpad swipes (see [Configuration](/docs/config)).
+wm has no default key bindings. Until you bind keys in `init.lua`, it only reacts to the `wm` command and to the built-in trackpad swipes that macOS does not use (see [Configuration](/docs/config#swipes-that-macos-uses)).
 
 ## Install
 

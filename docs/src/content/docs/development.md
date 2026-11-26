@@ -5,9 +5,13 @@ group: Guides
 order: 2
 ---
 ```sh
-timeout 300 swift test      # unit tests: layout engines, geometry, Lua host, IPC, command parsing
+timeout 600 swift test      # unit tests: layout engines, geometry, Lua host, IPC, command parsing
 ./build-app.sh debug        # a debug build of the app bundle
 ```
+
+`make` lists the same tasks: `make deps` checks the toolchain, `make test` runs the tests with a timeout, `make version-check`
+checks that `Version.swift` is the latest tag, and `make install` builds, signs and installs the app. CI runs the tests, the
+version check and a release build on every push.
 
 The app icon is `assets/icon-windows.svg`. `assets/make-icns.sh` makes `bundle/wm.icns` from it. It needs `rsvg-convert`,
 `magick` and `iconutil`. `build-app.sh` copies the icns into the app. Run the script again when the SVG changes.
@@ -22,6 +26,8 @@ left out. A newer Swift or Xcode can add warnings: fix them, so that CI and a bu
 | `Core` | Pure layout engines, animator, gaps, navigation, the geometry of the overview. No AppKit. |
 | `Scripting` | Lua host, chords, binds, gestures, config validation |
 | `Platform` | Accessibility threads, displays, event tap, overlays, SkyLight reader |
+| `PrivateApi` | C bindings to private macOS functions (SkyLight, MultitouchSupport), loaded at run time |
+| `Cheatsheet` | The key sheet of `wm cheatsheet`, for the terminal and the panel |
 | `App` | `wmd`: window manager state, commands, config, menu bar, URL handler |
 | `Cli` | `wm` |
 
@@ -29,14 +35,16 @@ left out. A newer Swift or Xcode can add warnings: fix them, so that CI and a bu
 
 Releases are made on the Mac that holds the Developer ID certificate, not in CI. `scripts/release.sh patch|minor|major|X.Y.Z`:
 
-1. checks that `main` is clean and in sync, that the certificate and the notarization credentials work, and that `gh` is logged in;
+1. checks that `main` is clean and in sync, that the certificate and the notarization credentials work, that `gh` is logged in,
+   and that `CHANGELOG.md` has an entry under `## Unreleased` (`scripts/changelog.sh check`);
 2. runs the tests and bumps `Version.swift`;
 3. builds a universal `wm.app` with `build-app.sh` and signs it with the Developer ID certificate, the hardened runtime and a
    secure timestamp, without the debug symbols (they name your folders);
 4. checks the signature, sends the app to Apple to be notarized and staples the ticket to it. It waits up to 2 hours for
    Apple (`NOTARY_TIMEOUT=4h` waits longer); without an answer, nothing is published;
 5. packs the app and runs `scripts/verify-release.sh` on the archive, before anything is published;
-6. commits, tags, pushes and creates the GitHub release with `wm-<version>-macos.tar.gz` (and its `.sha256`);
+6. renames `## Unreleased` to the version, commits, tags, pushes and creates the GitHub release with `wm-<version>-macos.tar.gz`
+   (and its `.sha256`); the notes are the changelog section, followed by the generated list of commits;
 7. downloads the asset again, and only when it is the verified file writes `Formula/wm.rb` of `g4rcez/homebrew-tap` from
    `scripts/wm.rb.in`. Change the formula there, not in the tap.
 
@@ -105,7 +113,7 @@ A release build of `build-app.sh` signs with the hardened runtime and `bundle/wm
 | Entitlement | Why |
 |---|---|
 | `com.apple.security.automation.apple-events` | The palette reads and selects browser tabs with Apple events |
-| `com.apple.security.cs.disable-library-validation` | A config can `require` a Lua C module that someone else signed |
+| `com.apple.security.cs.disable-library-validation` | A config can `require` a Lua C module that someone else signed. By default `package.cpath` is only the config folder (`?.so`), so no module loads from a shared folder; a config that wants another one sets `package.cpath` |
 
 A new use of a protected resource (camera, microphone, location) needs its entitlement there and its usage text in
 `bundle/Info.plist`. A debug build has no hardened runtime, so that `lldb` can attach.

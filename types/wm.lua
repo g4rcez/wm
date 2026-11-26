@@ -17,7 +17,7 @@
 ---@alias wm.Color string
 
 --- A wm command line, the same text as `wm <command>` in a shell. Any other string is also accepted.
---- An empty string swallows the key. See the "Commands" section of the README for all commands.
+--- An empty string swallows the key. See the "Command line cheat sheet" section of the README, or `wm help`, for all commands.
 ---@alias wm.Command
 ---| ""
 ---| "focus left" | "focus right" | "focus up" | "focus down"
@@ -289,7 +289,7 @@
 --- A swipe with modifiers: a two-finger scroll that goes `threshold` points in one direction runs the command, once.
 ---@class (exact) wm.Gesture
 ---@field mods? string One or more of alt, shift, ctrl, cmd: "alt", "alt+shift". Needed unless `fingers` is set.
----@field fingers? 3|4 A swipe on the trackpad with this many fingers. Needs the trackpad on (the default). Replaces the built-in swipe for the same fingers and direction.
+---@field fingers? 3|4 A swipe on the trackpad with this many fingers. Needs the trackpad on (the default). Replaces the built-in swipe for the same fingers and direction. It does not run while macOS uses that swipe (System Settings > Trackpad > More Gestures).
 ---@field direction wm.GestureDirection With natural scrolling, the direction of your fingers.
 ---@field command wm.Command|fun()
 ---@field threshold? number Points, 10 to 2000. Default 100.
@@ -338,13 +338,16 @@
 ---@field interval? number Seconds between two readings of the Dock, 1 to 60. Default 2.
 
 ---@class (exact) wm.UrlConfig
----@field allow? string[] Commands that `wm://` URLs may run besides the default ones. `exec`, `key`, `daemon` and `subscribe` are blocked by default.
+---@field allow? string[] Commands that `wm://` URLs may run besides the default ones, which only move the view, the focus and the layout. A command ("exec") or one of the blocked forms "window close" and "focus app --launch".
 
 ---@class (exact) wm.TrackpadConfig
----@field enabled? boolean Read the trackpad for swipes with 3 or 4 fingers (a private macOS framework). Default true. `true` in the config also shows a notification when there is no trackpad; `false` turns the built-in swipes off.
+---@field enabled? boolean Read the trackpad for swipes with 3 or 4 fingers (a private macOS framework). Default true. `true` in the config also shows a notification when there is no trackpad; `false` turns the built-in swipes off. A swipe that macOS uses stays off in wm.
 ---@field fingers? 3|4 Fingers of the built-in swipes: left is `workspace next`, right is `workspace prev`, up is `overview open`, down is `overview close`. Default 4.
 ---@field scroll_fingers? integer The swipe with this many fingers (3 or 4) scrolls the scrolling strip; 0 turns that off. Default: the value of `fingers`.
 ---@field speed? number How far a swipe moves the strip, 0.1 to 10. Default 1.
+---@field title_bar? boolean Two-finger swipes and pinches over a title bar act on that window (`window swipe`, close, fullscreen). Default false.
+---@field title_bar_height? number How many points from the top of a window count as its title bar, 10 to 200. Default 40.
+---@field pinch? boolean With `title_bar`, a pinch closes (in) or fills the screen (out). Default true.
 
 --- The keys are `default` (what a keyboard that is not named gets, true if missing), the name of a keyboard, or its `vendor:product`
 --- in hex (`wm query keyboards` shows both). A keyboard that wm manages gets CapsLock as the hyper key (`binds.capslock`), also when it
@@ -399,6 +402,8 @@
 ---@class (exact) wm.MouseConfig
 ---@field move_modifier? string Hold these modifiers (for example "alt") and drag with the left button to move a window. Off by default.
 ---@field resize_modifier? string Hold these modifiers and drag with the right button to resize a window. Off by default.
+---@field drag_picture? boolean A tiled window dragged with `move_modifier` shrinks to a small picture (live with Screen Recording, else the app icon) that follows the pointer while the other windows make room. Default true.
+---@field move_preview? boolean While a tiled window is dragged (by its title bar or with `move_modifier`), a placeholder shows the slot where it lands. Default true.
 
 ---@class (exact) wm.FocusFollowsMouse
 ---@field enabled? boolean Keeps its value when missing.
@@ -511,6 +516,10 @@
 ---@field smart_split? boolean
 ---@field split_under_pointer? boolean
 ---@field split_width_multiplier? number
+---@field master_ratio? number Master layout: like `master.ratio`.
+---@field master_count? integer Master layout: like `master.count`.
+---@field master_orientation? "left"|"right"|"top"|"bottom"|"center" Master layout: like `master.orientation`.
+---@field master_new_window? "stack"|"master" Master layout: like `master.new_window`.
 ---@field presets? number[]
 ---@field default_width? number
 ---@field center? wm.CenterMode

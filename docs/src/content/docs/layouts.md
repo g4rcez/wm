@@ -27,7 +27,7 @@ Columns sit on a strip. A column can hold a stack of windows or tabs.
 | Command | What it does |
 |---|---|
 | `layout column width <fraction\|cycle>` | Sets the column width. `cycle` walks `scrolling.presets`. |
-| `layout column match`, `layout balance` | Set column widths. `balance` fits all columns on screen, takes a maximized column back to its share, and with no window in focus balances both strips. |
+| `layout column match`, `layout balance` | Set column widths. `balance` fits all columns on screen, takes a maximized column back to its share, gives the windows of a stack the same size, puts the vertical zone back to its configured width, and with no window in focus balances both strips. |
 | `layout column expand` | Grows the column into the free room. |
 | `layout column move <first\|last\|n>` | Moves the column. `n` counts from 1; too large means last. |
 | `layout column center`, `center-visible` | Scroll the strip. |
@@ -58,7 +58,7 @@ The strip does not loop unless `wrap_focus` or `--wrap` is set. `scrolling.verti
 | `layout split root` | Makes the window a child of the root split (half the screen). |
 | `layout split toggle`, `layout split swap` | Flip the split; swap its two sides. |
 | `layout flip` | Turns every split from side by side to stacked, and back. |
-| `window pseudo` | Keeps the window at its size, centered in its tile. Again to tile it. |
+| `window pseudo` | Keeps the window at its size, centered in its tile (tiling layout). Again to tile it. Another layout ends it. |
 
 `move <dir>` already swaps a window with its neighbour.
 
@@ -95,7 +95,7 @@ One window at a time fills the workspace inside the gaps; the others wait out of
 
 ## Floating
 
-`wm layout set floating` floats every window of the workspace, and new windows float in the frame that tiling would give them. A rule or `window remember` keeps the place of a window. Switching to another layout leaves windows floating; only later windows tile. `workspace float-all off` tiles them all. The menu bar letter is `F`.
+`wm layout set floating` floats every window of the workspace where it is, and new windows float in the frame that tiling would give them. A window that the old layout kept out of sight (monocle, a column scrolled off the screen) floats on the screen. `layout set` with the layout that the workspace already has changes nothing. A rule or `window remember` keeps the place of a window. Switching to another layout leaves windows floating; only later windows tile. `workspace float-all off` tiles them all. The menu bar letter is `F`.
 
 | Command | What it does |
 |---|---|
@@ -112,7 +112,7 @@ One window at a time fills the workspace inside the gaps; the others wait out of
 | `workspace float-all [off\|<pattern>]` | Floats every window of the workspace in place. `off` tiles them. With a tile template (`2+1`, `2/3`, `corner-tl`, your own) they float into its cells. Minimized and macOS fullscreen windows are left alone. |
 | `window mark <name>`, `window unmark [name]` | Name a window (one window per name), or remove the name. `focus mark <name>` focuses it and `--window mark:<name>` acts on it. Marks last until the window closes. |
 
-`window maximize` keeps a scrolling window in its place in the strip and elsewhere fills the work area inside the outer gaps. `window fullscreen` fills the work area with no gaps and no border. `window native-fullscreen` enters or leaves macOS fullscreen; wm leaves that window out of the layout until it leaves fullscreen. Fullscreen that the app starts itself (the green button, a video player) works the same way: wm keeps managing the window, and it joins the layout again on its workspace. A window that is on no Space for up to 2 seconds, as during that animation, is not treated as closed. A window sent to an empty workspace arrives maximized; otherwise it joins the layout and `balance` runs (`--tile` joins without either). `layout balance` works in every layout, needs no tiled window in focus, and ends maximize and fullscreen on the workspace, so the result is always visible. It writes the size and position of every tiled window again, even when the layout was already balanced, so a window that you or its app resized goes back to its share. `move`, `swap`, `window snap` and `window place` on a tiled window do the same: they rearrange the layout and end maximize and fullscreen, so nothing stays hidden.
+`window maximize` keeps a scrolling window in its place in the strip and elsewhere fills the work area inside the outer gaps. `window fullscreen` fills the work area with no gaps and no border. `window native-fullscreen` enters or leaves macOS fullscreen; wm leaves that window out of the layout until it leaves fullscreen. Fullscreen that the app starts itself (the green button, a video player) works the same way: wm keeps managing the window, and it joins the layout again on its workspace. A window that is on no Space for up to 2 seconds, as during that animation, is not treated as closed. The windows of a hidden app (Cmd-H) keep their workspace and marks: they leave the layout while the app is hidden (`wm list` marks them `(hidden)`) and join it again on the same workspace when it shows. An app that quits and comes back within 5 minutes (an update, a crash, a quit and an open) gets its windows back on the workspaces where they were: a new window takes the place of the closed window with its title, else of the first one. A new window of an app that kept running (Cmd-N) opens where you are. A workspace or special workspace that holds only such windows counts as empty for `on_empty` and for hiding the special workspace. A window sent to an empty workspace arrives maximized; otherwise it joins the layout and `balance` runs (`--tile` joins without either). `layout balance` works in every layout, needs no tiled window in focus, and ends maximize and fullscreen on the workspace, so the result is always visible. It writes the size and position of every tiled window again, even when the layout was already balanced, so a window that you or its app resized goes back to its share. `move`, `swap`, `window snap`, `window place` and a swap by the mouse or jump mode on a tiled window do the same: they rearrange the layout and end maximize and fullscreen, so nothing stays hidden.
 
 ## Templates and tile patterns
 
@@ -217,7 +217,7 @@ into it.
 ## Sticky and zen
 
 `window sticky` shows a floating window on every workspace of its monitor (a tiled window floats first). Use it for a chat, a
-player or Picture-in-Picture. Run it again to end it. It follows the workspace the monitor shows, also a special one.
+player or Picture-in-Picture. Run it again to end it; tiling the window ends it too. It follows the workspace the monitor shows, also a special one.
 `window remember` keeps it. A remembered or listed sticky window has the workspace it was on at that moment.
 
 `wm zen` shows only the focused window, centered, and moves the others off screen without changing the layout. Focusing another

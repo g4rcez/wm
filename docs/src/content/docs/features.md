@@ -187,9 +187,19 @@ wm.bind("ctrl-alt-m", "menu")
 ## Mouse
 
 - Drag an edge or corner of a tiled window. The dividers you moved follow, and the neighbours with them.
-- Drag a tiled window by its title bar and drop it on another tile of the same workspace to swap them. A drop anywhere else sends it back to its tile. `wm swap <dir>` does the swap from the keyboard.
+- Drag a tiled window by its title bar, and a space opens for it while you drag. Its neighbours move aside, and a translucent placeholder shows where it lands (tiling, scrolling and master):
+  - **Near a side of another window** (its outer third): beside that window. In scrolling, left and right make a new column; above and below join the window's stack.
+  - **The middle of another window:** the two swap.
+  - **An edge of the screen:** the window takes that whole side (tiling), becomes the first or last column (scrolling), or becomes the master (master).
+  - **Anywhere else:** it goes back to its tile.
 
-**Modifier drag.** Hold the modifier and drag anywhere in a window. The left button moves it (a tiled window swaps with the tile you drop it on). The right button resizes it from the corner nearest to the pointer. wm swallows these clicks.
+  `wm swap <dir>` does the swap from the keyboard. Monocle keeps the plain swap.
+- Drag a **floating** window:
+  - against a side of another floating window, and it lines up beside it;
+  - with **Cmd** held over the middle of another floating window, and the two become a **group**: they share one frame, one tab shows, and the tab indicator shows the others. `wm window group next|prev` changes the tab, and `wm window ungroup` (or dragging the shown tab out) takes a window out. Groups last until wm restarts.
+  - With `move_modifier`, a screen edge also snaps it: a side takes half, the top all of it, a corner a quarter. A drag by the title bar leaves the edges to macOS when its own tiling is on (System Settings > Desktop & Dock > Drag windows to screen edges to tile).
+
+**Modifier drag.** Hold the modifier and drag anywhere in a window. The left button moves it. A tiled window shrinks to a small picture that follows the pointer (live with Screen Recording, else its app's icon), while its neighbours make room; on the drop it springs into its slot. The right button resizes a window from the corner nearest to the pointer. wm swallows these clicks.
 
 ```lua
 wm.config { mouse = { move_modifier = "alt", resize_modifier = "alt" } }
@@ -199,6 +209,8 @@ wm.config { mouse = { move_modifier = "alt", resize_modifier = "alt" } }
 | --- | --- | --- |
 | `mouse.move_modifier` | off | chord text: `alt`, `alt+shift`, `ctrl+alt`, ... |
 | `mouse.resize_modifier` | off | the same |
+| `mouse.move_preview` | `true` | the open space, the placeholder and the floating drop places, by the title bar or with `move_modifier` |
+| `mouse.drag_picture` | `true` | the small picture of a tiled window dragged with `move_modifier` |
 
 Both are off until you set them, because Option-click means something in Finder and in many editors.
 
@@ -310,7 +322,7 @@ wm session delete dev
 
 - **Saved:** for every window its app, title, workspace, floating state and place, marks and sticky state; the layout of each of
   those workspaces; and which workspace each monitor shows. Not saved: zen, pseudotiled sizes, and windows that are
-  minimized, in native fullscreen or swallowed.
+  minimized, hidden with their app, in native fullscreen or swallowed.
 - **Open windows** take the saved places first: same app and same title, else same app in saved order. Windows that are not in the
   session stay where they are, after the saved ones on a shared workspace.
 - **Apps with no window** are started, unless you pass `--no-launch`. Their windows are placed as they open, with no rules and no
@@ -342,7 +354,7 @@ wm.config {
 | `swallow.exceptions` | none | apps that never swallow a terminal |
 
 - A new window swallows when its program was started from that terminal app (wm reads the parent processes), the window is not a dialog, and its app is not a terminal and not in `exceptions`.
-- It takes the slot of the terminal. The terminal is parked in a corner of the screens and `wm list` shows `swallowed`. If you go to the terminal while it is swallowed, it comes back at once.
+- It takes the slot of the terminal. The terminal is parked in a corner of the screens and `wm list` shows `swallowed`. If you go to the terminal while it is swallowed, it comes back at once. A restart of wm (`wm daemon reload`) keeps it swallowed; a reboot does not.
 - Events: `window_swallow` (`id`, `terminal`, `workspace`) and `window_unswallow` (`id` of the terminal, `program`, `workspace`).
 - A window is not swallowed when a rule sets `workspace` or `monitor` for it, or when `window remember` knows it.
 
@@ -357,7 +369,7 @@ While the daemon runs, the menu bar icon shows the workspaces that have windows,
 - **Mode:** `T` is tiling, `S` scrolling, `M` master and `O` monocle. `F` replaces it while the focused window floats.
 - **Order:** numbers first, from the lowest (`2` before `10`), then other names in ASCII order. The workspace in focus is always listed.
 - **Lock:** a small lock next to the icon means macOS Secure Event Input is on, usually because a password field has focus. macOS then hides the keys from every other app, so no wm bind runs until it ends. The tooltip and the menu say which app holds it, and `wm doctor` shows it. When it starts and when it ends, wm forgets held keys and half-typed key sequences, so the binds work again at once.
-- Minimized windows count. A sticky window belongs to no workspace. A special workspace is not listed.
+- Minimized windows and windows of hidden apps count. A sticky window belongs to no workspace. A special workspace is not listed.
 
 | Config key | Default | Meaning |
 | --- | --- | --- |

@@ -26,7 +26,8 @@ stack, as dwm does. You choose the layout per workspace and change it while wm r
 - License: [MIT](LICENSE)
 
 wm has no default key bindings. Until you bind keys in `init.lua`, it only reacts to the `wm` command and to the
-[built-in trackpad swipes](https://wm.garcez.dev/docs/config).
+[built-in trackpad swipes](https://wm.garcez.dev/docs/config#swipes-that-macos-uses)
+that macOS does not use itself.
 
 ## Table of contents
 
@@ -183,7 +184,7 @@ See [Layouts](https://wm.garcez.dev/docs/layouts) and [Features](https://wm.garc
 Requirements:
 
 - macOS 14 or later.
-- The Swift 6.2 toolchain (Xcode or the command line tools).
+- To build from source (or `brew install --HEAD`): the Swift 6.2 toolchain (Xcode or the command line tools).
 - No other window manager running (AeroSpace, yabai, Amethyst). Two of them fight over the same windows.
 
 With Homebrew, the formula in [g4rcez/homebrew-tap](https://github.com/g4rcez/homebrew-tap) installs the signed app of the latest release:
@@ -310,7 +311,7 @@ See [Troubleshooting](https://wm.garcez.dev/docs/troubleshooting) for fixes and 
 ## Development
 
 ```sh
-timeout 300 swift test      # unit tests: layout engines, geometry, Lua host, IPC, command parsing
+timeout 600 swift test      # unit tests: layout engines, geometry, Lua host, IPC, command parsing
 ./build-app.sh debug        # a debug build of the app bundle
 ```
 
@@ -322,6 +323,7 @@ timeout 300 swift test      # unit tests: layout engines, geometry, Lua host, IP
 | `Scripting` | Lua host, chords, binds, gestures, config validation |
 | `Platform` | Accessibility threads, displays, event tap, overlays, SkyLight reader |
 | `PrivateApi` | C bindings to private macOS functions |
+| `Cheatsheet` | The key sheet of `wm cheatsheet`, for the terminal and the panel |
 | `App` | `wmd`: window manager state, commands, config, menu bar, URL handler |
 | `Cli` | `wm` |
 
