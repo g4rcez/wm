@@ -105,16 +105,20 @@ public final class AppTracker {
 
     public func watcher(for pid: pid_t) -> AppWatcher? { watchers[pid] }
 
-    /// Watchers of the apps that are not hidden.
-    private func visibleWatchers() -> [AppWatcher] {
-        let hidden = Set(NSWorkspace.shared.runningApplications.filter(\.isHidden).map(\.processIdentifier))
-        return watchers.filter { !hidden.contains($0.key) }.map(\.value)
+    private func hiddenProcesses() -> Set<pid_t> {
+        Set(NSWorkspace.shared.runningApplications.filter(\.isHidden).map(\.processIdentifier))
     }
 
-    /// Windows of every watched app, read in parallel. Apps that are hidden report no windows. `unread` holds the apps
-    /// that could not be read: their windows are not known to be gone.
-    public func snapshot() async -> (windows: [WindowInfo], unread: Set<pid_t>) {
-        let active = visibleWatchers()
+    /// Watchers of the apps that are not in `hidden`.
+    private func visibleWatchers(besides hidden: Set<pid_t>) -> [AppWatcher] {
+        watchers.filter { !hidden.contains($0.key) }.map(\.value)
+    }
+
+    /// Windows of every watched app, read in parallel. Apps that are hidden report no windows: `hidden` holds them. `unread`
+    /// holds the apps that could not be read. The windows of both are not known to be gone.
+    public func snapshot() async -> (windows: [WindowInfo], unread: Set<pid_t>, hidden: Set<pid_t>) {
+        let hidden = hiddenProcesses()
+        let active = visibleWatchers(besides: hidden)
         return await withTaskGroup(of: (pid_t, [WindowInfo]?).self) { group in
             for watcher in active { group.addTask { (watcher.pid, await watcher.snapshot()) } }
             var all: [WindowInfo] = []
@@ -122,14 +126,14 @@ public final class AppTracker {
             for await (pid, windows) in group {
                 if let windows { all += windows } else { unread.insert(pid) }
             }
-            return (all, unread)
+            return (all, unread, hidden)
         }
     }
 
     /// The frames of every window of the same apps as `snapshot`, with far fewer AX calls. For the mouse gesture,
     /// which only compares frames.
     public func frameSnapshot() async -> [WindowID: CGRect] {
-        let active = visibleWatchers()
+        let active = visibleWatchers(besides: hiddenProcesses())
         return await withTaskGroup(of: [WindowID: CGRect].self) { group in
             for watcher in active { group.addTask { await watcher.frames() } }
             var all: [WindowID: CGRect] = [:]

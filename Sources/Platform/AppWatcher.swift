@@ -94,13 +94,14 @@ public final class AppWatcher: @unchecked Sendable {
     /// All windows of the app with their current attributes. `nil` when the app cannot be read now (busy, just woken):
     /// that says nothing about its windows.
     public func snapshot() async -> [WindowInfo]? {
-        await thread.run { [self] in readWindows() }
+        // An app that quits stops the thread: then nothing can be read, the same as a busy app.
+        await thread.run(orElse: nil) { [self] in readWindows() }
     }
 
     /// Only the frames of the windows: 2 AX reads per window instead of the 8 of `snapshot`. It leaves the watcher's
     /// window bookkeeping alone, so it cannot replace `snapshot` for the refresh.
     public func frames() async -> [WindowID: CGRect] {
-        await thread.run { [self] in
+        await thread.run(orElse: [:]) { [self] in
             guard let app, let list: [AXUIElement] = attribute(app, kAXWindowsAttribute) else { return [:] }
             var result: [WindowID: CGRect] = [:]
             for window in list {
@@ -114,7 +115,7 @@ public final class AppWatcher: @unchecked Sendable {
     }
 
     public func focusedWindow() async -> WindowID? {
-        await thread.run { [self] in
+        await thread.run(orElse: nil) { [self] in
             guard let app, let window: AXUIElement = attribute(app, kAXFocusedWindowAttribute) else { return nil }
             return windowID(window)
         }
