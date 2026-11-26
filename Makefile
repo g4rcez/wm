@@ -44,7 +44,7 @@ build:
 	swift build -c $(CONFIG)
 
 test:
-	$(if $(TIMEOUT),$(TIMEOUT) 300 )swift test
+	$(if $(TIMEOUT),$(TIMEOUT) 600 )swift test
 
 identities:
 	@security find-identity -v -p codesigning

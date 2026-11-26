@@ -54,6 +54,9 @@ git rev-parse -q --verify "refs/tags/$tag" >/dev/null && die "tag $tag already e
 [ "$(printf '%s\n%s\n' "$current" "$next" | sort -V | tail -1)" = "$next" ] && [ "$current" != "$next" ] \
   || die "$next is not newer than $current"
 
+# Users read what changed in the release notes: a release says what it changes for them.
+scripts/changelog.sh check CHANGELOG.md || die "write the changes of $next under ## Unreleased in CHANGELOG.md first"
+
 echo "release: $current -> $next ($tag)"
 [ "$dry" = 1 ] && { echo "dry run: nothing changed"; exit 0; }
 
@@ -119,13 +122,15 @@ scripts/verify-release.sh "$work/$asset"
 sha="$(shasum -a 256 "$work/$asset" | cut -d' ' -f1)"
 echo "$sha" > "$work/$asset.sha256"
 
-git add "$file"
+scripts/changelog.sh notes CHANGELOG.md > "$work/notes.md"
+scripts/changelog.sh stamp CHANGELOG.md "$next"
+git add "$file" CHANGELOG.md
 git commit -m "chore(release): $tag" -m "- Bump the version so \`wm version\` matches the tag and the app of the release."
 committed=1
 git tag -a "$tag" -m "wm $next"
 git push origin main "$tag"
 
-gh release create "$tag" "$work/$asset" "$work/$asset.sha256" --title "wm $next" --generate-notes --verify-tag
+gh release create "$tag" "$work/$asset" "$work/$asset.sha256" --title "wm $next" --notes-file "$work/notes.md" --generate-notes --verify-tag
 
 # brew downloads from the release: the tap moves only when it serves the file that passed the checks.
 gh release download "$tag" -p "$asset" -D "$work/published"
